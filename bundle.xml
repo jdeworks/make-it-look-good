@@ -23827,7 +23827,7 @@ Canvas2D: Multiple readback operations using getImageData are faster with the wi
 [iframe-ss] Layer 2: 1 elements used fillText fallback mask
 [iframe-ss] All 2 mask layers done
 [iframe-ss] Sending results (maskResults: 88 pairs)
-[iframe-ss] postMessage: ss=558KB ud=626KB masks=88/116
+[iframe-ss] postMessage: ss=559KB ud=626KB masks=88/116
 Failed to load resource: the server responded with a status of 403 ()
 Failed to load resource: the server responded with a status of 403 ()
 Failed to load resource: the server responded with a status of 403 ()
@@ -23846,7 +23846,7 @@ Failed to load resource: the server responded with a status of 403 ()
         "canvasWidth": 1593,
         "canvasHeight": 708,
         "cropOffsetX": 0,
-        "cropOffsetY": 14868
+        "cropOffsetY": 75573
       },
       "pairIndices": [
         65,
@@ -33505,365 +33505,6 @@ test.describe('Region Screenshot Debug', () => {
 });
 </file>
 
-<file path="docs/analyzer-region.js">
-// make-it-look-good — Region Screenshot Module
-// Shared logic for detecting overflow:hidden containers with hidden content,
-// creating mini-page iframes, force-revealing content, and capturing screenshots.
-// Used by analyzer-iframe.js (URL analysis) and the console snippet (assembled at runtime).
-//
-// Exposes window.MilgRegion
-
-window.MilgRegion = (function() {
-  "use strict";
-
-  // --- Force-reveal CSS ---
-  // Injected into mini-page <style> to override CSS class rules that hide carousel slides.
-  // High specificity needed because original stylesheets are included in the mini-page.
-  var FORCE_REVEAL_CSS =
-    '*,*::before,*::after{transition:none !important;animation:none !important;}' +
-    'body *{visibility:visible !important;opacity:1 !important;' +
-    'transform:none !important;overflow:visible !important;' +
-    'clip-path:none !important;max-height:none !important;}' +
-    '[aria-hidden="true"],[hidden],.hidden,.d-none,.hide,' +
-    '.carousel-item,.swiper-slide,.slick-slide,' +
-    '[class*="slide"],[class*="panel"],[class*="tab-pane"]{' +
-    'display:block !important;visibility:visible !important;' +
-    'opacity:1 !important;position:relative !important;' +
-    'transform:none !important;left:auto !important;right:auto !important;}';
-
-  // --- Force-reveal script ---
-  // Runs inside the mini-page on DOMContentLoaded. Catches computed display:none
-  // from CSS classes that the static CSS above can't target generically.
-  var FORCE_REVEAL_SCRIPT =
-    'document.addEventListener("DOMContentLoaded",function(){' +
-    'document.querySelectorAll("*").forEach(function(el){' +
-    'var cs=getComputedStyle(el);' +
-    'if(cs.display==="none")el.style.setProperty("display","block","important");' +
-    'if(cs.visibility==="hidden")el.style.setProperty("visibility","visible","important");' +
-    'if(parseFloat(cs.opacity)<0.1)el.style.setProperty("opacity","1","important");' +
-    'if(cs.position==="absolute"||cs.position==="fixed")el.style.setProperty("position","relative","important");' +
-    '});' +
-    '});';
-
-  // --- DOM cleanup ---
-  // Runs from parent context after mini-page loads. Resets height constraints and
-  // removes spacer elements that cause massive whitespace in the region screenshot.
-  function cleanupMiniPageDom(mDoc) {
-    try {
-      var dv = mDoc.defaultView;
-      // Force-reveal pass (redundant with script, but covers sandbox/CSP failures)
-      mDoc.querySelectorAll('*').forEach(function(el) {
-        var cs = dv.getComputedStyle(el);
-        if (cs.display === 'none') el.style.setProperty('display', 'block', 'important');
-        if (cs.visibility === 'hidden') el.style.setProperty('visibility', 'visible', 'important');
-        if (parseFloat(cs.opacity) < 0.1) el.style.setProperty('opacity', '1', 'important');
-        if (cs.position === 'absolute' || cs.position === 'fixed') el.style.setProperty('position', 'relative', 'important');
-      });
-      // Height cleanup on container + direct children only (deeper reset causes inflation).
-      // Horizontal flex/grid layouts are preserved — canvas crop trims whitespace post-capture.
-      var container = mDoc.body.firstElementChild;
-      if (container) {
-        container.style.setProperty('height', 'auto', 'important');
-        container.style.setProperty('max-height', 'none', 'important');
-        container.style.setProperty('min-height', '0', 'important');
-        container.style.setProperty('overflow', 'visible', 'important');
-        for (var ci = 0; ci < container.children.length; ci++) {
-          var child = container.children[ci];
-          child.style.setProperty('height', 'auto', 'important');
-          child.style.setProperty('max-height', 'none', 'important');
-          child.style.setProperty('min-height', '0', 'important');
-          child.style.setProperty('position', 'relative', 'important');
-        }
-      }
-    } catch (_e) {
-      console.warn('[milg-region] DOM cleanup failed:', _e.message);
-    }
-  }
-
-  // --- Build mini-page HTML ---
-  // Assembles HTML for the mini-page iframe with force-reveal CSS/JS and optional extraction.
-  function buildMiniPageHtml(cloneOuterHtml, baseHref, allLinks, allStyles, opts) {
-    opts = opts || {};
-    var scripts = '<script>' + FORCE_REVEAL_SCRIPT + '</' + 'script>';
-    // Optional: inject extraction engine to run after force-reveal
-    if (opts.extractFnSrc) {
-      scripts += '<script>setTimeout(function(){try{(' + opts.extractFnSrc + ')()}catch(e){console.warn("[milg-region] Extraction failed:",e.message)}},100);</' + 'script>';
-    }
-    return '<!DOCTYPE html><html><head><meta charset=UTF-8>' +
-      (baseHref ? '<base href="' + baseHref.replace(/"/g, '&quot;') + '">' : '') +
-      allLinks + allStyles +
-      '<style>' + FORCE_REVEAL_CSS + '</style>' +
-      scripts +
-      '</head><body style="margin:0;padding:0;overflow:visible">' + cloneOuterHtml + '</body></html>';
-  }
-
-  // --- Build region clone ---
-  // Deep-clones the container element and applies inline style overrides.
-  function buildRegionClone(container, containerRect) {
-    var clone = container.cloneNode(true);
-    clone.style.cssText += ';overflow:visible !important;max-height:none !important;height:auto !important;clip-path:none !important;width:' + Math.round(containerRect.width) + 'px !important;';
-    return clone;
-  }
-
-  // --- Detect clipped pairs ---
-  // Marks contrast pairs as _isClipped if their element bbox is outside an overflow:hidden ancestor.
-  // Returns as a string for injection into iframe scripts.
-  function getClipDetectionScript() {
-    return 'if(window.__milgBboxRefs&&window.__milgData&&window.__milgData.colors){' +
-      'var _cp=window.__milgData.colors.contrastPairs||[];' +
-      'window.__milgBboxRefs.forEach(function(ref){' +
-        'if(!ref.el||!ref.obj||ref.key!=="bbox")return;' +
-        'var el=ref.el;var pair=ref.obj;' +
-        'var er=el.getBoundingClientRect();' +
-        'var anc=el.parentElement;' +
-        'while(anc&&anc!==document.documentElement){' +
-          'var as=getComputedStyle(anc);' +
-          'var aov=as.overflow||"";var aovx=as.overflowX||"";var aovy=as.overflowY||"";' +
-          'if(aov==="hidden"||aov==="clip"||aovx==="hidden"||aovx==="clip"||aovy==="hidden"||aovy==="clip"){' +
-            'var ar=anc.getBoundingClientRect();' +
-            'if(er.right<ar.left+1||er.left>ar.right-1||er.bottom<ar.top+1||er.top>ar.bottom-1){' +
-              'pair._isClipped=true;break' +
-            '}' +
-          '}' +
-          'anc=anc.parentElement' +
-        '}' +
-      '})' +
-    '}';
-  }
-
-  // --- Serializable region screenshot function ---
-  // This function is serialized via .toString() and injected into the analysis iframe.
-  // It MUST be self-contained — no references to outer scope variables.
-  // Parameters are bound at serialization time by the caller.
-  function _regionScreenshotFn(_sc, _quality, _prog, _cp2) {
-    return function _buildRegionScreenshots(rgnCb) {
-      // Detect clipping containers from tracked bbox refs
-      var _rgnCounter = 0, _clipContainerList = [], _clipContainers = {};
-      if (window.__milgBboxRefs) {
-        window.__milgBboxRefs.forEach(function(ref) {
-          if (!ref.el || !ref.obj || ref.key !== 'bbox' || !ref.obj._isClipped) return;
-          var clipAnc = null, anc = ref.el.parentElement;
-          while (anc && anc !== document.documentElement) {
-            var as = getComputedStyle(anc);
-            var aov = as.overflow || '', aovx = as.overflowX || '', aovy = as.overflowY || '';
-            if (aov === 'hidden' || aov === 'clip' || aovx === 'hidden' || aovx === 'clip' || aovy === 'hidden' || aovy === 'clip') {
-              var ar = anc.getBoundingClientRect();
-              if (ar.width >= 100 && ar.height >= 30) clipAnc = anc;
-            }
-            anc = anc.parentElement;
-          }
-          if (!clipAnc) return;
-          var cid = clipAnc._milgRegionId;
-          if (!cid) {
-            cid = 'rgn-' + (++_rgnCounter); clipAnc._milgRegionId = cid;
-            _clipContainerList.push({ el: clipAnc, id: cid, pairIndices: [] });
-            _clipContainers[cid] = _clipContainerList[_clipContainerList.length - 1];
-          }
-          var pi = _cp2.indexOf(ref.obj);
-          if (pi >= 0 && _clipContainers[cid].pairIndices.indexOf(pi) < 0)
-            _clipContainers[cid].pairIndices.push(pi);
-        });
-      }
-      _clipContainerList.sort(function(a, b) {
-        var ar = a.el.getBoundingClientRect(), br = b.el.getBoundingClientRect();
-        return (br.width * br.height) - (ar.width * ar.height);
-      });
-      _clipContainerList = _clipContainerList.slice(0, 5);
-      console.log('[milg-region] Found ' + _clipContainerList.length + ' clipping regions');
-      if (_clipContainerList.length === 0) { rgnCb([]); return; }
-
-      var _rgnResults = [], _rgnDone = 0, _rgnTotal = _clipContainerList.length;
-      var _rgnOverall = setTimeout(function() {
-        console.warn('[milg-region] Overall timeout (30s)');
-        rgnCb(_rgnResults);
-      }, 30000);
-
-      // Collect styles for mini-pages
-      var allStyles = ''; document.querySelectorAll('style').forEach(function(s) { allStyles += s.outerHTML; });
-      var allLinks = ''; document.querySelectorAll('link[rel=stylesheet]').forEach(function(l) { allLinks += l.outerHTML; });
-      var baseHref = (document.querySelector('base') || {}).href || '';
-
-      // Force-reveal CSS (inlined — can't reference MilgRegion from inside serialized fn)
-      var _revealCss =
-        '*,*::before,*::after{transition:none !important;animation:none !important;}' +
-        'body *{visibility:visible !important;opacity:1 !important;transform:none !important;overflow:visible !important;clip-path:none !important;max-height:none !important;}' +
-        '[aria-hidden="true"],[hidden],.hidden,.d-none,.hide,.carousel-item,.swiper-slide,.slick-slide,' +
-        '[class*="slide"],[class*="panel"],[class*="tab-pane"]{display:block !important;visibility:visible !important;opacity:1 !important;position:relative !important;transform:none !important;left:auto !important;right:auto !important;}';
-
-      var _revealScript =
-        '<script>document.addEventListener("DOMContentLoaded",function(){' +
-        'document.querySelectorAll("*").forEach(function(el){var cs=getComputedStyle(el);' +
-        'if(cs.display==="none")el.style.setProperty("display","block","important");' +
-        'if(cs.visibility==="hidden")el.style.setProperty("visibility","visible","important");' +
-        'if(parseFloat(cs.opacity)<0.1)el.style.setProperty("opacity","1","important");' +
-        'if(cs.position==="absolute"||cs.position==="fixed")el.style.setProperty("position","relative","important");' +
-        '});});</' + 'script>';
-
-      // Optional extraction: inject MilgExtract if available
-      var _extractScript = '';
-      if (typeof window.MilgExtract === 'function') {
-        _extractScript = '<script>setTimeout(function(){try{(' + window.MilgExtract.toString() + ')()}catch(e){console.warn("[milg-region] Extraction failed:",e)}},100);</' + 'script>';
-      }
-
-      _prog('Capturing ' + _rgnTotal + ' region screenshots...');
-
-      _clipContainerList.forEach(function(rgn, rIdx) {
-        var container = rgn.el, cr = container.getBoundingClientRect();
-        var clone = container.cloneNode(true);
-        clone.style.cssText += ';overflow:visible !important;max-height:none !important;height:auto !important;clip-path:none !important;width:' + Math.round(cr.width) + 'px !important;';
-
-        var miniHtml = '<!DOCTYPE html><html><head><meta charset=UTF-8>' +
-          (baseHref ? '<base href="' + baseHref.replace(/"/g, '&quot;') + '">' : '') +
-          allLinks + allStyles +
-          '<style>' + _revealCss + '</style>' + _revealScript + _extractScript +
-          '</head><body style="margin:0;padding:0;overflow:visible">' + clone.outerHTML + '</body></html>';
-
-        var iframeW = Math.max(Math.round(cr.width), 320);
-        var mf = document.createElement('iframe');
-        mf.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + iframeW + 'px;height:3000px;border:none;visibility:hidden;';
-        mf.setAttribute('sandbox', 'allow-same-origin allow-scripts');
-        document.body.appendChild(mf);
-
-        var rgnTimer = setTimeout(function() {
-          console.warn('[milg-region] Region ' + rIdx + ' timed out');
-          _rgnFinish(rIdx, mf, null);
-        }, 15000);
-
-        mf.srcdoc = miniHtml;
-        mf.addEventListener('load', function() {
-          setTimeout(function() {
-            try {
-              var mDoc = mf.contentDocument;
-              if (!mDoc) { _rgnFinish(rIdx, mf, null); return; }
-
-              // DOM cleanup: force-reveal + targeted height reset on container/children only
-              try {
-                var dv = mDoc.defaultView;
-                mDoc.querySelectorAll('*').forEach(function(el) {
-                  var cs = dv.getComputedStyle(el);
-                  if (cs.display === 'none') el.style.setProperty('display', 'block', 'important');
-                  if (cs.visibility === 'hidden') el.style.setProperty('visibility', 'visible', 'important');
-                  if (parseFloat(cs.opacity) < 0.1) el.style.setProperty('opacity', '1', 'important');
-                  if (cs.position === 'absolute' || cs.position === 'fixed') el.style.setProperty('position', 'relative', 'important');
-                });
-                var _cont = mDoc.body.firstElementChild;
-                if (_cont) {
-                  _cont.style.setProperty('height', 'auto', 'important');
-                  _cont.style.setProperty('max-height', 'none', 'important');
-                  _cont.style.setProperty('overflow', 'visible', 'important');
-                  for (var _ci = 0; _ci < _cont.children.length; _ci++) {
-                    var _ch = _cont.children[_ci];
-                    _ch.style.setProperty('height', 'auto', 'important');
-                    _ch.style.setProperty('max-height', 'none', 'important');
-                    _ch.style.setProperty('position', 'relative', 'important');
-                  }
-                }
-              } catch (_e) {}
-
-              void mDoc.body.offsetHeight; // reflow
-
-              // Harvest extraction data if available
-              var extractedData = null;
-              try { extractedData = mf.contentWindow.__milgData || null; } catch (_e) {}
-
-              // Size iframe to full document first so getBoundingClientRect gives correct coords
-              var cW = Math.max(mDoc.body.scrollWidth, mDoc.documentElement.scrollWidth);
-              var cH = Math.max(mDoc.body.scrollHeight, mDoc.documentElement.scrollHeight);
-              mf.style.width = Math.max(cW, iframeW) + 'px'; mf.style.height = cH + 'px';
-              void mDoc.body.offsetHeight;
-
-              // Compute content bounds from text nodes + replaced elements.
-              // Spacer divs from the absolute→relative conversion have no visual content
-              // and are excluded, so the bounds cover only actual carousel slides.
-              var _cTop = 1e9, _cBot = 0, _cLeft = 1e9, _cRight = 0;
-              var _cropOX = 0, _cropOY = 0;
-              try {
-                mDoc.body.querySelectorAll('*').forEach(function(el) {
-                  var r = el.getBoundingClientRect();
-                  if (r.height <= 0 || r.width <= 0) return;
-                  if (el.tagName === 'IMG' || el.tagName === 'SVG' || el.tagName === 'VIDEO' || el.tagName === 'CANVAS') {
-                    // replaced element — always counts
-                  } else {
-                    var ht = false;
-                    for (var _n = el.firstChild; _n; _n = _n.nextSibling) {
-                      if (_n.nodeType === 3 && _n.textContent.trim()) { ht = true; break; }
-                    }
-                    if (!ht) return;
-                  }
-                  if (r.top < _cTop) _cTop = r.top;
-                  if (r.bottom > _cBot) _cBot = r.bottom;
-                  if (r.left < _cLeft) _cLeft = r.left;
-                  if (r.right > _cRight) _cRight = r.right;
-                });
-              } catch (_e2) {}
-              var _cPad = 20;
-              var _doCrop = _cTop < 1e9 && _cBot > _cTop + 10 && (_cBot - _cTop + _cPad * 2) < cH * 0.8;
-              if (_doCrop) {
-                console.log('[milg-region] Content bounds: ' + Math.round(_cLeft) + ',' + Math.round(_cTop) + ' → ' + Math.round(_cRight) + ',' + Math.round(_cBot) + ' (doc: ' + cW + 'x' + cH + ')');
-                _cropOX = Math.round(Math.max(0, _cLeft - _cPad) * _sc);
-                _cropOY = Math.round(Math.max(0, _cTop - _cPad) * _sc);
-              }
-
-              var pms = window.modernScreenshot;
-              if (!pms || !pms.domToCanvas) { _rgnFinish(rIdx, mf, null); return; }
-              pms.domToCanvas(mDoc.documentElement, { scale: _sc, timeout: 12000 }).then(function(rc) {
-                // Crop canvas to DOM-computed content bounds (avoids pixel scanning)
-                var finalCanvas = rc;
-                if (_doCrop) {
-                  try {
-                    var _cx = Math.round(Math.max(0, _cLeft - _cPad) * _sc);
-                    var _cy = Math.round(Math.max(0, _cTop - _cPad) * _sc);
-                    var _cw = Math.min(Math.round((_cRight - _cLeft + _cPad * 2) * _sc), rc.width - _cx);
-                    var _ch3 = Math.min(Math.round((_cBot - _cTop + _cPad * 2) * _sc), rc.height - _cy);
-                    if (_cw > 10 && _ch3 > 10) {
-                      finalCanvas = document.createElement('canvas');
-                      finalCanvas.width = _cw; finalCanvas.height = _ch3;
-                      finalCanvas.getContext('2d').drawImage(rc, _cx, _cy, _cw, _ch3, 0, 0, _cw, _ch3);
-                      console.log('[milg-region] Cropped ' + rc.width + 'x' + rc.height + ' → ' + _cw + 'x' + _ch3);
-                    }
-                  } catch (_ce) { console.warn('[milg-region] Crop failed:', _ce.message); finalCanvas = rc; }
-                }
-                var rUri; try { rUri = finalCanvas.toDataURL('image/webp', _quality); } catch (e) { rUri = ''; }
-                clearTimeout(rgnTimer);
-                _rgnFinish(rIdx, mf, {
-                  screenshot: rUri,
-                  screenshotMeta: { scale: _sc, canvasWidth: finalCanvas.width, canvasHeight: finalCanvas.height, cropOffsetX: _cropOX, cropOffsetY: _cropOY },
-                  pairIndices: rgn.pairIndices,
-                  containerRect: { left: Math.round(cr.left), top: Math.round(cr.top), width: Math.round(cr.width), height: Math.round(cr.height) },
-                  extractedData: extractedData
-                });
-              }).catch(function(e) { clearTimeout(rgnTimer); _rgnFinish(rIdx, mf, null); });
-            } catch (e) { clearTimeout(rgnTimer); _rgnFinish(rIdx, mf, null); }
-          }, 800); // 800ms: allow DOMContentLoaded + extraction to complete
-        });
-      });
-
-      function _rgnFinish(idx, mf, result) {
-        if (result) _rgnResults.push(result);
-        try { if (mf && mf.parentNode) mf.parentNode.removeChild(mf); } catch (e) {}
-        _rgnDone++;
-        if (_rgnDone >= _rgnTotal) {
-          clearTimeout(_rgnOverall);
-          console.log('[milg-region] Region screenshots done: ' + _rgnResults.length + '/' + _rgnTotal);
-          rgnCb(_rgnResults);
-        }
-      }
-    };
-  }
-
-  return {
-    FORCE_REVEAL_CSS: FORCE_REVEAL_CSS,
-    FORCE_REVEAL_SCRIPT: FORCE_REVEAL_SCRIPT,
-    cleanupMiniPageDom: cleanupMiniPageDom,
-    buildMiniPageHtml: buildMiniPageHtml,
-    buildRegionClone: buildRegionClone,
-    getClipDetectionScript: getClipDetectionScript,
-    // The serializable function — use: MilgRegion.getRegionFn().toString()
-    getRegionFn: function() { return _regionScreenshotFn; }
-  };
-})();
-</file>
-
 <file path="docs/analyzer-snippet.js">
 // make-it-look-good — Design Extraction Snippet
 // Version: v1.1
@@ -34247,6 +33888,381 @@ window.MilgRegion = (function() {
     // Run the extraction
     window.MilgExtract();
   }
+})();
+</file>
+
+<file path="docs/analyzer-region.js">
+// make-it-look-good — Region Screenshot Module
+// Shared logic for detecting overflow:hidden containers with hidden content,
+// creating mini-page iframes, force-revealing content, and capturing screenshots.
+// Used by analyzer-iframe.js (URL analysis) and the console snippet (assembled at runtime).
+//
+// Exposes window.MilgRegion
+
+window.MilgRegion = (function() {
+  "use strict";
+
+  // --- Force-reveal CSS ---
+  // Injected into mini-page <style> to override CSS class rules that hide carousel slides.
+  // High specificity needed because original stylesheets are included in the mini-page.
+  var FORCE_REVEAL_CSS =
+    '*,*::before,*::after{transition:none !important;animation:none !important;}' +
+    'body *{visibility:visible !important;opacity:1 !important;' +
+    'transform:none !important;overflow:visible !important;' +
+    'clip-path:none !important;max-height:none !important;}' +
+    '[aria-hidden="true"],[hidden],.hidden,.d-none,.hide,' +
+    '.carousel-item,.swiper-slide,.slick-slide,' +
+    '[class*="slide"],[class*="panel"],[class*="tab-pane"]{' +
+    'display:block !important;visibility:visible !important;' +
+    'opacity:1 !important;position:relative !important;' +
+    'transform:none !important;left:auto !important;right:auto !important;}';
+
+  // --- Force-reveal script ---
+  // Runs inside the mini-page on DOMContentLoaded. Catches computed display:none
+  // from CSS classes that the static CSS above can't target generically.
+  var FORCE_REVEAL_SCRIPT =
+    'document.addEventListener("DOMContentLoaded",function(){' +
+    'document.querySelectorAll("*").forEach(function(el){' +
+    'var cs=getComputedStyle(el);' +
+    'if(cs.display==="none")el.style.setProperty("display","block","important");' +
+    'if(cs.visibility==="hidden")el.style.setProperty("visibility","visible","important");' +
+    'if(parseFloat(cs.opacity)<0.1)el.style.setProperty("opacity","1","important");' +
+    'if(cs.position==="absolute"||cs.position==="fixed")el.style.setProperty("position","relative","important");' +
+    '});' +
+    '});';
+
+  // --- DOM cleanup ---
+  // Runs from parent context after mini-page loads. Resets height constraints and
+  // removes spacer elements that cause massive whitespace in the region screenshot.
+  function cleanupMiniPageDom(mDoc) {
+    try {
+      var dv = mDoc.defaultView;
+      // Force-reveal pass (redundant with script, but covers sandbox/CSP failures)
+      mDoc.querySelectorAll('*').forEach(function(el) {
+        var cs = dv.getComputedStyle(el);
+        if (cs.display === 'none') el.style.setProperty('display', 'block', 'important');
+        if (cs.visibility === 'hidden') el.style.setProperty('visibility', 'visible', 'important');
+        if (parseFloat(cs.opacity) < 0.1) el.style.setProperty('opacity', '1', 'important');
+        if (cs.position === 'absolute' || cs.position === 'fixed') el.style.setProperty('position', 'relative', 'important');
+      });
+      // Height cleanup on container + direct children only (deeper reset causes inflation).
+      // Horizontal flex/grid layouts are preserved — canvas crop trims whitespace post-capture.
+      var container = mDoc.body.firstElementChild;
+      if (container) {
+        container.style.setProperty('height', 'auto', 'important');
+        container.style.setProperty('max-height', 'none', 'important');
+        container.style.setProperty('min-height', '0', 'important');
+        container.style.setProperty('overflow', 'visible', 'important');
+        for (var ci = 0; ci < container.children.length; ci++) {
+          var child = container.children[ci];
+          child.style.setProperty('height', 'auto', 'important');
+          child.style.setProperty('max-height', 'none', 'important');
+          child.style.setProperty('min-height', '0', 'important');
+          child.style.setProperty('position', 'relative', 'important');
+        }
+      }
+    } catch (_e) {
+      console.warn('[milg-region] DOM cleanup failed:', _e.message);
+    }
+  }
+
+  // --- Build mini-page HTML ---
+  // Assembles HTML for the mini-page iframe with force-reveal CSS/JS and optional extraction.
+  function buildMiniPageHtml(cloneOuterHtml, baseHref, allLinks, allStyles, opts) {
+    opts = opts || {};
+    var scripts = '<script>' + FORCE_REVEAL_SCRIPT + '</' + 'script>';
+    // Optional: inject extraction engine to run after force-reveal
+    if (opts.extractFnSrc) {
+      scripts += '<script>setTimeout(function(){try{(' + opts.extractFnSrc + ')()}catch(e){console.warn("[milg-region] Extraction failed:",e.message)}},100);</' + 'script>';
+    }
+    return '<!DOCTYPE html><html><head><meta charset=UTF-8>' +
+      (baseHref ? '<base href="' + baseHref.replace(/"/g, '&quot;') + '">' : '') +
+      allLinks + allStyles +
+      '<style>' + FORCE_REVEAL_CSS + '</style>' +
+      scripts +
+      '</head><body style="margin:0;padding:0;overflow:visible">' + cloneOuterHtml + '</body></html>';
+  }
+
+  // --- Build region clone ---
+  // Deep-clones the container element and applies inline style overrides.
+  function buildRegionClone(container, containerRect) {
+    var clone = container.cloneNode(true);
+    clone.style.cssText += ';overflow:visible !important;max-height:none !important;height:auto !important;clip-path:none !important;width:' + Math.round(containerRect.width) + 'px !important;';
+    return clone;
+  }
+
+  // --- Detect clipped pairs ---
+  // Marks contrast pairs as _isClipped if their element bbox is outside an overflow:hidden ancestor.
+  // Returns as a string for injection into iframe scripts.
+  function getClipDetectionScript() {
+    return 'if(window.__milgBboxRefs&&window.__milgData&&window.__milgData.colors){' +
+      'var _cp=window.__milgData.colors.contrastPairs||[];' +
+      'window.__milgBboxRefs.forEach(function(ref){' +
+        'if(!ref.el||!ref.obj||ref.key!=="bbox")return;' +
+        'var el=ref.el;var pair=ref.obj;' +
+        'var er=el.getBoundingClientRect();' +
+        'var anc=el.parentElement;' +
+        'while(anc&&anc!==document.documentElement){' +
+          'var as=getComputedStyle(anc);' +
+          'var aov=as.overflow||"";var aovx=as.overflowX||"";var aovy=as.overflowY||"";' +
+          'if(aov==="hidden"||aov==="clip"||aovx==="hidden"||aovx==="clip"||aovy==="hidden"||aovy==="clip"){' +
+            'var ar=anc.getBoundingClientRect();' +
+            'if(er.right<ar.left+1||er.left>ar.right-1||er.bottom<ar.top+1||er.top>ar.bottom-1){' +
+              'pair._isClipped=true;break' +
+            '}' +
+          '}' +
+          'anc=anc.parentElement' +
+        '}' +
+      '})' +
+    '}';
+  }
+
+  // --- Serializable region screenshot function ---
+  // This function is serialized via .toString() and injected into the analysis iframe.
+  // It MUST be self-contained — no references to outer scope variables.
+  // Parameters are bound at serialization time by the caller.
+  function _regionScreenshotFn(_sc, _quality, _prog, _cp2) {
+    return function _buildRegionScreenshots(rgnCb) {
+      // Detect clipping containers from tracked bbox refs
+      var _rgnCounter = 0, _clipContainerList = [], _clipContainers = {};
+      if (window.__milgBboxRefs) {
+        window.__milgBboxRefs.forEach(function(ref) {
+          if (!ref.el || !ref.obj || ref.key !== 'bbox' || !ref.obj._isClipped) return;
+          var clipAnc = null, anc = ref.el.parentElement;
+          while (anc && anc !== document.documentElement) {
+            var as = getComputedStyle(anc);
+            var aov = as.overflow || '', aovx = as.overflowX || '', aovy = as.overflowY || '';
+            if (aov === 'hidden' || aov === 'clip' || aovx === 'hidden' || aovx === 'clip' || aovy === 'hidden' || aovy === 'clip') {
+              var ar = anc.getBoundingClientRect();
+              if (ar.width >= 100 && ar.height >= 30) clipAnc = anc;
+            }
+            anc = anc.parentElement;
+          }
+          if (!clipAnc) return;
+          var cid = clipAnc._milgRegionId;
+          if (!cid) {
+            cid = 'rgn-' + (++_rgnCounter); clipAnc._milgRegionId = cid;
+            _clipContainerList.push({ el: clipAnc, id: cid, pairIndices: [] });
+            _clipContainers[cid] = _clipContainerList[_clipContainerList.length - 1];
+          }
+          var pi = _cp2.indexOf(ref.obj);
+          if (pi >= 0 && _clipContainers[cid].pairIndices.indexOf(pi) < 0)
+            _clipContainers[cid].pairIndices.push(pi);
+        });
+      }
+      _clipContainerList.sort(function(a, b) {
+        var ar = a.el.getBoundingClientRect(), br = b.el.getBoundingClientRect();
+        return (br.width * br.height) - (ar.width * ar.height);
+      });
+      _clipContainerList = _clipContainerList.slice(0, 5);
+      console.log('[milg-region] Found ' + _clipContainerList.length + ' clipping regions');
+      if (_clipContainerList.length === 0) { rgnCb([]); return; }
+
+      var _rgnResults = [], _rgnDone = 0, _rgnTotal = _clipContainerList.length;
+      var _rgnOverall = setTimeout(function() {
+        console.warn('[milg-region] Overall timeout (30s)');
+        rgnCb(_rgnResults);
+      }, 30000);
+
+      // Collect styles for mini-pages
+      var allStyles = ''; document.querySelectorAll('style').forEach(function(s) { allStyles += s.outerHTML; });
+      var allLinks = ''; document.querySelectorAll('link[rel=stylesheet]').forEach(function(l) { allLinks += l.outerHTML; });
+      var baseHref = (document.querySelector('base') || {}).href || '';
+
+      // Force-reveal CSS (inlined — can't reference MilgRegion from inside serialized fn)
+      var _revealCss =
+        '*,*::before,*::after{transition:none !important;animation:none !important;}' +
+        'body *{visibility:visible !important;opacity:1 !important;transform:none !important;overflow:visible !important;clip-path:none !important;max-height:none !important;}' +
+        '[aria-hidden="true"],[hidden],.hidden,.d-none,.hide,.carousel-item,.swiper-slide,.slick-slide,' +
+        '[class*="slide"],[class*="panel"],[class*="tab-pane"]{display:block !important;visibility:visible !important;opacity:1 !important;position:relative !important;transform:none !important;left:auto !important;right:auto !important;}';
+
+      var _revealScript =
+        '<script>document.addEventListener("DOMContentLoaded",function(){' +
+        'document.querySelectorAll("*").forEach(function(el){var cs=getComputedStyle(el);' +
+        'if(cs.display==="none")el.style.setProperty("display","block","important");' +
+        'if(cs.visibility==="hidden")el.style.setProperty("visibility","visible","important");' +
+        'if(parseFloat(cs.opacity)<0.1)el.style.setProperty("opacity","1","important");' +
+        'if(cs.position==="absolute"||cs.position==="fixed")el.style.setProperty("position","relative","important");' +
+        '});});</' + 'script>';
+
+      // Optional extraction: inject MilgExtract if available
+      var _extractScript = '';
+      if (typeof window.MilgExtract === 'function') {
+        _extractScript = '<script>setTimeout(function(){try{(' + window.MilgExtract.toString() + ')()}catch(e){console.warn("[milg-region] Extraction failed:",e)}},100);</' + 'script>';
+      }
+
+      _prog('Capturing ' + _rgnTotal + ' region screenshots...');
+
+      _clipContainerList.forEach(function(rgn, rIdx) {
+        var container = rgn.el, cr = container.getBoundingClientRect();
+        var clone = container.cloneNode(true);
+        clone.style.cssText += ';overflow:visible !important;max-height:none !important;height:auto !important;clip-path:none !important;width:' + Math.round(cr.width) + 'px !important;';
+
+        var miniHtml = '<!DOCTYPE html><html><head><meta charset=UTF-8>' +
+          (baseHref ? '<base href="' + baseHref.replace(/"/g, '&quot;') + '">' : '') +
+          allLinks + allStyles +
+          '<style>' + _revealCss + '</style>' + _revealScript + _extractScript +
+          '</head><body style="margin:0;padding:0;overflow:visible">' + clone.outerHTML + '</body></html>';
+
+        var iframeW = Math.max(Math.round(cr.width), 320);
+        var mf = document.createElement('iframe');
+        mf.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + iframeW + 'px;height:3000px;border:none;visibility:hidden;';
+        mf.setAttribute('sandbox', 'allow-same-origin allow-scripts');
+        document.body.appendChild(mf);
+
+        var rgnTimer = setTimeout(function() {
+          console.warn('[milg-region] Region ' + rIdx + ' timed out');
+          _rgnFinish(rIdx, mf, null);
+        }, 15000);
+
+        mf.srcdoc = miniHtml;
+        mf.addEventListener('load', function() {
+          setTimeout(function() {
+            try {
+              var mDoc = mf.contentDocument;
+              if (!mDoc) { _rgnFinish(rIdx, mf, null); return; }
+
+              // DOM cleanup: force-reveal + targeted height reset on container/children only
+              try {
+                var dv = mDoc.defaultView;
+                mDoc.querySelectorAll('*').forEach(function(el) {
+                  var cs = dv.getComputedStyle(el);
+                  if (cs.display === 'none') el.style.setProperty('display', 'block', 'important');
+                  if (cs.visibility === 'hidden') el.style.setProperty('visibility', 'visible', 'important');
+                  if (parseFloat(cs.opacity) < 0.1) el.style.setProperty('opacity', '1', 'important');
+                  if (cs.position === 'absolute' || cs.position === 'fixed') el.style.setProperty('position', 'relative', 'important');
+                });
+                var _cont = mDoc.body.firstElementChild;
+                if (_cont) {
+                  _cont.style.setProperty('height', 'auto', 'important');
+                  _cont.style.setProperty('max-height', 'none', 'important');
+                  _cont.style.setProperty('overflow', 'visible', 'important');
+                  for (var _ci = 0; _ci < _cont.children.length; _ci++) {
+                    var _ch = _cont.children[_ci];
+                    _ch.style.setProperty('height', 'auto', 'important');
+                    _ch.style.setProperty('max-height', 'none', 'important');
+                    _ch.style.setProperty('position', 'relative', 'important');
+                  }
+                }
+              } catch (_e) {}
+
+              void mDoc.body.offsetHeight; // reflow
+
+              // Harvest extraction data if available
+              var extractedData = null;
+              try { extractedData = mf.contentWindow.__milgData || null; } catch (_e) {}
+
+              // Size iframe to full document first so getBoundingClientRect gives correct coords
+              var cW = Math.max(mDoc.body.scrollWidth, mDoc.documentElement.scrollWidth);
+              var cH = Math.max(mDoc.body.scrollHeight, mDoc.documentElement.scrollHeight);
+              mf.style.width = Math.max(cW, iframeW) + 'px'; mf.style.height = cH + 'px';
+              void mDoc.body.offsetHeight;
+
+              // Compute content bounds from text nodes + replaced elements.
+              // Spacer divs from the absolute→relative conversion have no visual content
+              // and are excluded, so the bounds cover only actual carousel slides.
+              var _cTop = 1e9, _cBot = 0, _cLeft = 1e9, _cRight = 0;
+              var _cropOX = 0, _cropOY = 0;
+              try {
+                mDoc.body.querySelectorAll('*').forEach(function(el) {
+                  var r = el.getBoundingClientRect();
+                  if (r.height <= 0 || r.width <= 0) return;
+                  if (el.tagName === 'IMG' || el.tagName === 'SVG' || el.tagName === 'VIDEO' || el.tagName === 'CANVAS') {
+                    // replaced element — always counts
+                  } else {
+                    var ht = false;
+                    for (var _n = el.firstChild; _n; _n = _n.nextSibling) {
+                      if (_n.nodeType === 3 && _n.textContent.trim()) { ht = true; break; }
+                    }
+                    if (!ht) return;
+                  }
+                  if (r.top < _cTop) _cTop = r.top;
+                  if (r.bottom > _cBot) _cBot = r.bottom;
+                  if (r.left < _cLeft) _cLeft = r.left;
+                  if (r.right > _cRight) _cRight = r.right;
+                });
+              } catch (_e2) {}
+              var _cPad = 20;
+              var _doCrop = _cTop < 1e9 && _cBot > _cTop + 10 && (_cBot - _cTop + _cPad * 2) < cH * 0.8;
+              // Compute crop offset from EXTRACTION bboxes, not DOM content bounds.
+              // The extraction runs before the iframe resize, so its bbox coordinates
+              // differ from post-resize DOM positions. The viewer maps extraction bboxes
+              // via (bbox * scale - cropOffset), so cropOffset must match extraction coords.
+              var _exTop = 1e9, _exLeft = 1e9;
+              if (_doCrop && extractedData && extractedData.colors) {
+                (extractedData.colors.contrastPairs || []).forEach(function(cp) {
+                  if (cp.bbox) {
+                    if (cp.bbox.top < _exTop) _exTop = cp.bbox.top;
+                    if (cp.bbox.left < _exLeft) _exLeft = cp.bbox.left;
+                  }
+                });
+              }
+              if (_doCrop) {
+                console.log('[milg-region] Content bounds: ' + Math.round(_cLeft) + ',' + Math.round(_cTop) + ' → ' + Math.round(_cRight) + ',' + Math.round(_cBot) + ' (doc: ' + cW + 'x' + cH + ')');
+                // Use extraction bbox origin for crop offset (aligns with viewer coordinate mapping)
+                var _exPadX = _exLeft < 1e9 ? Math.max(0, _exLeft - _cPad) : Math.max(0, _cLeft - _cPad);
+                var _exPadY = _exTop < 1e9 ? Math.max(0, _exTop - _cPad) : Math.max(0, _cTop - _cPad);
+                _cropOX = Math.round(_exPadX * _sc);
+                _cropOY = Math.round(_exPadY * _sc);
+              }
+
+              var pms = window.modernScreenshot;
+              if (!pms || !pms.domToCanvas) { _rgnFinish(rIdx, mf, null); return; }
+              pms.domToCanvas(mDoc.documentElement, { scale: _sc, timeout: 12000 }).then(function(rc) {
+                // Crop canvas to DOM-computed content bounds (avoids pixel scanning)
+                var finalCanvas = rc;
+                if (_doCrop) {
+                  try {
+                    var _cx = Math.round(Math.max(0, _cLeft - _cPad) * _sc);
+                    var _cy = Math.round(Math.max(0, _cTop - _cPad) * _sc);
+                    var _cw = Math.min(Math.round((_cRight - _cLeft + _cPad * 2) * _sc), rc.width - _cx);
+                    var _ch3 = Math.min(Math.round((_cBot - _cTop + _cPad * 2) * _sc), rc.height - _cy);
+                    if (_cw > 10 && _ch3 > 10) {
+                      finalCanvas = document.createElement('canvas');
+                      finalCanvas.width = _cw; finalCanvas.height = _ch3;
+                      finalCanvas.getContext('2d').drawImage(rc, _cx, _cy, _cw, _ch3, 0, 0, _cw, _ch3);
+                      console.log('[milg-region] Cropped ' + rc.width + 'x' + rc.height + ' → ' + _cw + 'x' + _ch3);
+                    }
+                  } catch (_ce) { console.warn('[milg-region] Crop failed:', _ce.message); finalCanvas = rc; }
+                }
+                var rUri; try { rUri = finalCanvas.toDataURL('image/webp', _quality); } catch (e) { rUri = ''; }
+                clearTimeout(rgnTimer);
+                _rgnFinish(rIdx, mf, {
+                  screenshot: rUri,
+                  screenshotMeta: { scale: _sc, canvasWidth: finalCanvas.width, canvasHeight: finalCanvas.height, cropOffsetX: _cropOX, cropOffsetY: _cropOY },
+                  pairIndices: rgn.pairIndices,
+                  containerRect: { left: Math.round(cr.left), top: Math.round(cr.top), width: Math.round(cr.width), height: Math.round(cr.height) },
+                  extractedData: extractedData
+                });
+              }).catch(function(e) { clearTimeout(rgnTimer); _rgnFinish(rIdx, mf, null); });
+            } catch (e) { clearTimeout(rgnTimer); _rgnFinish(rIdx, mf, null); }
+          }, 800); // 800ms: allow DOMContentLoaded + extraction to complete
+        });
+      });
+
+      function _rgnFinish(idx, mf, result) {
+        if (result) _rgnResults.push(result);
+        try { if (mf && mf.parentNode) mf.parentNode.removeChild(mf); } catch (e) {}
+        _rgnDone++;
+        if (_rgnDone >= _rgnTotal) {
+          clearTimeout(_rgnOverall);
+          console.log('[milg-region] Region screenshots done: ' + _rgnResults.length + '/' + _rgnTotal);
+          rgnCb(_rgnResults);
+        }
+      }
+    };
+  }
+
+  return {
+    FORCE_REVEAL_CSS: FORCE_REVEAL_CSS,
+    FORCE_REVEAL_SCRIPT: FORCE_REVEAL_SCRIPT,
+    cleanupMiniPageDom: cleanupMiniPageDom,
+    buildMiniPageHtml: buildMiniPageHtml,
+    buildRegionClone: buildRegionClone,
+    getClipDetectionScript: getClipDetectionScript,
+    // The serializable function — use: MilgRegion.getRegionFn().toString()
+    getRegionFn: function() { return _regionScreenshotFn; }
+  };
 })();
 </file>
 
@@ -35436,6 +35452,1030 @@ window.MilgProxy = (function() {
     fetchWithProxy: fetchWithProxy,
     fetchViaProxy: fetchViaProxy
   };
+})();
+</file>
+
+<file path="docs/analyzer-snippet-screenshots.js">
+// make-it-look-good — Design Extraction Snippet (with screenshots)
+// Version: v1.1
+// Run this in the browser console on any page.
+// Loads extraction engine from CDN (single source of truth), then captures screenshots.
+// Output is larger (~200-800KB extra) but includes visual reference.
+// Then paste into the analyzer at: https://jdeworks.github.io/make-it-look-good/analyzer.html
+
+(function() {
+  'use strict';
+  var _MILG_VERSION = 'v1.1';
+  console.log('%c[milg] Snippet version: ' + _MILG_VERSION, 'color: #64748b;');
+
+  // --- Pixel verify option ---
+  // Set window.__milgPixelVerify = true before running to enable inline pixel contrast verification.
+  // Default: off (the analyzer can run pixel verify post-hoc from screenshots).
+  var _doPixelVerify = !!window.__milgPixelVerify;
+
+  // --- Auto-scroll option ---
+  // To scroll the page before extraction (triggers lazy loading + intersection observers):
+  // Run: window.__milgScrollFirst = true   then paste the snippet.
+  // The snippet will scroll the full page, wait for content to load, then extract.
+  if (window.__milgScrollFirst && !window.__milgScrollDone) {
+    window.__milgScrollDone = true;
+    console.log('%c\u23F3 Scrolling page to trigger lazy loading and intersection observers...', 'color: #3b82f6; font-weight: bold;');
+    var _scrollH = document.body.scrollHeight;
+    var _pos = 0;
+    var _step = Math.max(window.innerHeight * 0.8, 400);
+    var _si = setInterval(function() {
+      _pos += _step;
+      window.scrollTo(0, _pos);
+      if (_pos >= _scrollH) {
+        clearInterval(_si);
+        setTimeout(function() { window.scrollTo(0, 0); }, 300);
+        // Wait for newly loaded content, then user must re-run snippet
+        setTimeout(function() {
+          console.log('%c\u2713 Scroll complete! Page content should now be fully loaded.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+          console.log('%cRe-run the snippet now for complete analysis.', 'color: #3b82f6;');
+          window.__milgScrollFirst = false;
+        }, 1500);
+      }
+    }, 150);
+    return; // Exit — re-run snippet after scroll completes
+  }
+
+  // Cache-bust for CDN fetches (hourly bucket)
+  var _cacheBust = 'v=' + Math.floor(Date.now() / 3600000);
+
+  // --- Load extraction engine from CDN (single source of truth) ---
+  console.log('%c[milg] Loading extraction engine...', 'color: #3b82f6;');
+  // Primary: jsDelivr (fast global CDN, mirrors GitHub). Fallback: GitHub Pages direct.
+  var _extractUrls = [
+    'https://cdn.jsdelivr.net/gh/jdeworks/make-it-look-good@dev/docs/analyzer-extract.js?' + _cacheBust,
+    'https://jdeworks.github.io/make-it-look-good/analyzer-extract.js?' + _cacheBust
+  ];
+
+  if (window.MilgExtract) {
+    _runExtraction();
+  } else {
+    (function _tryLoad(idx) {
+      if (idx >= _extractUrls.length) {
+        console.error('[milg] Cannot load extraction engine from any CDN.');
+        return;
+      }
+      var url = _extractUrls[idx];
+      console.log('[milg] Fetching:', url.split('?')[0]);
+      fetch(url).then(function(r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.text();
+      }).then(function(code) {
+        (new Function(code))();
+        if (!window.MilgExtract) throw new Error('MilgExtract not defined after eval');
+        _runExtraction();
+      }).catch(function(err) {
+        console.warn('[milg] CDN ' + (idx + 1) + ' failed:', err.message || err);
+        _tryLoad(idx + 1);
+      });
+    })(0);
+  }
+
+  function _runExtraction() {
+    window.__milgOnExtractComplete = function(data) {
+      window.__milgData = data;
+      console.log('%c[milg] Extraction complete, starting screenshot capture...', 'color: #3b82f6;');
+
+  // --- Screenshot capture ---
+  // The modern-screenshot library is loaded inline to bypass CSP restrictions.
+  // Console-pasted code is executed directly by the engine, not subject to CSP script-src.
+  console.log('%c\uD83D\uDCF8 Capturing screenshots...', 'color: #3b82f6; font-weight: bold; font-size: 14px;');
+
+  // Inline modern-screenshot library (loaded from separate file at build time)
+  // This block is replaced by scripts/build-screenshot-snippet.sh
+  // __INLINE_MODERN_SCREENSHOT_START__
+  try {
+    var _msScript = document.createElement('script');
+    _msScript.src = 'https://cdn.jsdelivr.net/npm/modern-screenshot@4.6.8/dist/index.js';
+    var _msLoaded = new Promise(function(resolve, reject) {
+      _msScript.onload = resolve;
+      _msScript.onerror = function() {
+        // CDN blocked by CSP — try inline fallback via fetch + eval (works if unsafe-eval allowed)
+        // Otherwise fall back gracefully
+        console.log('%c\u26A0 CDN blocked by CSP. Trying fetch fallback...', 'color: #b45309;');
+        fetch('https://cdn.jsdelivr.net/npm/modern-screenshot@4.6.8/dist/index.js')
+          .then(function(r) { return r.text(); })
+          .then(function(code) { (new Function(code))(); resolve(); })
+          .catch(function() {
+            console.log('%c\u26A0 Screenshot library unavailable on this site (CSP blocks external scripts and eval).', 'color: #b45309;');
+            console.log('%cScreenshots skipped. The design data extraction still works \u2014 just paste into the analyzer.', 'color: #64748b;');
+            reject();
+          });
+      };
+    });
+    document.head.appendChild(_msScript);
+  } catch(e) { var _msLoaded = Promise.reject(); }
+
+  _msLoaded.then(function() {
+    var ms = window.modernScreenshot;
+    if (!ms || !ms.domToCanvas) {
+      console.log('%c\u26A0 Screenshot API not found. Skipping.', 'color: #b45309;');
+      data.screenshots = [];
+      outputData(data);
+      return;
+    }
+
+    var totalH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+    var vh = window.innerHeight || 900;
+    var captureH = Math.min(totalH, 32000);
+
+    var _ssStart = Date.now();
+    function _t() { return '[' + ((Date.now() - _ssStart) / 1000).toFixed(1) + 's] '; }
+    // Cap at 10 viewports for the full capture (avoid huge canvases on very long pages)
+    captureH = Math.min(captureH, vh * 10);
+    var numSections = Math.ceil(captureH / vh);
+    console.log('[ss] ' + _t() + 'totalH=' + totalH + ' vh=' + vh + ' captureH=' + captureH + ' sections=' + numSections);
+
+    // Show overlay so users aren't confused during capture
+    var _overlay = document.createElement('div');
+    _overlay.setAttribute('data-milg-overlay', '1');
+    _overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,0.6);display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui,sans-serif;';
+    _overlay.innerHTML = '<div style="width:40px;height:40px;border:3px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:milg-spin 0.8s linear infinite"></div>' +
+      '<div id="milg-ss-status" style="color:#fff;margin-top:16px;font-size:14px;font-weight:500">Preparing screenshots...</div>' +
+      '<div style="color:rgba(255,255,255,0.6);margin-top:6px;font-size:12px">Scrolling page to load all content, then capturing</div>' +
+      '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style>';
+    document.body.appendChild(_overlay);
+    var _ssFilter = function(el) { return !el.getAttribute || !el.getAttribute('data-milg-overlay'); };
+    var _origScrollY = window.scrollY;
+
+    // Phase 1: Pre-scroll the entire page to trigger ALL lazy content, IntersectionObservers, etc.
+    console.log('[ss] ' + _t() + 'Phase 1: Pre-scrolling page to trigger lazy content...');
+    var _preScrollPositions = [];
+    for (var _ps = 0; _ps < captureH; _ps += vh) _preScrollPositions.push(_ps);
+    var _psIdx = 0;
+    function _preScrollNext() {
+      if (_psIdx >= _preScrollPositions.length) {
+        // All positions scrolled — wait for content to finish loading
+        console.log('[ss] ' + _t() + 'Phase 1 complete. Waiting for lazy content to finish loading...');
+        var statusEl = document.getElementById('milg-ss-status');
+        if (statusEl) statusEl.textContent = 'Waiting for images to load...';
+        setTimeout(function() { _startCapture(); }, 500);
+        return;
+      }
+      var scrollY = _preScrollPositions[_psIdx];
+      window.scrollTo(0, scrollY);
+      try { window.dispatchEvent(new Event('scroll')); } catch(e) {}
+      var statusEl = document.getElementById('milg-ss-status');
+      if (statusEl) statusEl.textContent = 'Loading content... (section ' + (_psIdx + 1) + '/' + _preScrollPositions.length + ')';
+      _psIdx++;
+      setTimeout(_preScrollNext, 200); // 200ms per scroll position
+    }
+    _preScrollNext();
+
+    // Phase 2: Capture the full page as one big canvas, then split into sections
+    function _startCapture() {
+      // Force instant scroll to 0 on ALL scroll containers
+      // Some pages use a div with overflow:auto as the main scroll container,
+      // so window.scrollTo(0,0) alone doesn't reset scroll position.
+      var origScrollBehavior = document.documentElement.style.scrollBehavior;
+      document.documentElement.style.scrollBehavior = 'auto';
+      document.body.style.scrollBehavior = 'auto';
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+      // Reset any overflow scroll containers
+      document.querySelectorAll('*').forEach(function(el) {
+        if (el.scrollTop > 0) {
+          var s = getComputedStyle(el);
+          if (s.overflow === 'auto' || s.overflow === 'scroll' || s.overflowY === 'auto' || s.overflowY === 'scroll') {
+            el.style.scrollBehavior = 'auto';
+            el.scrollTop = 0;
+          }
+        }
+      });
+      var actualScroll = Math.max(window.scrollY, document.documentElement.scrollTop, document.body.scrollTop);
+
+      var statusEl = document.getElementById('milg-ss-status');
+      if (statusEl) statusEl.textContent = 'Waiting for animations to settle...';
+      console.log('[ss] ' + _t() + 'Waiting 1.5s for animations to settle...');
+
+      setTimeout(function() {
+      // Re-read all bboxes using the extraction engine's exported function
+      // This compensates for CSS transforms and propagates to fontSizes entries
+      if (typeof window.__milgReReadBboxes === 'function') {
+        var bboxResult = window.__milgReReadBboxes();
+        console.log('[ss] ' + _t() + 'Updated bboxes after animations settled: ' + bboxResult);
+      }
+
+      console.log('[ss] ' + _t() + 'Phase 2: Capturing full page (' + captureH + 'px), scrollY=' + actualScroll + '...');
+      var statusEl = document.getElementById('milg-ss-status');
+      if (statusEl) statusEl.textContent = 'Rendering page to canvas...';
+
+      ms.domToCanvas(document.documentElement, {
+        scale: 1.5,
+        filter: _ssFilter,
+        timeout: 45000
+      }).then(function(fullCanvas) {
+        console.log('[ss] ' + _t() + 'Full canvas captured: ' + fullCanvas.width + 'x' + fullCanvas.height);
+
+        var secScale = 1.5;
+
+        // Log final scroll state for diagnostics
+        console.log('[ss] Scroll state at capture: window=' + window.scrollY + ', html=' + document.documentElement.scrollTop + ', body=' + document.body.scrollTop);
+
+        var calibOffset = 0;
+
+        // Store full-page canvas as single WebP — used by both report and viewer
+        var fullPageDataUri;
+        try {
+          fullPageDataUri = fullCanvas.toDataURL('image/webp', 0.8);
+          console.log('[ss] ' + _t() + 'Full-page WebP: ' + Math.round(fullPageDataUri.length / 1024) + 'KB');
+        } catch(e) {
+          console.warn('[ss] Full-page WebP failed:', e.message);
+          fullPageDataUri = '';
+        }
+
+        window.scrollTo(0, _origScrollY);
+        if (_overlay.parentNode) _overlay.parentNode.removeChild(_overlay);
+        data.screenshots = fullPageDataUri ? [fullPageDataUri] : [];
+        data.screenshotFull = fullPageDataUri || null;
+        // Also store as clean screenshot (snippet captures the page as-is)
+        data.screenshotClean = fullPageDataUri || null;
+        data.screenshotCleanMeta = fullPageDataUri ? { canvasWidth: fullCanvas.width, canvasHeight: fullCanvas.height } : null;
+
+        // --- Region screenshots for hidden overflow content ---
+        (function captureRegions(regionCb) {
+          if (!window.__milgBboxRefs || !data.colors || !data.colors.contrastPairs) { regionCb([]); return; }
+          var _cp = data.colors.contrastPairs;
+          var _rgnCounter = 0, _clipContainers = {}, _clipList = [];
+          // Mark clipped pairs and detect outermost clipping containers
+          window.__milgBboxRefs.forEach(function(ref) {
+            if (!ref.el || !ref.obj || ref.key !== 'bbox') return;
+            var el = ref.el, pair = ref.obj;
+            var er = el.getBoundingClientRect();
+            var clipAnc = null, anc = el.parentElement;
+            while (anc && anc !== document.documentElement) {
+              var as = getComputedStyle(anc);
+              var aov = as.overflow || '', aovx = as.overflowX || '', aovy = as.overflowY || '';
+              if (aov === 'hidden' || aov === 'clip' || aovx === 'hidden' || aovx === 'clip' || aovy === 'hidden' || aovy === 'clip') {
+                var ar = anc.getBoundingClientRect();
+                if (ar.width >= 100 && ar.height >= 30) {
+                  if (er.right < ar.left + 1 || er.left > ar.right - 1 || er.bottom < ar.top + 1 || er.top > ar.bottom - 1) {
+                    pair._isClipped = true;
+                    clipAnc = anc;
+                  }
+                }
+              }
+              anc = anc.parentElement;
+            }
+            if (!clipAnc) return;
+            var cid = clipAnc._milgRegionId;
+            if (!cid) { cid = 'rgn-' + (++_rgnCounter); clipAnc._milgRegionId = cid; _clipList.push({ el: clipAnc, id: cid, pairIndices: [] }); _clipContainers[cid] = _clipList[_clipList.length - 1]; }
+            var pi = _cp.indexOf(pair);
+            if (pi >= 0 && _clipContainers[cid].pairIndices.indexOf(pi) < 0) _clipContainers[cid].pairIndices.push(pi);
+          });
+          _clipList.sort(function(a, b) { var ar = a.el.getBoundingClientRect(), br = b.el.getBoundingClientRect(); return (br.width * br.height) - (ar.width * ar.height); });
+          _clipList = _clipList.slice(0, 5);
+          if (_clipList.length === 0) { regionCb([]); return; }
+          console.log('[ss] ' + _t() + 'Found ' + _clipList.length + ' clipping regions, capturing...');
+          var _rgnResults = [], _rgnDone = 0, _rgnTotal = _clipList.length;
+          var _rgnOverall = setTimeout(function() { console.warn('[ss] Region timeout (30s)'); regionCb(_rgnResults); }, 30000);
+          // Collect styles
+          var allStyles = ''; document.querySelectorAll('style').forEach(function(s) { allStyles += s.outerHTML; });
+          var allLinks = ''; document.querySelectorAll('link[rel="stylesheet"]').forEach(function(l) { allLinks += l.outerHTML; });
+          var baseHref = location.href;
+          _clipList.forEach(function(rgn, rIdx) {
+            var container = rgn.el, cr = container.getBoundingClientRect();
+            var clone = container.cloneNode(true);
+            clone.style.cssText += ';overflow:visible !important;max-height:none !important;height:auto !important;clip-path:none !important;width:' + Math.round(cr.width) + 'px !important;';
+            var _forceRevealCss =
+              '*,*::before,*::after{transition:none !important;animation:none !important;}' +
+              'body *{visibility:visible !important;opacity:1 !important;transform:none !important;overflow:visible !important;clip-path:none !important;max-height:none !important;}' +
+              '[aria-hidden="true"],[hidden],.hidden,.d-none,.hide,' +
+              '.carousel-item,.swiper-slide,.slick-slide,' +
+              '[class*="slide"],[class*="panel"],[class*="tab-pane"]{' +
+              'display:block !important;visibility:visible !important;opacity:1 !important;position:relative !important;transform:none !important;left:auto !important;right:auto !important;}';
+            var _forceRevealScript =
+              '<script>document.addEventListener("DOMContentLoaded",function(){' +
+              'document.querySelectorAll("*").forEach(function(el){var cs=getComputedStyle(el);' +
+              'if(cs.display==="none")el.style.setProperty("display","block","important");' +
+              'if(cs.visibility==="hidden")el.style.setProperty("visibility","visible","important");' +
+              'if(parseFloat(cs.opacity)<0.1)el.style.setProperty("opacity","1","important");' +
+              'if(cs.position==="absolute"||cs.position==="fixed")el.style.setProperty("position","relative","important");' +
+              '});' +
+              '});</' + 'script>';
+            var miniHtml = '<!DOCTYPE html><html><head><meta charset=UTF-8><base href="' + baseHref.replace(/"/g, '&quot;') + '">' + allLinks + allStyles +
+              '<style>' + _forceRevealCss + '</style>' + _forceRevealScript +
+              '</head><body style="margin:0;padding:0;overflow:visible">' + clone.outerHTML + '</body></html>';
+            var _iframeW = Math.max(Math.round(cr.width), 320);
+            var mf = document.createElement('iframe');
+            mf.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + _iframeW + 'px;height:3000px;border:none;visibility:hidden;';
+            document.body.appendChild(mf);
+            var rgnTimer = setTimeout(function() { rgnFinish(rIdx, mf, null); }, 15000);
+            mf.srcdoc = miniHtml;
+            mf.addEventListener('load', function() {
+              setTimeout(function() {
+                try {
+                  var mDoc = mf.contentDocument; if (!mDoc) { rgnFinish(rIdx, mf, null); return; }
+                  try {
+                    mDoc.querySelectorAll('*').forEach(function(el) {
+                      var cs = mDoc.defaultView.getComputedStyle(el);
+                      if (cs.display === 'none') el.style.setProperty('display', 'block', 'important');
+                      if (cs.visibility === 'hidden') el.style.setProperty('visibility', 'visible', 'important');
+                      if (parseFloat(cs.opacity) < 0.1) el.style.setProperty('opacity', '1', 'important');
+                    });
+                  } catch(_e) {}
+                  void mDoc.body.offsetHeight;
+                  var cW = Math.max(mDoc.body.scrollWidth, mDoc.documentElement.scrollWidth);
+                  var cH = Math.max(mDoc.body.scrollHeight, mDoc.documentElement.scrollHeight);
+                  mf.style.width = Math.max(cW, _iframeW) + 'px'; mf.style.height = cH + 'px';
+                  void mDoc.body.offsetHeight;
+                  ms.domToCanvas(mDoc.documentElement, { scale: 1.5, timeout: 12000 }).then(function(rc) {
+                    var rUri; try { rUri = rc.toDataURL('image/webp', 0.8); } catch(e) { rUri = ''; }
+                    var localBboxes = {};
+                    rgn.pairIndices.forEach(function(pi) {
+                      var pair = _cp[pi]; if (!pair || !pair.bbox) return;
+                      localBboxes[pi] = { left: pair.bbox.left - Math.round(cr.left), top: pair.bbox.top - Math.round(cr.top), width: pair.bbox.width, height: pair.bbox.height };
+                    });
+                    clearTimeout(rgnTimer);
+                    rgnFinish(rIdx, mf, { screenshot: rUri, screenshotMeta: { scale: 1.5, canvasWidth: rc.width, canvasHeight: rc.height }, pairIndices: rgn.pairIndices, localBboxes: localBboxes, containerRect: { left: Math.round(cr.left), top: Math.round(cr.top), width: Math.round(cr.width), height: Math.round(cr.height) } });
+                  }).catch(function(e) { clearTimeout(rgnTimer); rgnFinish(rIdx, mf, null); });
+                } catch(e) { clearTimeout(rgnTimer); rgnFinish(rIdx, mf, null); }
+              }, 600);
+            });
+          });
+          function rgnFinish(idx, mf, result) {
+            if (result) _rgnResults.push(result);
+            try { if (mf && mf.parentNode) mf.parentNode.removeChild(mf); } catch(e) {}
+            _rgnDone++; if (_rgnDone >= _rgnTotal) { clearTimeout(_rgnOverall); console.log('[ss] Regions done: ' + _rgnResults.length + '/' + _rgnTotal); regionCb(_rgnResults); }
+          }
+        })(function(regionResults) {
+          data.regionScreenshots = regionResults;
+
+        (function finalize() {
+            var captureDocH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+            document.documentElement.style.scrollBehavior = origScrollBehavior;
+            // (transitions restored naturally — no override injected)
+            data.screenshotMeta = {
+              scale: secScale,
+              viewportHeight: vh,
+              sectionCount: data.screenshots.length,
+              canvasWidth: fullCanvas.width,
+              canvasHeight: fullCanvas.height,
+              docHeightAtCapture: captureDocH,
+              docHeightAtExtraction: data.meta.docHeight || captureDocH,
+              captureScrollY: actualScroll,
+              calibrationOffsetY: calibOffset,
+              calibrationSamples: []
+            };
+            // --- Text mask capture (same technique as iframe buildScreenshotScript) ---
+            // Kill transitions, set all text to black + backgrounds to white, capture mask.
+            // This gives pixel verify the same accuracy as URL/iframe mode.
+            console.log('[ss] ' + _t() + 'Capturing text mask...');
+            var statusEl2 = document.getElementById('milg-ss-status');
+            if (statusEl2) statusEl2.textContent = 'Capturing text mask...';
+
+            // Phase A: Kill ALL transitions
+            document.querySelectorAll('*').forEach(function(el) {
+              el.style.setProperty('transition-duration', '0s', 'important');
+              el.style.setProperty('transition', 'none', 'important');
+            });
+            void document.body.offsetHeight;
+
+            // Phase B: Neutralize absolute/fixed overlays (same as iframe)
+            document.querySelectorAll('*').forEach(function(el) {
+              var cs = getComputedStyle(el);
+              if (cs.position === 'absolute' || cs.position === 'fixed') {
+                if (!el.textContent.trim()) {
+                  el.style.setProperty('display', 'none', 'important');
+                } else if (cs.pointerEvents === 'none') {
+                  el.style.setProperty('background', 'transparent', 'important');
+                  el.style.setProperty('background-image', 'none', 'important');
+                }
+              }
+            });
+            void document.body.offsetHeight;
+
+            // Phase C: Set all backgrounds white, all text black (layer 1 = all text)
+            var _savedStyles = [];
+            document.querySelectorAll('*').forEach(function(el) {
+              var saved = el.style.cssText;
+              _savedStyles.push({ el: el, css: saved });
+              el.style.setProperty('background', '#fff', 'important');
+              el.style.setProperty('background-image', 'none', 'important');
+              el.style.setProperty('color', '#000', 'important');
+              el.style.setProperty('text-shadow', 'none', 'important');
+              el.style.setProperty('box-shadow', 'none', 'important');
+              el.style.setProperty('border-color', 'transparent', 'important');
+            });
+            document.body.style.setProperty('background', '#fff', 'important');
+            document.documentElement.style.setProperty('background', '#fff', 'important');
+            void document.body.offsetHeight;
+
+            ms.domToCanvas(document.documentElement, {
+              scale: secScale,
+              filter: _ssFilter,
+              timeout: 30000
+            }).then(function(maskCanvas) {
+              console.log('[ss] ' + _t() + 'Text mask captured: ' + maskCanvas.width + 'x' + maskCanvas.height);
+
+              // Restore all styles
+              _savedStyles.forEach(function(s) { s.el.style.cssText = s.css; });
+              void document.body.offsetHeight;
+
+              // Store mask as data URI
+              var maskUri;
+              try { maskUri = maskCanvas.toDataURL('image/webp', 0.8); } catch(e) { maskUri = null; }
+              data.textMask = maskUri;
+
+              // Build per-pair mask bitmaps from the mask canvas
+              var maskCtx = maskCanvas.getContext('2d', { willReadFrequently: true });
+              var pairs = (data.colors && data.colors.contrastPairs) || [];
+              var maskResults = {};
+              pairs.forEach(function(pair, pi) {
+                if (!pair.bbox) return;
+                var bx = Math.round(pair.bbox.left * secScale);
+                var by = Math.round(pair.bbox.top * secScale);
+                var bw = Math.round(pair.bbox.width * secScale);
+                var bh = Math.round(pair.bbox.height * secScale);
+                if (bw < 2 || bh < 2 || bx + bw > maskCanvas.width || by + bh > maskCanvas.height) return;
+                var mData = maskCtx.getImageData(bx, by, bw, bh).data;
+                var bmp = new Uint8Array(bw * bh);
+                var darkCount = 0;
+                for (var j = 0; j < mData.length; j += 4) {
+                  var bright = (mData[j] + mData[j+1] + mData[j+2]) / 3;
+                  if (bright < 180) { bmp[j/4] = 1; darkCount++; }
+                }
+                if (darkCount > 0) {
+                  // Bit-pack bitmap: 8 pixels per byte, then base64 encode (~8x smaller than JSON array)
+                  var byteLen = Math.ceil(bmp.length / 8);
+                  var packed = new Uint8Array(byteLen);
+                  for (var bi = 0; bi < bmp.length; bi++) {
+                    if (bmp[bi]) packed[bi >> 3] |= (1 << (bi & 7));
+                  }
+                  var binStr = '';
+                  for (var bi2 = 0; bi2 < packed.length; bi2++) binStr += String.fromCharCode(packed[bi2]);
+                  pair._maskBmp = btoa(binStr);
+                  pair._maskPacked = true;
+                  pair._maskW = bw;
+                  pair._maskH = bh;
+                  pair._maskLayer = 1;
+                  pair._maskDark = darkCount;
+                }
+              });
+
+              console.log('[ss] ' + _t() + 'Mask bitmaps built for ' + Object.keys(maskResults).length + ' pairs');
+              console.log('%c\u2713 Screenshot + mask captured (' + _t().trim() + ')', 'color: #16a34a; font-weight: bold;');
+              outputData(data);
+            }).catch(function(err) {
+              console.warn('[ss] Text mask capture failed:', err);
+              // Continue without mask — pixel verify will use position heuristic
+              console.log('%c\u2713 Screenshot captured (no mask) (' + _t().trim() + ')', 'color: #16a34a; font-weight: bold;');
+              outputData(data);
+            });
+        })();
+        }); // close captureRegions callback
+
+      }).catch(function(err) {
+        console.log('[ss] ' + _t() + '\u2717 Full page capture failed: ' + (err && err.message || err));
+        window.scrollTo(0, _origScrollY);
+        if (_overlay.parentNode) _overlay.parentNode.removeChild(_overlay);
+        data.screenshots = [];
+        outputData(data);
+      });
+    }, 1500); // end setTimeout — wait for animations
+    }
+  }).catch(function() {
+    data.screenshots = [];
+    outputData(data);
+  });
+
+  // Reliable file download — appends to DOM and delays revoke so all browsers work
+  function downloadFile(content, filename) {
+    var blob = new Blob([content], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = filename;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function() { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
+  }
+
+  // Gzip compress + base64 encode for clipboard (CompressionStream API)
+  function compressForClipboard(jsonStr, callback) {
+    if (typeof CompressionStream === 'undefined') { callback(null); return; }
+    try {
+      var blob = new Blob([jsonStr]);
+      var cs = new CompressionStream('gzip');
+      var stream = blob.stream().pipeThrough(cs);
+      new Response(stream).arrayBuffer().then(function(buf) {
+        var bytes = new Uint8Array(buf);
+        var binStr = '';
+        for (var i = 0; i < bytes.length; i++) binStr += String.fromCharCode(bytes[i]);
+        var b64 = btoa(binStr);
+        callback('MILG_GZ:' + b64);
+      }).catch(function() { callback(null); });
+    } catch(e) { callback(null); }
+  }
+
+  function outputData(data) {
+    var json = JSON.stringify(data);
+    var jsonKB = Math.round(json.length / 1024);
+    var jsonMB = (json.length / 1024 / 1024).toFixed(1);
+    console.log('[clipboard] JSON size: ' + jsonKB + ' KB (' + jsonMB + ' MB)');
+    window.__milgData = data;
+    window.__milgData_json = json;
+
+    // In crawl mode, skip the copy overlay — crawl has its own UI
+    if (window.__milgCrawlSite) {
+      // Jump straight to crawl section below
+    } else {
+    // Show overlay with copy button (user click = real gesture = clipboard works reliably)
+    var _copyOverlay = document.createElement('div');
+    _copyOverlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:999999;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui,sans-serif';
+    _copyOverlay.innerHTML = '<div style="text-align:center;max-width:400px;padding:20px">' +
+      '<div style="font-size:32px;margin-bottom:12px">&#10003;</div>' +
+      '<div style="color:#fff;font-size:18px;font-weight:600;margin-bottom:6px">Extraction complete!</div>' +
+      '<div style="color:rgba(255,255,255,0.6);font-size:13px;margin-bottom:6px">' + jsonKB + ' KB of design data' + (data.screenshotFull ? ' + full-page screenshot' : '') + '</div>' +
+      (jsonKB > 2048 ? '<div style="color:#fbbf24;font-size:12px;margin-bottom:16px">&#9888; Large payload (' + jsonMB + ' MB) \u2014 download recommended</div>' : '<div style="margin-bottom:16px"></div>') +
+      (jsonKB > 2048
+        ? '<button id="milg-download-btn" style="padding:14px 32px;font-size:15px;font-weight:600;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-bottom:8px;min-width:200px">Download JSON</button>' +
+          '<button id="milg-copy-btn" style="padding:10px 24px;font-size:13px;font-weight:500;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.2);border-radius:8px;cursor:pointer;margin-bottom:12px;min-width:200px">Copy to Clipboard</button>'
+        : '<button id="milg-copy-btn" style="padding:14px 32px;font-size:15px;font-weight:600;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-bottom:8px;min-width:200px">Copy to Clipboard</button>' +
+          '<button id="milg-download-btn" style="padding:10px 24px;font-size:13px;font-weight:500;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.2);border-radius:8px;cursor:pointer;margin-bottom:12px;min-width:200px">Download JSON</button>') +
+      '<div style="color:rgba(255,255,255,0.4);font-size:11px">Then ' + (jsonKB > 2048 ? 'import' : 'paste') + ' into the analyzer</div>' +
+      '</div>';
+    document.body.appendChild(_copyOverlay);
+
+    document.getElementById('milg-copy-btn').addEventListener('click', function() {
+      var btn = document.getElementById('milg-copy-btn');
+      btn.textContent = 'Compressing...';
+      btn.disabled = true;
+
+      function onSuccess(size) {
+        btn.textContent = 'Copied!' + (size ? ' (' + size + ')' : '');
+        btn.style.background = '#16a34a';
+        console.log('%c\u2713 Design data copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+        // Reload page after delay to restore styles corrupted by mask capture
+        setTimeout(function() {
+          if (_copyOverlay.parentNode) _copyOverlay.parentNode.removeChild(_copyOverlay);
+          console.log('%c\u21BB Reloading page in 8s to restore styles...', 'color: #64748b;');
+          setTimeout(function() { location.reload(); }, 8000);
+        }, 2000);
+      }
+      function onFail() {
+        btn.textContent = 'Copy failed \u2014 use console';
+        btn.style.background = '#dc2626';
+        console.log('%c\u26A0 Clipboard copy failed. Type: copy(window.__milgData_json)', 'color: #b45309; font-weight: bold;');
+      }
+      function doCopy(text, sizeLabel) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(function() { onSuccess(sizeLabel); }).catch(function() {
+            try {
+              var ta = document.createElement('textarea'); ta.value = text;
+              ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
+              document.body.appendChild(ta); ta.select();
+              document.execCommand('copy') ? onSuccess(sizeLabel) : onFail();
+              document.body.removeChild(ta);
+            } catch(e) { onFail(); }
+          });
+        } else { onFail(); }
+      }
+
+      // Try gzip compression for clipboard (typically 60-80% smaller)
+      compressForClipboard(json, function(compressed) {
+        if (compressed) {
+          var compKB = Math.round(compressed.length / 1024);
+          var ratio = Math.round((1 - compressed.length / json.length) * 100);
+          console.log('[clipboard] Compressed: ' + compKB + ' KB (' + ratio + '% smaller)');
+          btn.textContent = 'Copying ' + compKB + ' KB...';
+          doCopy(compressed, compKB + ' KB, ' + ratio + '% compressed');
+        } else {
+          console.log('[clipboard] CompressionStream not available, copying raw JSON');
+          btn.textContent = 'Copying ' + jsonKB + ' KB...';
+          doCopy(json, jsonKB + ' KB');
+        }
+      });
+    });
+
+    // Download button (works for any size, no clipboard limit)
+    document.getElementById('milg-download-btn').addEventListener('click', function() {
+      var siteName = (data.meta && data.meta.url) || location.hostname;
+      downloadFile(json, 'milg-report-' + siteName.replace(/[^a-z0-9]/gi, '-').substring(0, 40) + '.json');
+      var btn = document.getElementById('milg-download-btn');
+      btn.textContent = 'Downloaded!';
+      btn.style.background = '#16a34a'; btn.style.color = '#fff'; btn.style.borderColor = '#16a34a';
+      setTimeout(function() {
+        if (_copyOverlay.parentNode) _copyOverlay.parentNode.removeChild(_copyOverlay);
+        console.log('%c\u21BB Reloading page in 8s to restore styles...', 'color: #64748b;');
+        setTimeout(function() { location.reload(); }, 8000);
+      }, 2000);
+    });
+
+    } // end if !crawl (copy overlay block)
+
+    console.log('%cmake-it-look-good extraction complete (with screenshots)', 'color: #3b82f6; font-weight: bold;');
+    console.log('Elements scanned:', data.structure.totalElements);
+    console.log('Screenshots:', (data.screenshots || []).length);
+    console.log('Total JSON size:', jsonKB, 'KB');
+
+    // --- Site Crawl Mode (same-origin iframe with src=, full JS execution) ---
+    if (window.__milgCrawlSite) {
+      var _cm = Math.min(Math.max(window.__milgCrawlMaxPages || 5, 1), 25);
+      var _cb = window.__milgCrawlBlacklist || [];
+      var _co = location.origin;
+      var _seen = {};
+      var _curPath = location.pathname.replace(/\/$/, '');
+      _seen[_co + _curPath] = true;
+      // Also mark index variants as seen to avoid re-crawling the current page
+      if (_curPath === '' || _curPath === '/index.html' || _curPath === '/index.htm') {
+        _seen[_co] = true; _seen[_co + '/index.html'] = true; _seen[_co + '/index.htm'] = true;
+      }
+      var _links = [];
+      document.querySelectorAll('a[href]').forEach(function(a) {
+        var h = a.getAttribute('href');
+        if (!h || h.startsWith('#') || h.startsWith('mailto:') || h.startsWith('tel:') || h.startsWith('javascript:')) return;
+        try { var u = new URL(h, location.href); if (u.origin !== _co) return; if (/\.(pdf|zip|png|jpg|svg|css|js|json|xml|woff2?)$/i.test(u.pathname)) return; u.hash = ''; var k = u.origin + u.pathname.replace(/\/$/, ''); if (_seen[k]) return; var bl = _cb.some(function(p) { p = p.trim(); if (!p) return false; if (p.endsWith('*')) return u.pathname.startsWith(p.slice(0, -1)); return u.pathname === p; }); if (bl) return; _seen[k] = true; _links.push(u.origin + u.pathname); } catch(e) {}
+      });
+      _links = _links.slice(0, _cm - 1);
+      var _cResults = [{ url: location.href, data: data }];
+      console.log('%c\uD83D\uDD77 Site Crawl: discovered ' + _links.length + ' page(s)', 'color: #8b5cf6; font-weight: bold;');
+
+      // Copy full crawl results to clipboard (localStorage doesn't work cross-origin)
+      function _copyCrawlResults(results) {
+        var crawlJson = JSON.stringify({ _milgCrawl: true, startUrl: location.href, results: results });
+        console.log('[crawl] Total crawl JSON: ' + Math.round(crawlJson.length / 1024) + ' KB');
+        window.__milgCrawlResults = results;
+        window.__milgCrawlJson = crawlJson;
+        try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) { console.warn('[milg-warn] localStorage save failed:', e.message); }
+        // Try clipboard (both methods may fail — console loses focus/gesture context)
+        function _crawlCopyFallback() {
+          var ta = document.createElement('textarea'); ta.value = crawlJson;
+          ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
+          document.body.appendChild(ta); ta.select();
+          var ok = false;
+          try { ok = document.execCommand('copy'); } catch(e) {}
+          document.body.removeChild(ta);
+          if (ok) {
+            console.log('%c\u2713 Crawl results copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+          } else {
+            console.log('%c\u26A0 Auto-copy failed. Type: copy(window.__milgCrawlJson)', 'color: #b45309; font-weight: bold;');
+            console.log('%cThen paste into the analyzer.', 'color: #3b82f6;');
+          }
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(crawlJson).then(function() {
+            console.log('%c\u2713 Crawl results copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+          }).catch(_crawlCopyFallback);
+        } else {
+          _crawlCopyFallback();
+        }
+      }
+
+      if (_links.length === 0) {
+        _copyCrawlResults(_cResults);
+        console.log('%c\u2713 Crawl complete (1 page).', 'color: #16a34a; font-weight: bold;');
+      } else {
+        // Show crawl progress overlay
+        var _crawlOverlay = document.createElement('div');
+        _crawlOverlay.setAttribute('data-milg-overlay', '1');
+        _crawlOverlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,0.6);display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui,sans-serif;';
+        _crawlOverlay.innerHTML = '<div style="width:40px;height:40px;border:3px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:milg-spin 0.8s linear infinite"></div>' +
+          '<div id="milg-crawl-status" style="color:#fff;margin-top:16px;font-size:14px;font-weight:500">Crawling site...</div>' +
+          '<div id="milg-crawl-detail" style="color:rgba(255,255,255,0.6);margin-top:6px;font-size:12px">Loading extraction snippet...</div>' +
+          '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style>';
+        document.body.appendChild(_crawlOverlay);
+        function _updateCrawlOverlay(status, detail) {
+          var s = document.getElementById('milg-crawl-status'); if (s) s.textContent = status;
+          var d = document.getElementById('milg-crawl-detail'); if (d) d.textContent = detail;
+        }
+        function _removeCrawlOverlay() { if (_crawlOverlay.parentNode) _crawlOverlay.parentNode.removeChild(_crawlOverlay); }
+
+        // Build a self-contained extraction + screenshot + mask script for crawl iframes.
+        // _crawlScreenshotCallback is serialized via .toString() into the iframe —
+        // it must be fully self-contained (no closure references).
+        function _crawlScreenshotCallback(data) {
+          // The extraction engine sets __milgData before calling this callback.
+          // Clear it immediately so the parent poller doesn't grab data before
+          // the screenshot + mask pipeline completes.
+          window.__milgData = null;
+          window.__milgProgress = 'Loading screenshot library\u2026';
+          function _finalize() { window.__milgProgress = null; window.__milgData = data; }
+
+          var s = document.createElement('script');
+          s.src = 'https://cdn.jsdelivr.net/npm/modern-screenshot@4.6.8/dist/index.js';
+          s.onload = function() {
+            var ms = window.modernScreenshot;
+            if (!ms || !ms.domToCanvas) { data.screenshots = []; _finalize(); return; }
+
+            // Unlock height (sites with html,body{height:100%} clamp scrollHeight)
+            document.documentElement.style.cssText += 'height:auto !important;overflow-y:auto !important;';
+            document.body.style.cssText += 'height:auto !important;';
+            void document.body.offsetHeight;
+
+            var vh = window.innerHeight || 900;
+            var totalH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+            var captureH = Math.min(totalH, vh * 10);
+            var secScale = 1.5;
+
+            // Phase 1: Pre-scroll to trigger lazy content + IntersectionObservers
+            window.__milgProgress = 'Pre-scrolling page\u2026';
+            var positions = []; for (var p = 0; p < captureH; p += vh) positions.push(p);
+            var pi = 0;
+            function scrollNext() {
+              if (pi >= positions.length) { setTimeout(startCapture, 800); return; }
+              window.scrollTo(0, positions[pi]);
+              document.documentElement.scrollTop = positions[pi];
+              try { window.dispatchEvent(new Event('scroll')); } catch(e) {}
+              pi++; setTimeout(scrollNext, 200);
+            }
+            scrollNext();
+
+            function startCapture() {
+              // Reset scroll
+              document.documentElement.style.scrollBehavior = 'auto';
+              document.body.style.scrollBehavior = 'auto';
+              window.scrollTo(0, 0); document.documentElement.scrollTop = 0; document.body.scrollTop = 0;
+              document.querySelectorAll('*').forEach(function(el) {
+                if (el.scrollTop > 0) {
+                  var cs = getComputedStyle(el);
+                  if (cs.overflow === 'auto' || cs.overflow === 'scroll' || cs.overflowY === 'auto' || cs.overflowY === 'scroll') {
+                    el.style.scrollBehavior = 'auto'; el.scrollTop = 0;
+                  }
+                }
+              });
+
+              // Force-reveal hidden animated elements (IO disabled in offscreen iframes)
+              var revealed = 0;
+              document.querySelectorAll('*').forEach(function(el) {
+                var cs = getComputedStyle(el);
+                if (cs.opacity === '0' && el.tagName !== 'SCRIPT' && el.tagName !== 'STYLE') {
+                  var hasTrans = cs.transition && cs.transition.indexOf('opacity') !== -1;
+                  var hasAnim = cs.animationName && cs.animationName !== 'none';
+                  var cls = (el.className && typeof el.className === 'string') ? el.className.toLowerCase() : '';
+                  var isScrollAnim = hasTrans || hasAnim || /fade|reveal|animate|aos|scroll|slide|appear/.test(cls);
+                  if (isScrollAnim) {
+                    el.style.cssText += ';opacity:1 !important;transform:none !important;transition:none !important;animation:none !important;';
+                    revealed++;
+                  }
+                }
+              });
+
+              // Fast-forward remaining CSS animations
+              var ffStyle = document.createElement('style');
+              ffStyle.textContent = '*,*::before,*::after{animation-delay:0s !important;animation-duration:0.01s !important;}';
+              document.head.appendChild(ffStyle);
+              void document.body.offsetHeight;
+
+              // Switch to overflow:visible for capture
+              document.documentElement.style.cssText += 'overflow:visible !important;';
+              document.body.style.cssText += 'overflow:visible !important;';
+              void document.body.offsetHeight;
+
+              setTimeout(function() {
+                // Re-read bboxes after scroll reset + reveal
+                if (typeof window.__milgReReadBboxes === 'function') window.__milgReReadBboxes();
+
+                // Step 1: Capture screenshot
+                window.__milgProgress = 'Capturing screenshot\u2026';
+                ms.domToCanvas(document.documentElement, { scale: secScale, timeout: 45000 }).then(function(fullCanvas) {
+                  var fullUri;
+                  try { fullUri = fullCanvas.toDataURL('image/webp', 0.8); } catch(e) { fullUri = ''; }
+
+                  data.screenshots = fullUri ? [fullUri] : [];
+                  data.screenshotFull = fullUri || null;
+                  data.screenshotMeta = {
+                    scale: secScale, viewportHeight: vh,
+                    sectionCount: data.screenshots.length,
+                    canvasWidth: fullCanvas.width, canvasHeight: fullCanvas.height,
+                    docHeightAtCapture: Math.max(document.body.scrollHeight, document.documentElement.scrollHeight),
+                    docHeightAtExtraction: (data.meta && data.meta.docHeight) || 0,
+                    captureScrollY: 0, calibrationOffsetY: 0, calibrationSamples: []
+                  };
+
+                  // Step 2: Text mask capture (single-layer: all text black, all bg white)
+                  window.__milgProgress = 'Building text mask\u2026';
+                  // Kill transitions
+                  document.querySelectorAll('*').forEach(function(el) {
+                    el.style.setProperty('transition-duration', '0s', 'important');
+                    el.style.setProperty('transition', 'none', 'important');
+                  });
+                  void document.body.offsetHeight;
+
+                  // Neutralize absolute/fixed overlays
+                  document.querySelectorAll('*').forEach(function(el) {
+                    var cs = getComputedStyle(el);
+                    if (cs.position === 'absolute' || cs.position === 'fixed') {
+                      if (!el.textContent.trim()) {
+                        el.style.setProperty('display', 'none', 'important');
+                      } else if (cs.pointerEvents === 'none') {
+                        el.style.setProperty('background', 'transparent', 'important');
+                        el.style.setProperty('background-image', 'none', 'important');
+                      }
+                    }
+                  });
+                  void document.body.offsetHeight;
+
+                  // Set all backgrounds white, all text black
+                  document.querySelectorAll('*').forEach(function(el) {
+                    el.style.setProperty('background', '#fff', 'important');
+                    el.style.setProperty('background-image', 'none', 'important');
+                    el.style.setProperty('color', '#000', 'important');
+                    el.style.setProperty('text-shadow', 'none', 'important');
+                    el.style.setProperty('box-shadow', 'none', 'important');
+                    el.style.setProperty('border-color', 'transparent', 'important');
+                  });
+                  document.body.style.setProperty('background', '#fff', 'important');
+                  document.documentElement.style.setProperty('background', '#fff', 'important');
+                  void document.body.offsetHeight;
+
+                  ms.domToCanvas(document.documentElement, { scale: secScale, timeout: 30000 }).then(function(maskCanvas) {
+                    var maskUri;
+                    try { maskUri = maskCanvas.toDataURL('image/webp', 0.8); } catch(e) { maskUri = null; }
+                    data.textMask = maskUri;
+
+                    // Build per-pair mask bitmaps (bit-packed base64)
+                    var maskCtx = maskCanvas.getContext('2d', { willReadFrequently: true });
+                    var pairs = (data.colors && data.colors.contrastPairs) || [];
+                    pairs.forEach(function(pair) {
+                      if (!pair.bbox) return;
+                      var bx = Math.round(pair.bbox.left * secScale);
+                      var by = Math.round(pair.bbox.top * secScale);
+                      var bw = Math.round(pair.bbox.width * secScale);
+                      var bh = Math.round(pair.bbox.height * secScale);
+                      if (bw < 2 || bh < 2 || bx + bw > maskCanvas.width || by + bh > maskCanvas.height) return;
+                      var mData = maskCtx.getImageData(bx, by, bw, bh).data;
+                      var bmp = new Uint8Array(bw * bh);
+                      var darkCount = 0;
+                      for (var j = 0; j < mData.length; j += 4) {
+                        if ((mData[j] + mData[j+1] + mData[j+2]) / 3 < 180) { bmp[j/4] = 1; darkCount++; }
+                      }
+                      if (darkCount > 0) {
+                        var byteLen = Math.ceil(bmp.length / 8);
+                        var packed = new Uint8Array(byteLen);
+                        for (var bi = 0; bi < bmp.length; bi++) {
+                          if (bmp[bi]) packed[bi >> 3] |= (1 << (bi & 7));
+                        }
+                        var binStr = '';
+                        for (var bi2 = 0; bi2 < packed.length; bi2++) binStr += String.fromCharCode(packed[bi2]);
+                        pair._maskBmp = btoa(binStr);
+                        pair._maskPacked = true;
+                        pair._maskW = bw; pair._maskH = bh; pair._maskLayer = 1; pair._maskDark = darkCount;
+                      }
+                    });
+                    _finalize();
+                  }).catch(function() { _finalize(); });
+                }).catch(function() { data.screenshots = []; _finalize(); });
+              }, 1500);
+            }
+          };
+          s.onerror = function() {
+            // modern-screenshot unavailable — finalize without screenshots
+            data.screenshots = [];
+            _finalize();
+          };
+          document.head.appendChild(s);
+        }
+        var snippetSrc = 'window.__milgProgress = "Extracting design data\\u2026";\n' +
+          'window.MilgExtract = ' + window.MilgExtract.toString() + ';\n' +
+          'window.__milgOnExtractComplete = ' + _crawlScreenshotCallback.toString() + ';\n' +
+          'window.MilgExtract();\n';
+        (function() {
+          function _next(idx) {
+            if (idx >= _links.length) {
+              // Prepare data but show copy button (auto-copy fails in async context)
+              var crawlJson = JSON.stringify({ _milgCrawl: true, startUrl: location.href, results: _cResults });
+              window.__milgCrawlResults = _cResults;
+              window.__milgCrawlJson = crawlJson;
+              try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) { console.warn('[milg-warn] localStorage save failed:', e.message); }
+              console.log('%c\u2713 Crawl complete! ' + _cResults.length + ' pages (' + Math.round(crawlJson.length / 1024) + ' KB)', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+              // Show copy + download buttons
+              var _crawlKB = Math.round(crawlJson.length / 1024);
+              _crawlOverlay.innerHTML = '<div style="text-align:center">' +
+                '<div style="font-size:28px;margin-bottom:12px">\u2713</div>' +
+                '<div style="color:#fff;font-size:16px;font-weight:600;margin-bottom:6px">Crawl complete! ' + _cResults.length + ' pages analyzed.</div>' +
+                '<div style="color:rgba(255,255,255,0.6);font-size:13px;margin-bottom:' + (_crawlKB > 2048 ? '6' : '20') + 'px">' + _crawlKB + ' KB of design data ready</div>' +
+                (_crawlKB > 2048 ? '<div style="color:#fbbf24;font-size:12px;margin-bottom:16px">&#9888; Large payload (' + Math.round(_crawlKB / 1024 * 10) / 10 + ' MB) \u2014 download recommended</div>' : '') +
+                (_crawlKB > 2048
+                  ? '<button id="milg-crawl-dl-btn" style="padding:12px 28px;font-size:14px;font-weight:600;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-bottom:8px;min-width:220px">Download JSON</button><br>' +
+                    '<button id="milg-crawl-copy-btn" style="padding:10px 24px;font-size:13px;font-weight:500;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.2);border-radius:8px;cursor:pointer;margin-bottom:10px;min-width:220px">Copy to Clipboard</button>'
+                  : '<button id="milg-crawl-copy-btn" style="padding:12px 28px;font-size:14px;font-weight:600;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-bottom:8px;min-width:220px">Copy to Clipboard</button><br>' +
+                    '<button id="milg-crawl-dl-btn" style="padding:10px 24px;font-size:13px;font-weight:500;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.2);border-radius:8px;cursor:pointer;margin-bottom:10px;min-width:220px">Download JSON</button>') +
+                '<div style="color:rgba(255,255,255,0.5);font-size:11px;margin-top:8px">Then ' + (_crawlKB > 2048 ? 'import' : 'paste') + ' into the analyzer</div>' +
+                '</div>';
+              function _crawlDoneAction() {
+                // Close overlay and reload page to restore styles corrupted by mask capture
+                setTimeout(function() {
+                  _removeCrawlOverlay();
+                  console.log('%c\u21BB Reloading page in 8s to restore styles...', 'color: #64748b;');
+                  setTimeout(function() { location.reload(); }, 8000);
+                }, 2000);
+              }
+              document.getElementById('milg-crawl-copy-btn').addEventListener('click', function() {
+                var btn = document.getElementById('milg-crawl-copy-btn');
+                navigator.clipboard.writeText(crawlJson).then(function() {
+                  btn.textContent = 'Copied!'; btn.style.background = '#16a34a';
+                  _crawlDoneAction();
+                }).catch(function() {
+                  var ta = document.createElement('textarea'); ta.value = crawlJson;
+                  ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
+                  document.body.appendChild(ta); ta.select();
+                  try { document.execCommand('copy'); } catch(e) {}
+                  document.body.removeChild(ta);
+                  btn.textContent = 'Copied!'; btn.style.background = '#16a34a';
+                  _crawlDoneAction();
+                });
+              });
+              document.getElementById('milg-crawl-dl-btn').addEventListener('click', function() {
+                downloadFile(crawlJson, 'milg-crawl-' + location.hostname.replace(/[^a-z0-9]/gi, '-') + '.json');
+                var btn = document.getElementById('milg-crawl-dl-btn');
+                btn.textContent = 'Downloaded!'; btn.style.background = '#16a34a'; btn.style.color = '#fff';
+                _crawlDoneAction();
+              });
+              return;
+            }
+            var url = _links[idx];
+            var path; try { path = new URL(url).pathname; } catch(e) { path = url; }
+            _updateCrawlOverlay('Crawling page ' + (idx + 1) + ' of ' + _links.length + ' (with screenshots)', path);
+            console.log('%c\u2192 [' + (idx+1) + '/' + _links.length + '] ' + path, 'color: #3b82f6;');
+
+            // Fetch page HTML (same-origin — we're on the site) then load as srcdoc
+            fetch(url).then(function(r) {
+              if (!r.ok) throw new Error('HTTP ' + r.status);
+              return r.text();
+            }).then(function(html) {
+              // Srcdoc environment patches — same as analyzer's "Try with JS" mode:
+              // URL constructor, History API, fetch for relative URLs
+              var eu = url.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+              var envPatch = '<script>(function(){' +
+                'var _rb="' + eu + '";var _O=URL;' +
+                'function _P(u,b){if(b){var bs=typeof b==="string"?b:String(b);if(bs==="about:srcdoc"||bs==="about:blank"||bs==="null"||bs.indexOf("about:")===0)b=_rb;}' +
+                'if(!b&&typeof u==="string"&&u.charAt(0)==="/")return new _O(u,_rb);try{return (arguments.length===1||!b)?new _O(u):new _O(u,b);}catch(e){try{return new _O(u,_rb);}catch(e2){throw e;}}}' +
+                '_P.prototype=_O.prototype;_P.createObjectURL=_O.createObjectURL.bind(_O);_P.revokeObjectURL=_O.revokeObjectURL.bind(_O);if(_O.canParse)_P.canParse=_O.canParse.bind(_O);window.URL=_P;' +
+                'var _hps=history.pushState.bind(history);var _hrs=history.replaceState.bind(history);' +
+                'history.pushState=function(s,t,u){try{_hps(s,t,u);}catch(e){}};history.replaceState=function(s,t,u){try{_hrs(s,t,u);}catch(e){}};' +
+                'var _of=window.fetch;window.fetch=function(u,o){if(typeof u==="string"&&u.charAt(0)==="/")u=_rb.replace(/\\/$/,"")+u;return _of.call(this,u,o);};' +
+                '})();</' + 'script>';
+              var baseTag = '<base href="' + url + '">';
+              var headPatch = envPatch + baseTag;
+              html = html.replace(/<meta[^>]*http-equiv=["']?X-Frame-Options["']?[^>]*>/gi, '');
+              // Inject BEFORE the first <script> tag so patches run before any framework JS
+              // (Next.js puts inline scripts immediately after <head>)
+              if (/<script[\s>]/i.test(html)) {
+                html = html.replace(/<script[\s>]/i, headPatch + '<script ');
+              } else if (/<head[\s>]/i.test(html)) {
+                html = html.replace(/<head([^>]*)>/i, '<head$1>' + headPatch);
+              } else {
+                html = headPatch + html;
+              }
+
+              var iframe = document.createElement('iframe');
+              iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
+              iframe.sandbox = 'allow-scripts allow-same-origin allow-forms';
+              document.body.appendChild(iframe);
+              var done = false;
+              function cleanup() { if (iframe.parentNode) document.body.removeChild(iframe); }
+
+              iframe.addEventListener('load', function() {
+                if (done) return;
+                setTimeout(function() {
+                  if (done) return;
+                  try {
+                    var iWin = iframe.contentWindow;
+                    var iDoc = iframe.contentDocument || iWin.document;
+                    var script = iDoc.createElement('script');
+                    script.textContent = 'window.__milgCrawlSite=false;\n' + snippetSrc;
+                    iDoc.body.appendChild(script);
+                    var polls = 0;
+                    var pi = setInterval(function() {
+                      if (done) { clearInterval(pi); return; }
+                      polls++;
+                      try {
+                        // Show progress from inside the iframe (extraction → screenshot → mask phases)
+                        var prog = iWin.__milgProgress;
+                        if (prog) _updateCrawlOverlay('Page ' + (idx + 1) + '/' + _links.length + ': ' + prog, path);
+                        var d = iWin.__milgData;
+                        if (d) { clearInterval(pi); done = true; d.meta.url = url; _cResults.push({ url: url, data: d }); cleanup(); var hasShots = d.screenshots && d.screenshots.length > 0; console.log('%c  \u2713 ' + path + (hasShots ? ' (with screenshots)' : ''), 'color: #16a34a;'); setTimeout(function() { _next(idx + 1); }, 500); }
+                        else if (polls > 80) { clearInterval(pi); done = true; cleanup(); console.log('%c  \u2717 Timeout: ' + path, 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }
+                      } catch(e) { clearInterval(pi); done = true; cleanup(); console.log('%c  \u2717 Error: ' + path + ' (' + e.message + ')', 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }
+                    }, 500);
+                  } catch(e) { done = true; cleanup(); console.log('%c  \u2717 Cannot inject snippet: ' + path + ' (' + e.message + ')', 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }
+                }, 1500);
+              });
+              iframe.srcdoc = html;
+              setTimeout(function() { if (done) return; done = true; cleanup(); console.log('%c  \u2717 Timeout (45s): ' + path, 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }, 45000);
+            }).catch(function(e) {
+              console.log('%c  \u2717 Fetch failed: ' + path + ' (' + (e.message || e) + ')', 'color: #dc2626;');
+              setTimeout(function() { _next(idx + 1); }, 500);
+            });
+          }
+          _next(0);
+        })();
+      }
+      return; // Skip clipboard copy
+    }
+  }
+
+    }; // end __milgOnExtractComplete callback
+
+    // Run the extraction
+    window.MilgExtract();
+  }
 })();
 </file>
 
@@ -37057,1030 +38097,6 @@ window.MilgContrastVerify = (function() {
     contrastRatio: contrastRatio,
     parseRgb: parseRgb
   };
-})();
-</file>
-
-<file path="docs/analyzer-snippet-screenshots.js">
-// make-it-look-good — Design Extraction Snippet (with screenshots)
-// Version: v1.1
-// Run this in the browser console on any page.
-// Loads extraction engine from CDN (single source of truth), then captures screenshots.
-// Output is larger (~200-800KB extra) but includes visual reference.
-// Then paste into the analyzer at: https://jdeworks.github.io/make-it-look-good/analyzer.html
-
-(function() {
-  'use strict';
-  var _MILG_VERSION = 'v1.1';
-  console.log('%c[milg] Snippet version: ' + _MILG_VERSION, 'color: #64748b;');
-
-  // --- Pixel verify option ---
-  // Set window.__milgPixelVerify = true before running to enable inline pixel contrast verification.
-  // Default: off (the analyzer can run pixel verify post-hoc from screenshots).
-  var _doPixelVerify = !!window.__milgPixelVerify;
-
-  // --- Auto-scroll option ---
-  // To scroll the page before extraction (triggers lazy loading + intersection observers):
-  // Run: window.__milgScrollFirst = true   then paste the snippet.
-  // The snippet will scroll the full page, wait for content to load, then extract.
-  if (window.__milgScrollFirst && !window.__milgScrollDone) {
-    window.__milgScrollDone = true;
-    console.log('%c\u23F3 Scrolling page to trigger lazy loading and intersection observers...', 'color: #3b82f6; font-weight: bold;');
-    var _scrollH = document.body.scrollHeight;
-    var _pos = 0;
-    var _step = Math.max(window.innerHeight * 0.8, 400);
-    var _si = setInterval(function() {
-      _pos += _step;
-      window.scrollTo(0, _pos);
-      if (_pos >= _scrollH) {
-        clearInterval(_si);
-        setTimeout(function() { window.scrollTo(0, 0); }, 300);
-        // Wait for newly loaded content, then user must re-run snippet
-        setTimeout(function() {
-          console.log('%c\u2713 Scroll complete! Page content should now be fully loaded.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-          console.log('%cRe-run the snippet now for complete analysis.', 'color: #3b82f6;');
-          window.__milgScrollFirst = false;
-        }, 1500);
-      }
-    }, 150);
-    return; // Exit — re-run snippet after scroll completes
-  }
-
-  // Cache-bust for CDN fetches (hourly bucket)
-  var _cacheBust = 'v=' + Math.floor(Date.now() / 3600000);
-
-  // --- Load extraction engine from CDN (single source of truth) ---
-  console.log('%c[milg] Loading extraction engine...', 'color: #3b82f6;');
-  // Primary: jsDelivr (fast global CDN, mirrors GitHub). Fallback: GitHub Pages direct.
-  var _extractUrls = [
-    'https://cdn.jsdelivr.net/gh/jdeworks/make-it-look-good@dev/docs/analyzer-extract.js?' + _cacheBust,
-    'https://jdeworks.github.io/make-it-look-good/analyzer-extract.js?' + _cacheBust
-  ];
-
-  if (window.MilgExtract) {
-    _runExtraction();
-  } else {
-    (function _tryLoad(idx) {
-      if (idx >= _extractUrls.length) {
-        console.error('[milg] Cannot load extraction engine from any CDN.');
-        return;
-      }
-      var url = _extractUrls[idx];
-      console.log('[milg] Fetching:', url.split('?')[0]);
-      fetch(url).then(function(r) {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.text();
-      }).then(function(code) {
-        (new Function(code))();
-        if (!window.MilgExtract) throw new Error('MilgExtract not defined after eval');
-        _runExtraction();
-      }).catch(function(err) {
-        console.warn('[milg] CDN ' + (idx + 1) + ' failed:', err.message || err);
-        _tryLoad(idx + 1);
-      });
-    })(0);
-  }
-
-  function _runExtraction() {
-    window.__milgOnExtractComplete = function(data) {
-      window.__milgData = data;
-      console.log('%c[milg] Extraction complete, starting screenshot capture...', 'color: #3b82f6;');
-
-  // --- Screenshot capture ---
-  // The modern-screenshot library is loaded inline to bypass CSP restrictions.
-  // Console-pasted code is executed directly by the engine, not subject to CSP script-src.
-  console.log('%c\uD83D\uDCF8 Capturing screenshots...', 'color: #3b82f6; font-weight: bold; font-size: 14px;');
-
-  // Inline modern-screenshot library (loaded from separate file at build time)
-  // This block is replaced by scripts/build-screenshot-snippet.sh
-  // __INLINE_MODERN_SCREENSHOT_START__
-  try {
-    var _msScript = document.createElement('script');
-    _msScript.src = 'https://cdn.jsdelivr.net/npm/modern-screenshot@4.6.8/dist/index.js';
-    var _msLoaded = new Promise(function(resolve, reject) {
-      _msScript.onload = resolve;
-      _msScript.onerror = function() {
-        // CDN blocked by CSP — try inline fallback via fetch + eval (works if unsafe-eval allowed)
-        // Otherwise fall back gracefully
-        console.log('%c\u26A0 CDN blocked by CSP. Trying fetch fallback...', 'color: #b45309;');
-        fetch('https://cdn.jsdelivr.net/npm/modern-screenshot@4.6.8/dist/index.js')
-          .then(function(r) { return r.text(); })
-          .then(function(code) { (new Function(code))(); resolve(); })
-          .catch(function() {
-            console.log('%c\u26A0 Screenshot library unavailable on this site (CSP blocks external scripts and eval).', 'color: #b45309;');
-            console.log('%cScreenshots skipped. The design data extraction still works \u2014 just paste into the analyzer.', 'color: #64748b;');
-            reject();
-          });
-      };
-    });
-    document.head.appendChild(_msScript);
-  } catch(e) { var _msLoaded = Promise.reject(); }
-
-  _msLoaded.then(function() {
-    var ms = window.modernScreenshot;
-    if (!ms || !ms.domToCanvas) {
-      console.log('%c\u26A0 Screenshot API not found. Skipping.', 'color: #b45309;');
-      data.screenshots = [];
-      outputData(data);
-      return;
-    }
-
-    var totalH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-    var vh = window.innerHeight || 900;
-    var captureH = Math.min(totalH, 32000);
-
-    var _ssStart = Date.now();
-    function _t() { return '[' + ((Date.now() - _ssStart) / 1000).toFixed(1) + 's] '; }
-    // Cap at 10 viewports for the full capture (avoid huge canvases on very long pages)
-    captureH = Math.min(captureH, vh * 10);
-    var numSections = Math.ceil(captureH / vh);
-    console.log('[ss] ' + _t() + 'totalH=' + totalH + ' vh=' + vh + ' captureH=' + captureH + ' sections=' + numSections);
-
-    // Show overlay so users aren't confused during capture
-    var _overlay = document.createElement('div');
-    _overlay.setAttribute('data-milg-overlay', '1');
-    _overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,0.6);display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui,sans-serif;';
-    _overlay.innerHTML = '<div style="width:40px;height:40px;border:3px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:milg-spin 0.8s linear infinite"></div>' +
-      '<div id="milg-ss-status" style="color:#fff;margin-top:16px;font-size:14px;font-weight:500">Preparing screenshots...</div>' +
-      '<div style="color:rgba(255,255,255,0.6);margin-top:6px;font-size:12px">Scrolling page to load all content, then capturing</div>' +
-      '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style>';
-    document.body.appendChild(_overlay);
-    var _ssFilter = function(el) { return !el.getAttribute || !el.getAttribute('data-milg-overlay'); };
-    var _origScrollY = window.scrollY;
-
-    // Phase 1: Pre-scroll the entire page to trigger ALL lazy content, IntersectionObservers, etc.
-    console.log('[ss] ' + _t() + 'Phase 1: Pre-scrolling page to trigger lazy content...');
-    var _preScrollPositions = [];
-    for (var _ps = 0; _ps < captureH; _ps += vh) _preScrollPositions.push(_ps);
-    var _psIdx = 0;
-    function _preScrollNext() {
-      if (_psIdx >= _preScrollPositions.length) {
-        // All positions scrolled — wait for content to finish loading
-        console.log('[ss] ' + _t() + 'Phase 1 complete. Waiting for lazy content to finish loading...');
-        var statusEl = document.getElementById('milg-ss-status');
-        if (statusEl) statusEl.textContent = 'Waiting for images to load...';
-        setTimeout(function() { _startCapture(); }, 500);
-        return;
-      }
-      var scrollY = _preScrollPositions[_psIdx];
-      window.scrollTo(0, scrollY);
-      try { window.dispatchEvent(new Event('scroll')); } catch(e) {}
-      var statusEl = document.getElementById('milg-ss-status');
-      if (statusEl) statusEl.textContent = 'Loading content... (section ' + (_psIdx + 1) + '/' + _preScrollPositions.length + ')';
-      _psIdx++;
-      setTimeout(_preScrollNext, 200); // 200ms per scroll position
-    }
-    _preScrollNext();
-
-    // Phase 2: Capture the full page as one big canvas, then split into sections
-    function _startCapture() {
-      // Force instant scroll to 0 on ALL scroll containers
-      // Some pages use a div with overflow:auto as the main scroll container,
-      // so window.scrollTo(0,0) alone doesn't reset scroll position.
-      var origScrollBehavior = document.documentElement.style.scrollBehavior;
-      document.documentElement.style.scrollBehavior = 'auto';
-      document.body.style.scrollBehavior = 'auto';
-      window.scrollTo(0, 0);
-      document.documentElement.scrollTop = 0;
-      document.body.scrollTop = 0;
-      // Reset any overflow scroll containers
-      document.querySelectorAll('*').forEach(function(el) {
-        if (el.scrollTop > 0) {
-          var s = getComputedStyle(el);
-          if (s.overflow === 'auto' || s.overflow === 'scroll' || s.overflowY === 'auto' || s.overflowY === 'scroll') {
-            el.style.scrollBehavior = 'auto';
-            el.scrollTop = 0;
-          }
-        }
-      });
-      var actualScroll = Math.max(window.scrollY, document.documentElement.scrollTop, document.body.scrollTop);
-
-      var statusEl = document.getElementById('milg-ss-status');
-      if (statusEl) statusEl.textContent = 'Waiting for animations to settle...';
-      console.log('[ss] ' + _t() + 'Waiting 1.5s for animations to settle...');
-
-      setTimeout(function() {
-      // Re-read all bboxes using the extraction engine's exported function
-      // This compensates for CSS transforms and propagates to fontSizes entries
-      if (typeof window.__milgReReadBboxes === 'function') {
-        var bboxResult = window.__milgReReadBboxes();
-        console.log('[ss] ' + _t() + 'Updated bboxes after animations settled: ' + bboxResult);
-      }
-
-      console.log('[ss] ' + _t() + 'Phase 2: Capturing full page (' + captureH + 'px), scrollY=' + actualScroll + '...');
-      var statusEl = document.getElementById('milg-ss-status');
-      if (statusEl) statusEl.textContent = 'Rendering page to canvas...';
-
-      ms.domToCanvas(document.documentElement, {
-        scale: 1.5,
-        filter: _ssFilter,
-        timeout: 45000
-      }).then(function(fullCanvas) {
-        console.log('[ss] ' + _t() + 'Full canvas captured: ' + fullCanvas.width + 'x' + fullCanvas.height);
-
-        var secScale = 1.5;
-
-        // Log final scroll state for diagnostics
-        console.log('[ss] Scroll state at capture: window=' + window.scrollY + ', html=' + document.documentElement.scrollTop + ', body=' + document.body.scrollTop);
-
-        var calibOffset = 0;
-
-        // Store full-page canvas as single WebP — used by both report and viewer
-        var fullPageDataUri;
-        try {
-          fullPageDataUri = fullCanvas.toDataURL('image/webp', 0.8);
-          console.log('[ss] ' + _t() + 'Full-page WebP: ' + Math.round(fullPageDataUri.length / 1024) + 'KB');
-        } catch(e) {
-          console.warn('[ss] Full-page WebP failed:', e.message);
-          fullPageDataUri = '';
-        }
-
-        window.scrollTo(0, _origScrollY);
-        if (_overlay.parentNode) _overlay.parentNode.removeChild(_overlay);
-        data.screenshots = fullPageDataUri ? [fullPageDataUri] : [];
-        data.screenshotFull = fullPageDataUri || null;
-        // Also store as clean screenshot (snippet captures the page as-is)
-        data.screenshotClean = fullPageDataUri || null;
-        data.screenshotCleanMeta = fullPageDataUri ? { canvasWidth: fullCanvas.width, canvasHeight: fullCanvas.height } : null;
-
-        // --- Region screenshots for hidden overflow content ---
-        (function captureRegions(regionCb) {
-          if (!window.__milgBboxRefs || !data.colors || !data.colors.contrastPairs) { regionCb([]); return; }
-          var _cp = data.colors.contrastPairs;
-          var _rgnCounter = 0, _clipContainers = {}, _clipList = [];
-          // Mark clipped pairs and detect outermost clipping containers
-          window.__milgBboxRefs.forEach(function(ref) {
-            if (!ref.el || !ref.obj || ref.key !== 'bbox') return;
-            var el = ref.el, pair = ref.obj;
-            var er = el.getBoundingClientRect();
-            var clipAnc = null, anc = el.parentElement;
-            while (anc && anc !== document.documentElement) {
-              var as = getComputedStyle(anc);
-              var aov = as.overflow || '', aovx = as.overflowX || '', aovy = as.overflowY || '';
-              if (aov === 'hidden' || aov === 'clip' || aovx === 'hidden' || aovx === 'clip' || aovy === 'hidden' || aovy === 'clip') {
-                var ar = anc.getBoundingClientRect();
-                if (ar.width >= 100 && ar.height >= 30) {
-                  if (er.right < ar.left + 1 || er.left > ar.right - 1 || er.bottom < ar.top + 1 || er.top > ar.bottom - 1) {
-                    pair._isClipped = true;
-                    clipAnc = anc;
-                  }
-                }
-              }
-              anc = anc.parentElement;
-            }
-            if (!clipAnc) return;
-            var cid = clipAnc._milgRegionId;
-            if (!cid) { cid = 'rgn-' + (++_rgnCounter); clipAnc._milgRegionId = cid; _clipList.push({ el: clipAnc, id: cid, pairIndices: [] }); _clipContainers[cid] = _clipList[_clipList.length - 1]; }
-            var pi = _cp.indexOf(pair);
-            if (pi >= 0 && _clipContainers[cid].pairIndices.indexOf(pi) < 0) _clipContainers[cid].pairIndices.push(pi);
-          });
-          _clipList.sort(function(a, b) { var ar = a.el.getBoundingClientRect(), br = b.el.getBoundingClientRect(); return (br.width * br.height) - (ar.width * ar.height); });
-          _clipList = _clipList.slice(0, 5);
-          if (_clipList.length === 0) { regionCb([]); return; }
-          console.log('[ss] ' + _t() + 'Found ' + _clipList.length + ' clipping regions, capturing...');
-          var _rgnResults = [], _rgnDone = 0, _rgnTotal = _clipList.length;
-          var _rgnOverall = setTimeout(function() { console.warn('[ss] Region timeout (30s)'); regionCb(_rgnResults); }, 30000);
-          // Collect styles
-          var allStyles = ''; document.querySelectorAll('style').forEach(function(s) { allStyles += s.outerHTML; });
-          var allLinks = ''; document.querySelectorAll('link[rel="stylesheet"]').forEach(function(l) { allLinks += l.outerHTML; });
-          var baseHref = location.href;
-          _clipList.forEach(function(rgn, rIdx) {
-            var container = rgn.el, cr = container.getBoundingClientRect();
-            var clone = container.cloneNode(true);
-            clone.style.cssText += ';overflow:visible !important;max-height:none !important;height:auto !important;clip-path:none !important;width:' + Math.round(cr.width) + 'px !important;';
-            var _forceRevealCss =
-              '*,*::before,*::after{transition:none !important;animation:none !important;}' +
-              'body *{visibility:visible !important;opacity:1 !important;transform:none !important;overflow:visible !important;clip-path:none !important;max-height:none !important;}' +
-              '[aria-hidden="true"],[hidden],.hidden,.d-none,.hide,' +
-              '.carousel-item,.swiper-slide,.slick-slide,' +
-              '[class*="slide"],[class*="panel"],[class*="tab-pane"]{' +
-              'display:block !important;visibility:visible !important;opacity:1 !important;position:relative !important;transform:none !important;left:auto !important;right:auto !important;}';
-            var _forceRevealScript =
-              '<script>document.addEventListener("DOMContentLoaded",function(){' +
-              'document.querySelectorAll("*").forEach(function(el){var cs=getComputedStyle(el);' +
-              'if(cs.display==="none")el.style.setProperty("display","block","important");' +
-              'if(cs.visibility==="hidden")el.style.setProperty("visibility","visible","important");' +
-              'if(parseFloat(cs.opacity)<0.1)el.style.setProperty("opacity","1","important");' +
-              'if(cs.position==="absolute"||cs.position==="fixed")el.style.setProperty("position","relative","important");' +
-              '});' +
-              '});</' + 'script>';
-            var miniHtml = '<!DOCTYPE html><html><head><meta charset=UTF-8><base href="' + baseHref.replace(/"/g, '&quot;') + '">' + allLinks + allStyles +
-              '<style>' + _forceRevealCss + '</style>' + _forceRevealScript +
-              '</head><body style="margin:0;padding:0;overflow:visible">' + clone.outerHTML + '</body></html>';
-            var _iframeW = Math.max(Math.round(cr.width), 320);
-            var mf = document.createElement('iframe');
-            mf.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + _iframeW + 'px;height:3000px;border:none;visibility:hidden;';
-            document.body.appendChild(mf);
-            var rgnTimer = setTimeout(function() { rgnFinish(rIdx, mf, null); }, 15000);
-            mf.srcdoc = miniHtml;
-            mf.addEventListener('load', function() {
-              setTimeout(function() {
-                try {
-                  var mDoc = mf.contentDocument; if (!mDoc) { rgnFinish(rIdx, mf, null); return; }
-                  try {
-                    mDoc.querySelectorAll('*').forEach(function(el) {
-                      var cs = mDoc.defaultView.getComputedStyle(el);
-                      if (cs.display === 'none') el.style.setProperty('display', 'block', 'important');
-                      if (cs.visibility === 'hidden') el.style.setProperty('visibility', 'visible', 'important');
-                      if (parseFloat(cs.opacity) < 0.1) el.style.setProperty('opacity', '1', 'important');
-                    });
-                  } catch(_e) {}
-                  void mDoc.body.offsetHeight;
-                  var cW = Math.max(mDoc.body.scrollWidth, mDoc.documentElement.scrollWidth);
-                  var cH = Math.max(mDoc.body.scrollHeight, mDoc.documentElement.scrollHeight);
-                  mf.style.width = Math.max(cW, _iframeW) + 'px'; mf.style.height = cH + 'px';
-                  void mDoc.body.offsetHeight;
-                  ms.domToCanvas(mDoc.documentElement, { scale: 1.5, timeout: 12000 }).then(function(rc) {
-                    var rUri; try { rUri = rc.toDataURL('image/webp', 0.8); } catch(e) { rUri = ''; }
-                    var localBboxes = {};
-                    rgn.pairIndices.forEach(function(pi) {
-                      var pair = _cp[pi]; if (!pair || !pair.bbox) return;
-                      localBboxes[pi] = { left: pair.bbox.left - Math.round(cr.left), top: pair.bbox.top - Math.round(cr.top), width: pair.bbox.width, height: pair.bbox.height };
-                    });
-                    clearTimeout(rgnTimer);
-                    rgnFinish(rIdx, mf, { screenshot: rUri, screenshotMeta: { scale: 1.5, canvasWidth: rc.width, canvasHeight: rc.height }, pairIndices: rgn.pairIndices, localBboxes: localBboxes, containerRect: { left: Math.round(cr.left), top: Math.round(cr.top), width: Math.round(cr.width), height: Math.round(cr.height) } });
-                  }).catch(function(e) { clearTimeout(rgnTimer); rgnFinish(rIdx, mf, null); });
-                } catch(e) { clearTimeout(rgnTimer); rgnFinish(rIdx, mf, null); }
-              }, 600);
-            });
-          });
-          function rgnFinish(idx, mf, result) {
-            if (result) _rgnResults.push(result);
-            try { if (mf && mf.parentNode) mf.parentNode.removeChild(mf); } catch(e) {}
-            _rgnDone++; if (_rgnDone >= _rgnTotal) { clearTimeout(_rgnOverall); console.log('[ss] Regions done: ' + _rgnResults.length + '/' + _rgnTotal); regionCb(_rgnResults); }
-          }
-        })(function(regionResults) {
-          data.regionScreenshots = regionResults;
-
-        (function finalize() {
-            var captureDocH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-            document.documentElement.style.scrollBehavior = origScrollBehavior;
-            // (transitions restored naturally — no override injected)
-            data.screenshotMeta = {
-              scale: secScale,
-              viewportHeight: vh,
-              sectionCount: data.screenshots.length,
-              canvasWidth: fullCanvas.width,
-              canvasHeight: fullCanvas.height,
-              docHeightAtCapture: captureDocH,
-              docHeightAtExtraction: data.meta.docHeight || captureDocH,
-              captureScrollY: actualScroll,
-              calibrationOffsetY: calibOffset,
-              calibrationSamples: []
-            };
-            // --- Text mask capture (same technique as iframe buildScreenshotScript) ---
-            // Kill transitions, set all text to black + backgrounds to white, capture mask.
-            // This gives pixel verify the same accuracy as URL/iframe mode.
-            console.log('[ss] ' + _t() + 'Capturing text mask...');
-            var statusEl2 = document.getElementById('milg-ss-status');
-            if (statusEl2) statusEl2.textContent = 'Capturing text mask...';
-
-            // Phase A: Kill ALL transitions
-            document.querySelectorAll('*').forEach(function(el) {
-              el.style.setProperty('transition-duration', '0s', 'important');
-              el.style.setProperty('transition', 'none', 'important');
-            });
-            void document.body.offsetHeight;
-
-            // Phase B: Neutralize absolute/fixed overlays (same as iframe)
-            document.querySelectorAll('*').forEach(function(el) {
-              var cs = getComputedStyle(el);
-              if (cs.position === 'absolute' || cs.position === 'fixed') {
-                if (!el.textContent.trim()) {
-                  el.style.setProperty('display', 'none', 'important');
-                } else if (cs.pointerEvents === 'none') {
-                  el.style.setProperty('background', 'transparent', 'important');
-                  el.style.setProperty('background-image', 'none', 'important');
-                }
-              }
-            });
-            void document.body.offsetHeight;
-
-            // Phase C: Set all backgrounds white, all text black (layer 1 = all text)
-            var _savedStyles = [];
-            document.querySelectorAll('*').forEach(function(el) {
-              var saved = el.style.cssText;
-              _savedStyles.push({ el: el, css: saved });
-              el.style.setProperty('background', '#fff', 'important');
-              el.style.setProperty('background-image', 'none', 'important');
-              el.style.setProperty('color', '#000', 'important');
-              el.style.setProperty('text-shadow', 'none', 'important');
-              el.style.setProperty('box-shadow', 'none', 'important');
-              el.style.setProperty('border-color', 'transparent', 'important');
-            });
-            document.body.style.setProperty('background', '#fff', 'important');
-            document.documentElement.style.setProperty('background', '#fff', 'important');
-            void document.body.offsetHeight;
-
-            ms.domToCanvas(document.documentElement, {
-              scale: secScale,
-              filter: _ssFilter,
-              timeout: 30000
-            }).then(function(maskCanvas) {
-              console.log('[ss] ' + _t() + 'Text mask captured: ' + maskCanvas.width + 'x' + maskCanvas.height);
-
-              // Restore all styles
-              _savedStyles.forEach(function(s) { s.el.style.cssText = s.css; });
-              void document.body.offsetHeight;
-
-              // Store mask as data URI
-              var maskUri;
-              try { maskUri = maskCanvas.toDataURL('image/webp', 0.8); } catch(e) { maskUri = null; }
-              data.textMask = maskUri;
-
-              // Build per-pair mask bitmaps from the mask canvas
-              var maskCtx = maskCanvas.getContext('2d', { willReadFrequently: true });
-              var pairs = (data.colors && data.colors.contrastPairs) || [];
-              var maskResults = {};
-              pairs.forEach(function(pair, pi) {
-                if (!pair.bbox) return;
-                var bx = Math.round(pair.bbox.left * secScale);
-                var by = Math.round(pair.bbox.top * secScale);
-                var bw = Math.round(pair.bbox.width * secScale);
-                var bh = Math.round(pair.bbox.height * secScale);
-                if (bw < 2 || bh < 2 || bx + bw > maskCanvas.width || by + bh > maskCanvas.height) return;
-                var mData = maskCtx.getImageData(bx, by, bw, bh).data;
-                var bmp = new Uint8Array(bw * bh);
-                var darkCount = 0;
-                for (var j = 0; j < mData.length; j += 4) {
-                  var bright = (mData[j] + mData[j+1] + mData[j+2]) / 3;
-                  if (bright < 180) { bmp[j/4] = 1; darkCount++; }
-                }
-                if (darkCount > 0) {
-                  // Bit-pack bitmap: 8 pixels per byte, then base64 encode (~8x smaller than JSON array)
-                  var byteLen = Math.ceil(bmp.length / 8);
-                  var packed = new Uint8Array(byteLen);
-                  for (var bi = 0; bi < bmp.length; bi++) {
-                    if (bmp[bi]) packed[bi >> 3] |= (1 << (bi & 7));
-                  }
-                  var binStr = '';
-                  for (var bi2 = 0; bi2 < packed.length; bi2++) binStr += String.fromCharCode(packed[bi2]);
-                  pair._maskBmp = btoa(binStr);
-                  pair._maskPacked = true;
-                  pair._maskW = bw;
-                  pair._maskH = bh;
-                  pair._maskLayer = 1;
-                  pair._maskDark = darkCount;
-                }
-              });
-
-              console.log('[ss] ' + _t() + 'Mask bitmaps built for ' + Object.keys(maskResults).length + ' pairs');
-              console.log('%c\u2713 Screenshot + mask captured (' + _t().trim() + ')', 'color: #16a34a; font-weight: bold;');
-              outputData(data);
-            }).catch(function(err) {
-              console.warn('[ss] Text mask capture failed:', err);
-              // Continue without mask — pixel verify will use position heuristic
-              console.log('%c\u2713 Screenshot captured (no mask) (' + _t().trim() + ')', 'color: #16a34a; font-weight: bold;');
-              outputData(data);
-            });
-        })();
-        }); // close captureRegions callback
-
-      }).catch(function(err) {
-        console.log('[ss] ' + _t() + '\u2717 Full page capture failed: ' + (err && err.message || err));
-        window.scrollTo(0, _origScrollY);
-        if (_overlay.parentNode) _overlay.parentNode.removeChild(_overlay);
-        data.screenshots = [];
-        outputData(data);
-      });
-    }, 1500); // end setTimeout — wait for animations
-    }
-  }).catch(function() {
-    data.screenshots = [];
-    outputData(data);
-  });
-
-  // Reliable file download — appends to DOM and delays revoke so all browsers work
-  function downloadFile(content, filename) {
-    var blob = new Blob([content], { type: 'application/json' });
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    a.href = url; a.download = filename;
-    a.style.display = 'none';
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(function() { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
-  }
-
-  // Gzip compress + base64 encode for clipboard (CompressionStream API)
-  function compressForClipboard(jsonStr, callback) {
-    if (typeof CompressionStream === 'undefined') { callback(null); return; }
-    try {
-      var blob = new Blob([jsonStr]);
-      var cs = new CompressionStream('gzip');
-      var stream = blob.stream().pipeThrough(cs);
-      new Response(stream).arrayBuffer().then(function(buf) {
-        var bytes = new Uint8Array(buf);
-        var binStr = '';
-        for (var i = 0; i < bytes.length; i++) binStr += String.fromCharCode(bytes[i]);
-        var b64 = btoa(binStr);
-        callback('MILG_GZ:' + b64);
-      }).catch(function() { callback(null); });
-    } catch(e) { callback(null); }
-  }
-
-  function outputData(data) {
-    var json = JSON.stringify(data);
-    var jsonKB = Math.round(json.length / 1024);
-    var jsonMB = (json.length / 1024 / 1024).toFixed(1);
-    console.log('[clipboard] JSON size: ' + jsonKB + ' KB (' + jsonMB + ' MB)');
-    window.__milgData = data;
-    window.__milgData_json = json;
-
-    // In crawl mode, skip the copy overlay — crawl has its own UI
-    if (window.__milgCrawlSite) {
-      // Jump straight to crawl section below
-    } else {
-    // Show overlay with copy button (user click = real gesture = clipboard works reliably)
-    var _copyOverlay = document.createElement('div');
-    _copyOverlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:999999;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui,sans-serif';
-    _copyOverlay.innerHTML = '<div style="text-align:center;max-width:400px;padding:20px">' +
-      '<div style="font-size:32px;margin-bottom:12px">&#10003;</div>' +
-      '<div style="color:#fff;font-size:18px;font-weight:600;margin-bottom:6px">Extraction complete!</div>' +
-      '<div style="color:rgba(255,255,255,0.6);font-size:13px;margin-bottom:6px">' + jsonKB + ' KB of design data' + (data.screenshotFull ? ' + full-page screenshot' : '') + '</div>' +
-      (jsonKB > 2048 ? '<div style="color:#fbbf24;font-size:12px;margin-bottom:16px">&#9888; Large payload (' + jsonMB + ' MB) \u2014 download recommended</div>' : '<div style="margin-bottom:16px"></div>') +
-      (jsonKB > 2048
-        ? '<button id="milg-download-btn" style="padding:14px 32px;font-size:15px;font-weight:600;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-bottom:8px;min-width:200px">Download JSON</button>' +
-          '<button id="milg-copy-btn" style="padding:10px 24px;font-size:13px;font-weight:500;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.2);border-radius:8px;cursor:pointer;margin-bottom:12px;min-width:200px">Copy to Clipboard</button>'
-        : '<button id="milg-copy-btn" style="padding:14px 32px;font-size:15px;font-weight:600;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-bottom:8px;min-width:200px">Copy to Clipboard</button>' +
-          '<button id="milg-download-btn" style="padding:10px 24px;font-size:13px;font-weight:500;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.2);border-radius:8px;cursor:pointer;margin-bottom:12px;min-width:200px">Download JSON</button>') +
-      '<div style="color:rgba(255,255,255,0.4);font-size:11px">Then ' + (jsonKB > 2048 ? 'import' : 'paste') + ' into the analyzer</div>' +
-      '</div>';
-    document.body.appendChild(_copyOverlay);
-
-    document.getElementById('milg-copy-btn').addEventListener('click', function() {
-      var btn = document.getElementById('milg-copy-btn');
-      btn.textContent = 'Compressing...';
-      btn.disabled = true;
-
-      function onSuccess(size) {
-        btn.textContent = 'Copied!' + (size ? ' (' + size + ')' : '');
-        btn.style.background = '#16a34a';
-        console.log('%c\u2713 Design data copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-        // Reload page after delay to restore styles corrupted by mask capture
-        setTimeout(function() {
-          if (_copyOverlay.parentNode) _copyOverlay.parentNode.removeChild(_copyOverlay);
-          console.log('%c\u21BB Reloading page in 8s to restore styles...', 'color: #64748b;');
-          setTimeout(function() { location.reload(); }, 8000);
-        }, 2000);
-      }
-      function onFail() {
-        btn.textContent = 'Copy failed \u2014 use console';
-        btn.style.background = '#dc2626';
-        console.log('%c\u26A0 Clipboard copy failed. Type: copy(window.__milgData_json)', 'color: #b45309; font-weight: bold;');
-      }
-      function doCopy(text, sizeLabel) {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(text).then(function() { onSuccess(sizeLabel); }).catch(function() {
-            try {
-              var ta = document.createElement('textarea'); ta.value = text;
-              ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
-              document.body.appendChild(ta); ta.select();
-              document.execCommand('copy') ? onSuccess(sizeLabel) : onFail();
-              document.body.removeChild(ta);
-            } catch(e) { onFail(); }
-          });
-        } else { onFail(); }
-      }
-
-      // Try gzip compression for clipboard (typically 60-80% smaller)
-      compressForClipboard(json, function(compressed) {
-        if (compressed) {
-          var compKB = Math.round(compressed.length / 1024);
-          var ratio = Math.round((1 - compressed.length / json.length) * 100);
-          console.log('[clipboard] Compressed: ' + compKB + ' KB (' + ratio + '% smaller)');
-          btn.textContent = 'Copying ' + compKB + ' KB...';
-          doCopy(compressed, compKB + ' KB, ' + ratio + '% compressed');
-        } else {
-          console.log('[clipboard] CompressionStream not available, copying raw JSON');
-          btn.textContent = 'Copying ' + jsonKB + ' KB...';
-          doCopy(json, jsonKB + ' KB');
-        }
-      });
-    });
-
-    // Download button (works for any size, no clipboard limit)
-    document.getElementById('milg-download-btn').addEventListener('click', function() {
-      var siteName = (data.meta && data.meta.url) || location.hostname;
-      downloadFile(json, 'milg-report-' + siteName.replace(/[^a-z0-9]/gi, '-').substring(0, 40) + '.json');
-      var btn = document.getElementById('milg-download-btn');
-      btn.textContent = 'Downloaded!';
-      btn.style.background = '#16a34a'; btn.style.color = '#fff'; btn.style.borderColor = '#16a34a';
-      setTimeout(function() {
-        if (_copyOverlay.parentNode) _copyOverlay.parentNode.removeChild(_copyOverlay);
-        console.log('%c\u21BB Reloading page in 8s to restore styles...', 'color: #64748b;');
-        setTimeout(function() { location.reload(); }, 8000);
-      }, 2000);
-    });
-
-    } // end if !crawl (copy overlay block)
-
-    console.log('%cmake-it-look-good extraction complete (with screenshots)', 'color: #3b82f6; font-weight: bold;');
-    console.log('Elements scanned:', data.structure.totalElements);
-    console.log('Screenshots:', (data.screenshots || []).length);
-    console.log('Total JSON size:', jsonKB, 'KB');
-
-    // --- Site Crawl Mode (same-origin iframe with src=, full JS execution) ---
-    if (window.__milgCrawlSite) {
-      var _cm = Math.min(Math.max(window.__milgCrawlMaxPages || 5, 1), 25);
-      var _cb = window.__milgCrawlBlacklist || [];
-      var _co = location.origin;
-      var _seen = {};
-      var _curPath = location.pathname.replace(/\/$/, '');
-      _seen[_co + _curPath] = true;
-      // Also mark index variants as seen to avoid re-crawling the current page
-      if (_curPath === '' || _curPath === '/index.html' || _curPath === '/index.htm') {
-        _seen[_co] = true; _seen[_co + '/index.html'] = true; _seen[_co + '/index.htm'] = true;
-      }
-      var _links = [];
-      document.querySelectorAll('a[href]').forEach(function(a) {
-        var h = a.getAttribute('href');
-        if (!h || h.startsWith('#') || h.startsWith('mailto:') || h.startsWith('tel:') || h.startsWith('javascript:')) return;
-        try { var u = new URL(h, location.href); if (u.origin !== _co) return; if (/\.(pdf|zip|png|jpg|svg|css|js|json|xml|woff2?)$/i.test(u.pathname)) return; u.hash = ''; var k = u.origin + u.pathname.replace(/\/$/, ''); if (_seen[k]) return; var bl = _cb.some(function(p) { p = p.trim(); if (!p) return false; if (p.endsWith('*')) return u.pathname.startsWith(p.slice(0, -1)); return u.pathname === p; }); if (bl) return; _seen[k] = true; _links.push(u.origin + u.pathname); } catch(e) {}
-      });
-      _links = _links.slice(0, _cm - 1);
-      var _cResults = [{ url: location.href, data: data }];
-      console.log('%c\uD83D\uDD77 Site Crawl: discovered ' + _links.length + ' page(s)', 'color: #8b5cf6; font-weight: bold;');
-
-      // Copy full crawl results to clipboard (localStorage doesn't work cross-origin)
-      function _copyCrawlResults(results) {
-        var crawlJson = JSON.stringify({ _milgCrawl: true, startUrl: location.href, results: results });
-        console.log('[crawl] Total crawl JSON: ' + Math.round(crawlJson.length / 1024) + ' KB');
-        window.__milgCrawlResults = results;
-        window.__milgCrawlJson = crawlJson;
-        try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) { console.warn('[milg-warn] localStorage save failed:', e.message); }
-        // Try clipboard (both methods may fail — console loses focus/gesture context)
-        function _crawlCopyFallback() {
-          var ta = document.createElement('textarea'); ta.value = crawlJson;
-          ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
-          document.body.appendChild(ta); ta.select();
-          var ok = false;
-          try { ok = document.execCommand('copy'); } catch(e) {}
-          document.body.removeChild(ta);
-          if (ok) {
-            console.log('%c\u2713 Crawl results copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-          } else {
-            console.log('%c\u26A0 Auto-copy failed. Type: copy(window.__milgCrawlJson)', 'color: #b45309; font-weight: bold;');
-            console.log('%cThen paste into the analyzer.', 'color: #3b82f6;');
-          }
-        }
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(crawlJson).then(function() {
-            console.log('%c\u2713 Crawl results copied to clipboard! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-          }).catch(_crawlCopyFallback);
-        } else {
-          _crawlCopyFallback();
-        }
-      }
-
-      if (_links.length === 0) {
-        _copyCrawlResults(_cResults);
-        console.log('%c\u2713 Crawl complete (1 page).', 'color: #16a34a; font-weight: bold;');
-      } else {
-        // Show crawl progress overlay
-        var _crawlOverlay = document.createElement('div');
-        _crawlOverlay.setAttribute('data-milg-overlay', '1');
-        _crawlOverlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,0.6);display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui,sans-serif;';
-        _crawlOverlay.innerHTML = '<div style="width:40px;height:40px;border:3px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:milg-spin 0.8s linear infinite"></div>' +
-          '<div id="milg-crawl-status" style="color:#fff;margin-top:16px;font-size:14px;font-weight:500">Crawling site...</div>' +
-          '<div id="milg-crawl-detail" style="color:rgba(255,255,255,0.6);margin-top:6px;font-size:12px">Loading extraction snippet...</div>' +
-          '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style>';
-        document.body.appendChild(_crawlOverlay);
-        function _updateCrawlOverlay(status, detail) {
-          var s = document.getElementById('milg-crawl-status'); if (s) s.textContent = status;
-          var d = document.getElementById('milg-crawl-detail'); if (d) d.textContent = detail;
-        }
-        function _removeCrawlOverlay() { if (_crawlOverlay.parentNode) _crawlOverlay.parentNode.removeChild(_crawlOverlay); }
-
-        // Build a self-contained extraction + screenshot + mask script for crawl iframes.
-        // _crawlScreenshotCallback is serialized via .toString() into the iframe —
-        // it must be fully self-contained (no closure references).
-        function _crawlScreenshotCallback(data) {
-          // The extraction engine sets __milgData before calling this callback.
-          // Clear it immediately so the parent poller doesn't grab data before
-          // the screenshot + mask pipeline completes.
-          window.__milgData = null;
-          window.__milgProgress = 'Loading screenshot library\u2026';
-          function _finalize() { window.__milgProgress = null; window.__milgData = data; }
-
-          var s = document.createElement('script');
-          s.src = 'https://cdn.jsdelivr.net/npm/modern-screenshot@4.6.8/dist/index.js';
-          s.onload = function() {
-            var ms = window.modernScreenshot;
-            if (!ms || !ms.domToCanvas) { data.screenshots = []; _finalize(); return; }
-
-            // Unlock height (sites with html,body{height:100%} clamp scrollHeight)
-            document.documentElement.style.cssText += 'height:auto !important;overflow-y:auto !important;';
-            document.body.style.cssText += 'height:auto !important;';
-            void document.body.offsetHeight;
-
-            var vh = window.innerHeight || 900;
-            var totalH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-            var captureH = Math.min(totalH, vh * 10);
-            var secScale = 1.5;
-
-            // Phase 1: Pre-scroll to trigger lazy content + IntersectionObservers
-            window.__milgProgress = 'Pre-scrolling page\u2026';
-            var positions = []; for (var p = 0; p < captureH; p += vh) positions.push(p);
-            var pi = 0;
-            function scrollNext() {
-              if (pi >= positions.length) { setTimeout(startCapture, 800); return; }
-              window.scrollTo(0, positions[pi]);
-              document.documentElement.scrollTop = positions[pi];
-              try { window.dispatchEvent(new Event('scroll')); } catch(e) {}
-              pi++; setTimeout(scrollNext, 200);
-            }
-            scrollNext();
-
-            function startCapture() {
-              // Reset scroll
-              document.documentElement.style.scrollBehavior = 'auto';
-              document.body.style.scrollBehavior = 'auto';
-              window.scrollTo(0, 0); document.documentElement.scrollTop = 0; document.body.scrollTop = 0;
-              document.querySelectorAll('*').forEach(function(el) {
-                if (el.scrollTop > 0) {
-                  var cs = getComputedStyle(el);
-                  if (cs.overflow === 'auto' || cs.overflow === 'scroll' || cs.overflowY === 'auto' || cs.overflowY === 'scroll') {
-                    el.style.scrollBehavior = 'auto'; el.scrollTop = 0;
-                  }
-                }
-              });
-
-              // Force-reveal hidden animated elements (IO disabled in offscreen iframes)
-              var revealed = 0;
-              document.querySelectorAll('*').forEach(function(el) {
-                var cs = getComputedStyle(el);
-                if (cs.opacity === '0' && el.tagName !== 'SCRIPT' && el.tagName !== 'STYLE') {
-                  var hasTrans = cs.transition && cs.transition.indexOf('opacity') !== -1;
-                  var hasAnim = cs.animationName && cs.animationName !== 'none';
-                  var cls = (el.className && typeof el.className === 'string') ? el.className.toLowerCase() : '';
-                  var isScrollAnim = hasTrans || hasAnim || /fade|reveal|animate|aos|scroll|slide|appear/.test(cls);
-                  if (isScrollAnim) {
-                    el.style.cssText += ';opacity:1 !important;transform:none !important;transition:none !important;animation:none !important;';
-                    revealed++;
-                  }
-                }
-              });
-
-              // Fast-forward remaining CSS animations
-              var ffStyle = document.createElement('style');
-              ffStyle.textContent = '*,*::before,*::after{animation-delay:0s !important;animation-duration:0.01s !important;}';
-              document.head.appendChild(ffStyle);
-              void document.body.offsetHeight;
-
-              // Switch to overflow:visible for capture
-              document.documentElement.style.cssText += 'overflow:visible !important;';
-              document.body.style.cssText += 'overflow:visible !important;';
-              void document.body.offsetHeight;
-
-              setTimeout(function() {
-                // Re-read bboxes after scroll reset + reveal
-                if (typeof window.__milgReReadBboxes === 'function') window.__milgReReadBboxes();
-
-                // Step 1: Capture screenshot
-                window.__milgProgress = 'Capturing screenshot\u2026';
-                ms.domToCanvas(document.documentElement, { scale: secScale, timeout: 45000 }).then(function(fullCanvas) {
-                  var fullUri;
-                  try { fullUri = fullCanvas.toDataURL('image/webp', 0.8); } catch(e) { fullUri = ''; }
-
-                  data.screenshots = fullUri ? [fullUri] : [];
-                  data.screenshotFull = fullUri || null;
-                  data.screenshotMeta = {
-                    scale: secScale, viewportHeight: vh,
-                    sectionCount: data.screenshots.length,
-                    canvasWidth: fullCanvas.width, canvasHeight: fullCanvas.height,
-                    docHeightAtCapture: Math.max(document.body.scrollHeight, document.documentElement.scrollHeight),
-                    docHeightAtExtraction: (data.meta && data.meta.docHeight) || 0,
-                    captureScrollY: 0, calibrationOffsetY: 0, calibrationSamples: []
-                  };
-
-                  // Step 2: Text mask capture (single-layer: all text black, all bg white)
-                  window.__milgProgress = 'Building text mask\u2026';
-                  // Kill transitions
-                  document.querySelectorAll('*').forEach(function(el) {
-                    el.style.setProperty('transition-duration', '0s', 'important');
-                    el.style.setProperty('transition', 'none', 'important');
-                  });
-                  void document.body.offsetHeight;
-
-                  // Neutralize absolute/fixed overlays
-                  document.querySelectorAll('*').forEach(function(el) {
-                    var cs = getComputedStyle(el);
-                    if (cs.position === 'absolute' || cs.position === 'fixed') {
-                      if (!el.textContent.trim()) {
-                        el.style.setProperty('display', 'none', 'important');
-                      } else if (cs.pointerEvents === 'none') {
-                        el.style.setProperty('background', 'transparent', 'important');
-                        el.style.setProperty('background-image', 'none', 'important');
-                      }
-                    }
-                  });
-                  void document.body.offsetHeight;
-
-                  // Set all backgrounds white, all text black
-                  document.querySelectorAll('*').forEach(function(el) {
-                    el.style.setProperty('background', '#fff', 'important');
-                    el.style.setProperty('background-image', 'none', 'important');
-                    el.style.setProperty('color', '#000', 'important');
-                    el.style.setProperty('text-shadow', 'none', 'important');
-                    el.style.setProperty('box-shadow', 'none', 'important');
-                    el.style.setProperty('border-color', 'transparent', 'important');
-                  });
-                  document.body.style.setProperty('background', '#fff', 'important');
-                  document.documentElement.style.setProperty('background', '#fff', 'important');
-                  void document.body.offsetHeight;
-
-                  ms.domToCanvas(document.documentElement, { scale: secScale, timeout: 30000 }).then(function(maskCanvas) {
-                    var maskUri;
-                    try { maskUri = maskCanvas.toDataURL('image/webp', 0.8); } catch(e) { maskUri = null; }
-                    data.textMask = maskUri;
-
-                    // Build per-pair mask bitmaps (bit-packed base64)
-                    var maskCtx = maskCanvas.getContext('2d', { willReadFrequently: true });
-                    var pairs = (data.colors && data.colors.contrastPairs) || [];
-                    pairs.forEach(function(pair) {
-                      if (!pair.bbox) return;
-                      var bx = Math.round(pair.bbox.left * secScale);
-                      var by = Math.round(pair.bbox.top * secScale);
-                      var bw = Math.round(pair.bbox.width * secScale);
-                      var bh = Math.round(pair.bbox.height * secScale);
-                      if (bw < 2 || bh < 2 || bx + bw > maskCanvas.width || by + bh > maskCanvas.height) return;
-                      var mData = maskCtx.getImageData(bx, by, bw, bh).data;
-                      var bmp = new Uint8Array(bw * bh);
-                      var darkCount = 0;
-                      for (var j = 0; j < mData.length; j += 4) {
-                        if ((mData[j] + mData[j+1] + mData[j+2]) / 3 < 180) { bmp[j/4] = 1; darkCount++; }
-                      }
-                      if (darkCount > 0) {
-                        var byteLen = Math.ceil(bmp.length / 8);
-                        var packed = new Uint8Array(byteLen);
-                        for (var bi = 0; bi < bmp.length; bi++) {
-                          if (bmp[bi]) packed[bi >> 3] |= (1 << (bi & 7));
-                        }
-                        var binStr = '';
-                        for (var bi2 = 0; bi2 < packed.length; bi2++) binStr += String.fromCharCode(packed[bi2]);
-                        pair._maskBmp = btoa(binStr);
-                        pair._maskPacked = true;
-                        pair._maskW = bw; pair._maskH = bh; pair._maskLayer = 1; pair._maskDark = darkCount;
-                      }
-                    });
-                    _finalize();
-                  }).catch(function() { _finalize(); });
-                }).catch(function() { data.screenshots = []; _finalize(); });
-              }, 1500);
-            }
-          };
-          s.onerror = function() {
-            // modern-screenshot unavailable — finalize without screenshots
-            data.screenshots = [];
-            _finalize();
-          };
-          document.head.appendChild(s);
-        }
-        var snippetSrc = 'window.__milgProgress = "Extracting design data\\u2026";\n' +
-          'window.MilgExtract = ' + window.MilgExtract.toString() + ';\n' +
-          'window.__milgOnExtractComplete = ' + _crawlScreenshotCallback.toString() + ';\n' +
-          'window.MilgExtract();\n';
-        (function() {
-          function _next(idx) {
-            if (idx >= _links.length) {
-              // Prepare data but show copy button (auto-copy fails in async context)
-              var crawlJson = JSON.stringify({ _milgCrawl: true, startUrl: location.href, results: _cResults });
-              window.__milgCrawlResults = _cResults;
-              window.__milgCrawlJson = crawlJson;
-              try { localStorage.setItem('milg-crawl-complete', crawlJson); } catch(e) { console.warn('[milg-warn] localStorage save failed:', e.message); }
-              console.log('%c\u2713 Crawl complete! ' + _cResults.length + ' pages (' + Math.round(crawlJson.length / 1024) + ' KB)', 'color: #16a34a; font-weight: bold; font-size: 14px;');
-              // Show copy + download buttons
-              var _crawlKB = Math.round(crawlJson.length / 1024);
-              _crawlOverlay.innerHTML = '<div style="text-align:center">' +
-                '<div style="font-size:28px;margin-bottom:12px">\u2713</div>' +
-                '<div style="color:#fff;font-size:16px;font-weight:600;margin-bottom:6px">Crawl complete! ' + _cResults.length + ' pages analyzed.</div>' +
-                '<div style="color:rgba(255,255,255,0.6);font-size:13px;margin-bottom:' + (_crawlKB > 2048 ? '6' : '20') + 'px">' + _crawlKB + ' KB of design data ready</div>' +
-                (_crawlKB > 2048 ? '<div style="color:#fbbf24;font-size:12px;margin-bottom:16px">&#9888; Large payload (' + Math.round(_crawlKB / 1024 * 10) / 10 + ' MB) \u2014 download recommended</div>' : '') +
-                (_crawlKB > 2048
-                  ? '<button id="milg-crawl-dl-btn" style="padding:12px 28px;font-size:14px;font-weight:600;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-bottom:8px;min-width:220px">Download JSON</button><br>' +
-                    '<button id="milg-crawl-copy-btn" style="padding:10px 24px;font-size:13px;font-weight:500;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.2);border-radius:8px;cursor:pointer;margin-bottom:10px;min-width:220px">Copy to Clipboard</button>'
-                  : '<button id="milg-crawl-copy-btn" style="padding:12px 28px;font-size:14px;font-weight:600;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-bottom:8px;min-width:220px">Copy to Clipboard</button><br>' +
-                    '<button id="milg-crawl-dl-btn" style="padding:10px 24px;font-size:13px;font-weight:500;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.2);border-radius:8px;cursor:pointer;margin-bottom:10px;min-width:220px">Download JSON</button>') +
-                '<div style="color:rgba(255,255,255,0.5);font-size:11px;margin-top:8px">Then ' + (_crawlKB > 2048 ? 'import' : 'paste') + ' into the analyzer</div>' +
-                '</div>';
-              function _crawlDoneAction() {
-                // Close overlay and reload page to restore styles corrupted by mask capture
-                setTimeout(function() {
-                  _removeCrawlOverlay();
-                  console.log('%c\u21BB Reloading page in 8s to restore styles...', 'color: #64748b;');
-                  setTimeout(function() { location.reload(); }, 8000);
-                }, 2000);
-              }
-              document.getElementById('milg-crawl-copy-btn').addEventListener('click', function() {
-                var btn = document.getElementById('milg-crawl-copy-btn');
-                navigator.clipboard.writeText(crawlJson).then(function() {
-                  btn.textContent = 'Copied!'; btn.style.background = '#16a34a';
-                  _crawlDoneAction();
-                }).catch(function() {
-                  var ta = document.createElement('textarea'); ta.value = crawlJson;
-                  ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
-                  document.body.appendChild(ta); ta.select();
-                  try { document.execCommand('copy'); } catch(e) {}
-                  document.body.removeChild(ta);
-                  btn.textContent = 'Copied!'; btn.style.background = '#16a34a';
-                  _crawlDoneAction();
-                });
-              });
-              document.getElementById('milg-crawl-dl-btn').addEventListener('click', function() {
-                downloadFile(crawlJson, 'milg-crawl-' + location.hostname.replace(/[^a-z0-9]/gi, '-') + '.json');
-                var btn = document.getElementById('milg-crawl-dl-btn');
-                btn.textContent = 'Downloaded!'; btn.style.background = '#16a34a'; btn.style.color = '#fff';
-                _crawlDoneAction();
-              });
-              return;
-            }
-            var url = _links[idx];
-            var path; try { path = new URL(url).pathname; } catch(e) { path = url; }
-            _updateCrawlOverlay('Crawling page ' + (idx + 1) + ' of ' + _links.length + ' (with screenshots)', path);
-            console.log('%c\u2192 [' + (idx+1) + '/' + _links.length + '] ' + path, 'color: #3b82f6;');
-
-            // Fetch page HTML (same-origin — we're on the site) then load as srcdoc
-            fetch(url).then(function(r) {
-              if (!r.ok) throw new Error('HTTP ' + r.status);
-              return r.text();
-            }).then(function(html) {
-              // Srcdoc environment patches — same as analyzer's "Try with JS" mode:
-              // URL constructor, History API, fetch for relative URLs
-              var eu = url.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-              var envPatch = '<script>(function(){' +
-                'var _rb="' + eu + '";var _O=URL;' +
-                'function _P(u,b){if(b){var bs=typeof b==="string"?b:String(b);if(bs==="about:srcdoc"||bs==="about:blank"||bs==="null"||bs.indexOf("about:")===0)b=_rb;}' +
-                'if(!b&&typeof u==="string"&&u.charAt(0)==="/")return new _O(u,_rb);try{return (arguments.length===1||!b)?new _O(u):new _O(u,b);}catch(e){try{return new _O(u,_rb);}catch(e2){throw e;}}}' +
-                '_P.prototype=_O.prototype;_P.createObjectURL=_O.createObjectURL.bind(_O);_P.revokeObjectURL=_O.revokeObjectURL.bind(_O);if(_O.canParse)_P.canParse=_O.canParse.bind(_O);window.URL=_P;' +
-                'var _hps=history.pushState.bind(history);var _hrs=history.replaceState.bind(history);' +
-                'history.pushState=function(s,t,u){try{_hps(s,t,u);}catch(e){}};history.replaceState=function(s,t,u){try{_hrs(s,t,u);}catch(e){}};' +
-                'var _of=window.fetch;window.fetch=function(u,o){if(typeof u==="string"&&u.charAt(0)==="/")u=_rb.replace(/\\/$/,"")+u;return _of.call(this,u,o);};' +
-                '})();</' + 'script>';
-              var baseTag = '<base href="' + url + '">';
-              var headPatch = envPatch + baseTag;
-              html = html.replace(/<meta[^>]*http-equiv=["']?X-Frame-Options["']?[^>]*>/gi, '');
-              // Inject BEFORE the first <script> tag so patches run before any framework JS
-              // (Next.js puts inline scripts immediately after <head>)
-              if (/<script[\s>]/i.test(html)) {
-                html = html.replace(/<script[\s>]/i, headPatch + '<script ');
-              } else if (/<head[\s>]/i.test(html)) {
-                html = html.replace(/<head([^>]*)>/i, '<head$1>' + headPatch);
-              } else {
-                html = headPatch + html;
-              }
-
-              var iframe = document.createElement('iframe');
-              iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
-              iframe.sandbox = 'allow-scripts allow-same-origin allow-forms';
-              document.body.appendChild(iframe);
-              var done = false;
-              function cleanup() { if (iframe.parentNode) document.body.removeChild(iframe); }
-
-              iframe.addEventListener('load', function() {
-                if (done) return;
-                setTimeout(function() {
-                  if (done) return;
-                  try {
-                    var iWin = iframe.contentWindow;
-                    var iDoc = iframe.contentDocument || iWin.document;
-                    var script = iDoc.createElement('script');
-                    script.textContent = 'window.__milgCrawlSite=false;\n' + snippetSrc;
-                    iDoc.body.appendChild(script);
-                    var polls = 0;
-                    var pi = setInterval(function() {
-                      if (done) { clearInterval(pi); return; }
-                      polls++;
-                      try {
-                        // Show progress from inside the iframe (extraction → screenshot → mask phases)
-                        var prog = iWin.__milgProgress;
-                        if (prog) _updateCrawlOverlay('Page ' + (idx + 1) + '/' + _links.length + ': ' + prog, path);
-                        var d = iWin.__milgData;
-                        if (d) { clearInterval(pi); done = true; d.meta.url = url; _cResults.push({ url: url, data: d }); cleanup(); var hasShots = d.screenshots && d.screenshots.length > 0; console.log('%c  \u2713 ' + path + (hasShots ? ' (with screenshots)' : ''), 'color: #16a34a;'); setTimeout(function() { _next(idx + 1); }, 500); }
-                        else if (polls > 80) { clearInterval(pi); done = true; cleanup(); console.log('%c  \u2717 Timeout: ' + path, 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }
-                      } catch(e) { clearInterval(pi); done = true; cleanup(); console.log('%c  \u2717 Error: ' + path + ' (' + e.message + ')', 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }
-                    }, 500);
-                  } catch(e) { done = true; cleanup(); console.log('%c  \u2717 Cannot inject snippet: ' + path + ' (' + e.message + ')', 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }
-                }, 1500);
-              });
-              iframe.srcdoc = html;
-              setTimeout(function() { if (done) return; done = true; cleanup(); console.log('%c  \u2717 Timeout (45s): ' + path, 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }, 45000);
-            }).catch(function(e) {
-              console.log('%c  \u2717 Fetch failed: ' + path + ' (' + (e.message || e) + ')', 'color: #dc2626;');
-              setTimeout(function() { _next(idx + 1); }, 500);
-            });
-          }
-          _next(0);
-        })();
-      }
-      return; // Skip clipboard copy
-    }
-  }
-
-    }; // end __milgOnExtractComplete callback
-
-    // Run the extraction
-    window.MilgExtract();
-  }
 })();
 </file>
 

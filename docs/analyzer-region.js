@@ -290,10 +290,26 @@ window.MilgRegion = (function() {
               } catch (_e2) {}
               var _cPad = 20;
               var _doCrop = _cTop < 1e9 && _cBot > _cTop + 10 && (_cBot - _cTop + _cPad * 2) < cH * 0.8;
+              // Compute crop offset from EXTRACTION bboxes, not DOM content bounds.
+              // The extraction runs before the iframe resize, so its bbox coordinates
+              // differ from post-resize DOM positions. The viewer maps extraction bboxes
+              // via (bbox * scale - cropOffset), so cropOffset must match extraction coords.
+              var _exTop = 1e9, _exLeft = 1e9;
+              if (_doCrop && extractedData && extractedData.colors) {
+                (extractedData.colors.contrastPairs || []).forEach(function(cp) {
+                  if (cp.bbox) {
+                    if (cp.bbox.top < _exTop) _exTop = cp.bbox.top;
+                    if (cp.bbox.left < _exLeft) _exLeft = cp.bbox.left;
+                  }
+                });
+              }
               if (_doCrop) {
                 console.log('[milg-region] Content bounds: ' + Math.round(_cLeft) + ',' + Math.round(_cTop) + ' → ' + Math.round(_cRight) + ',' + Math.round(_cBot) + ' (doc: ' + cW + 'x' + cH + ')');
-                _cropOX = Math.round(Math.max(0, _cLeft - _cPad) * _sc);
-                _cropOY = Math.round(Math.max(0, _cTop - _cPad) * _sc);
+                // Use extraction bbox origin for crop offset (aligns with viewer coordinate mapping)
+                var _exPadX = _exLeft < 1e9 ? Math.max(0, _exLeft - _cPad) : Math.max(0, _cLeft - _cPad);
+                var _exPadY = _exTop < 1e9 ? Math.max(0, _exTop - _cPad) : Math.max(0, _cTop - _cPad);
+                _cropOX = Math.round(_exPadX * _sc);
+                _cropOY = Math.round(_exPadY * _sc);
               }
 
               var pms = window.modernScreenshot;
