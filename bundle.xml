@@ -23775,15 +23775,15 @@ An iframe which has both allow-scripts and allow-same-origin for its sandbox att
 [iframe-ss] scrollHeight=4458 vh=900
 [iframe-ss] Preloading 6 cross-origin images via proxy
 Failed to load resource: the server responded with a status of 403 ()
-[iframe-ss] Image preload failed: https://www.fink-translate.com/assets/fink-canvas.png 403
-Failed to load resource: the server responded with a status of 403 ()
 [iframe-ss] Image preload failed: https://www.fink-translate.com/assets/fink-logo.png 403
+Failed to load resource: the server responded with a status of 403 ()
+[iframe-ss] Image preload failed: https://www.fink-translate.com/assets/fink-canvas.png 403
 Failed to load resource: the server responded with a status of 403 ()
 [iframe-ss] Image preload failed: https://www.fink-translate.com/assets/fink-back-translation.png 403
 Failed to load resource: the server responded with a status of 403 ()
-[iframe-ss] Image preload failed: https://www.fink-translate.com/assets/fink-canvas.webp 403
-Failed to load resource: the server responded with a status of 403 ()
 [iframe-ss] Image preload failed: https://www.fink-translate.com/assets/fink-logo.webp 403
+Failed to load resource: the server responded with a status of 403 ()
+[iframe-ss] Image preload failed: https://www.fink-translate.com/assets/fink-canvas.webp 403
 Failed to load resource: the server responded with a status of 403 ()
 [iframe-ss] Image preload failed: https://www.fink-translate.com/assets/fink-back-translation.webp 403
 [iframe-ss] Capturing clean screenshot at 1.5x...
@@ -23792,8 +23792,8 @@ Failed to load resource: the server responded with a status of 403 ()
 Failed to load resource: the server responded with a status of 403 ()
 [iframe-ss] Clean screenshot: 1920x6687
 [milg-region] Found 1 clipping regions
-Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently
-[milg-region] Cropped canvas 17412 → 2541px (top=14871)
+[milg-region] Content bounds: 14,9932 → 1036,10431 (doc: 1618x50934)
+[milg-region] Cropped 2427x15576 → 1593x708
 [milg-region] Region screenshots done: 1/1
 [iframe-ss] Expanded 1 overflow:hidden containers with transformed descendants
 [iframe-ss] Re-read bboxes after expansion: 587/587
@@ -23827,7 +23827,7 @@ Canvas2D: Multiple readback operations using getImageData are faster with the wi
 [iframe-ss] Layer 2: 1 elements used fillText fallback mask
 [iframe-ss] All 2 mask layers done
 [iframe-ss] Sending results (maskResults: 88 pairs)
-[iframe-ss] postMessage: ss=559KB ud=626KB masks=88/116
+[iframe-ss] postMessage: ss=558KB ud=626KB masks=88/116
 Failed to load resource: the server responded with a status of 403 ()
 Failed to load resource: the server responded with a status of 403 ()
 Failed to load resource: the server responded with a status of 403 ()
@@ -23840,11 +23840,13 @@ Failed to load resource: the server responded with a status of 403 ()
     {
       "index": 0,
       "hasScreenshot": true,
-      "screenshotLen": 149207,
+      "screenshotLen": 73103,
       "screenshotMeta": {
         "scale": 1.5,
-        "canvasWidth": 2427,
-        "canvasHeight": 2541
+        "canvasWidth": 1593,
+        "canvasHeight": 708,
+        "cropOffsetX": 0,
+        "cropOffsetY": 14868
       },
       "pairIndices": [
         65,
@@ -24487,7 +24489,7 @@ Failed to load resource: the server responded with a status of 403 ()
 
 <file path="test-results/region-debug/svg-state.json">
 {
-  "totalRects": 276,
+  "totalRects": 264,
   "regionIndicatorCount": 1,
   "regionIndicators": [
     {
@@ -31772,389 +31774,6 @@ window.MilgExtract = (function() {
 })();
 </file>
 
-<file path="docs/analyzer-region.js">
-// make-it-look-good — Region Screenshot Module
-// Shared logic for detecting overflow:hidden containers with hidden content,
-// creating mini-page iframes, force-revealing content, and capturing screenshots.
-// Used by analyzer-iframe.js (URL analysis) and the console snippet (assembled at runtime).
-//
-// Exposes window.MilgRegion
-
-window.MilgRegion = (function() {
-  "use strict";
-
-  // --- Force-reveal CSS ---
-  // Injected into mini-page <style> to override CSS class rules that hide carousel slides.
-  // High specificity needed because original stylesheets are included in the mini-page.
-  var FORCE_REVEAL_CSS =
-    '*,*::before,*::after{transition:none !important;animation:none !important;}' +
-    'body *{visibility:visible !important;opacity:1 !important;' +
-    'transform:none !important;overflow:visible !important;' +
-    'clip-path:none !important;max-height:none !important;}' +
-    '[aria-hidden="true"],[hidden],.hidden,.d-none,.hide,' +
-    '.carousel-item,.swiper-slide,.slick-slide,' +
-    '[class*="slide"],[class*="panel"],[class*="tab-pane"]{' +
-    'display:block !important;visibility:visible !important;' +
-    'opacity:1 !important;position:relative !important;' +
-    'transform:none !important;left:auto !important;right:auto !important;}';
-
-  // --- Force-reveal script ---
-  // Runs inside the mini-page on DOMContentLoaded. Catches computed display:none
-  // from CSS classes that the static CSS above can't target generically.
-  var FORCE_REVEAL_SCRIPT =
-    'document.addEventListener("DOMContentLoaded",function(){' +
-    'document.querySelectorAll("*").forEach(function(el){' +
-    'var cs=getComputedStyle(el);' +
-    'if(cs.display==="none")el.style.setProperty("display","block","important");' +
-    'if(cs.visibility==="hidden")el.style.setProperty("visibility","visible","important");' +
-    'if(parseFloat(cs.opacity)<0.1)el.style.setProperty("opacity","1","important");' +
-    'if(cs.position==="absolute"||cs.position==="fixed")el.style.setProperty("position","relative","important");' +
-    '});' +
-    '});';
-
-  // --- DOM cleanup ---
-  // Runs from parent context after mini-page loads. Resets height constraints and
-  // removes spacer elements that cause massive whitespace in the region screenshot.
-  function cleanupMiniPageDom(mDoc) {
-    try {
-      var dv = mDoc.defaultView;
-      // Force-reveal pass (redundant with script, but covers sandbox/CSP failures)
-      mDoc.querySelectorAll('*').forEach(function(el) {
-        var cs = dv.getComputedStyle(el);
-        if (cs.display === 'none') el.style.setProperty('display', 'block', 'important');
-        if (cs.visibility === 'hidden') el.style.setProperty('visibility', 'visible', 'important');
-        if (parseFloat(cs.opacity) < 0.1) el.style.setProperty('opacity', '1', 'important');
-        if (cs.position === 'absolute' || cs.position === 'fixed') el.style.setProperty('position', 'relative', 'important');
-      });
-      // Layout cleanup: convert horizontal layouts to vertical stacking.
-      // Height reset on container + direct children only (deeper reset causes inflation).
-      // Flex/grid → column on ALL descendants (carousel tracks are often grandchildren).
-      var container = mDoc.body.firstElementChild;
-      if (container) {
-        container.style.setProperty('height', 'auto', 'important');
-        container.style.setProperty('max-height', 'none', 'important');
-        container.style.setProperty('min-height', '0', 'important');
-        container.style.setProperty('overflow', 'visible', 'important');
-        // Height reset on direct children only
-        for (var ci = 0; ci < container.children.length; ci++) {
-          var child = container.children[ci];
-          child.style.setProperty('height', 'auto', 'important');
-          child.style.setProperty('max-height', 'none', 'important');
-          child.style.setProperty('min-height', '0', 'important');
-          child.style.setProperty('position', 'relative', 'important');
-        }
-        // Flex/grid → column on ALL descendants (catches nested carousel tracks)
-        container.querySelectorAll('*').forEach(function(desc) {
-          var dcs = dv.getComputedStyle(desc);
-          if (dcs.display.indexOf('flex') !== -1) {
-            desc.style.setProperty('flex-direction', 'column', 'important');
-            desc.style.setProperty('gap', '0', 'important');
-            desc.style.setProperty('flex-wrap', 'nowrap', 'important');
-          }
-          if (dcs.display.indexOf('grid') !== -1) {
-            desc.style.setProperty('grid-template-columns', '1fr', 'important');
-            desc.style.setProperty('gap', '0', 'important');
-          }
-        });
-      }
-    } catch (_e) {
-      console.warn('[milg-region] DOM cleanup failed:', _e.message);
-    }
-  }
-
-  // --- Build mini-page HTML ---
-  // Assembles HTML for the mini-page iframe with force-reveal CSS/JS and optional extraction.
-  function buildMiniPageHtml(cloneOuterHtml, baseHref, allLinks, allStyles, opts) {
-    opts = opts || {};
-    var scripts = '<script>' + FORCE_REVEAL_SCRIPT + '</' + 'script>';
-    // Optional: inject extraction engine to run after force-reveal
-    if (opts.extractFnSrc) {
-      scripts += '<script>setTimeout(function(){try{(' + opts.extractFnSrc + ')()}catch(e){console.warn("[milg-region] Extraction failed:",e.message)}},100);</' + 'script>';
-    }
-    return '<!DOCTYPE html><html><head><meta charset=UTF-8>' +
-      (baseHref ? '<base href="' + baseHref.replace(/"/g, '&quot;') + '">' : '') +
-      allLinks + allStyles +
-      '<style>' + FORCE_REVEAL_CSS + '</style>' +
-      scripts +
-      '</head><body style="margin:0;padding:0;overflow:visible">' + cloneOuterHtml + '</body></html>';
-  }
-
-  // --- Build region clone ---
-  // Deep-clones the container element and applies inline style overrides.
-  function buildRegionClone(container, containerRect) {
-    var clone = container.cloneNode(true);
-    clone.style.cssText += ';overflow:visible !important;max-height:none !important;height:auto !important;clip-path:none !important;width:' + Math.round(containerRect.width) + 'px !important;';
-    return clone;
-  }
-
-  // --- Detect clipped pairs ---
-  // Marks contrast pairs as _isClipped if their element bbox is outside an overflow:hidden ancestor.
-  // Returns as a string for injection into iframe scripts.
-  function getClipDetectionScript() {
-    return 'if(window.__milgBboxRefs&&window.__milgData&&window.__milgData.colors){' +
-      'var _cp=window.__milgData.colors.contrastPairs||[];' +
-      'window.__milgBboxRefs.forEach(function(ref){' +
-        'if(!ref.el||!ref.obj||ref.key!=="bbox")return;' +
-        'var el=ref.el;var pair=ref.obj;' +
-        'var er=el.getBoundingClientRect();' +
-        'var anc=el.parentElement;' +
-        'while(anc&&anc!==document.documentElement){' +
-          'var as=getComputedStyle(anc);' +
-          'var aov=as.overflow||"";var aovx=as.overflowX||"";var aovy=as.overflowY||"";' +
-          'if(aov==="hidden"||aov==="clip"||aovx==="hidden"||aovx==="clip"||aovy==="hidden"||aovy==="clip"){' +
-            'var ar=anc.getBoundingClientRect();' +
-            'if(er.right<ar.left+1||er.left>ar.right-1||er.bottom<ar.top+1||er.top>ar.bottom-1){' +
-              'pair._isClipped=true;break' +
-            '}' +
-          '}' +
-          'anc=anc.parentElement' +
-        '}' +
-      '})' +
-    '}';
-  }
-
-  // --- Serializable region screenshot function ---
-  // This function is serialized via .toString() and injected into the analysis iframe.
-  // It MUST be self-contained — no references to outer scope variables.
-  // Parameters are bound at serialization time by the caller.
-  function _regionScreenshotFn(_sc, _quality, _prog, _cp2) {
-    return function _buildRegionScreenshots(rgnCb) {
-      // Detect clipping containers from tracked bbox refs
-      var _rgnCounter = 0, _clipContainerList = [], _clipContainers = {};
-      if (window.__milgBboxRefs) {
-        window.__milgBboxRefs.forEach(function(ref) {
-          if (!ref.el || !ref.obj || ref.key !== 'bbox' || !ref.obj._isClipped) return;
-          var clipAnc = null, anc = ref.el.parentElement;
-          while (anc && anc !== document.documentElement) {
-            var as = getComputedStyle(anc);
-            var aov = as.overflow || '', aovx = as.overflowX || '', aovy = as.overflowY || '';
-            if (aov === 'hidden' || aov === 'clip' || aovx === 'hidden' || aovx === 'clip' || aovy === 'hidden' || aovy === 'clip') {
-              var ar = anc.getBoundingClientRect();
-              if (ar.width >= 100 && ar.height >= 30) clipAnc = anc;
-            }
-            anc = anc.parentElement;
-          }
-          if (!clipAnc) return;
-          var cid = clipAnc._milgRegionId;
-          if (!cid) {
-            cid = 'rgn-' + (++_rgnCounter); clipAnc._milgRegionId = cid;
-            _clipContainerList.push({ el: clipAnc, id: cid, pairIndices: [] });
-            _clipContainers[cid] = _clipContainerList[_clipContainerList.length - 1];
-          }
-          var pi = _cp2.indexOf(ref.obj);
-          if (pi >= 0 && _clipContainers[cid].pairIndices.indexOf(pi) < 0)
-            _clipContainers[cid].pairIndices.push(pi);
-        });
-      }
-      _clipContainerList.sort(function(a, b) {
-        var ar = a.el.getBoundingClientRect(), br = b.el.getBoundingClientRect();
-        return (br.width * br.height) - (ar.width * ar.height);
-      });
-      _clipContainerList = _clipContainerList.slice(0, 5);
-      console.log('[milg-region] Found ' + _clipContainerList.length + ' clipping regions');
-      if (_clipContainerList.length === 0) { rgnCb([]); return; }
-
-      var _rgnResults = [], _rgnDone = 0, _rgnTotal = _clipContainerList.length;
-      var _rgnOverall = setTimeout(function() {
-        console.warn('[milg-region] Overall timeout (30s)');
-        rgnCb(_rgnResults);
-      }, 30000);
-
-      // Collect styles for mini-pages
-      var allStyles = ''; document.querySelectorAll('style').forEach(function(s) { allStyles += s.outerHTML; });
-      var allLinks = ''; document.querySelectorAll('link[rel=stylesheet]').forEach(function(l) { allLinks += l.outerHTML; });
-      var baseHref = (document.querySelector('base') || {}).href || '';
-
-      // Force-reveal CSS (inlined — can't reference MilgRegion from inside serialized fn)
-      var _revealCss =
-        '*,*::before,*::after{transition:none !important;animation:none !important;}' +
-        'body *{visibility:visible !important;opacity:1 !important;transform:none !important;overflow:visible !important;clip-path:none !important;max-height:none !important;}' +
-        '[aria-hidden="true"],[hidden],.hidden,.d-none,.hide,.carousel-item,.swiper-slide,.slick-slide,' +
-        '[class*="slide"],[class*="panel"],[class*="tab-pane"]{display:block !important;visibility:visible !important;opacity:1 !important;position:relative !important;transform:none !important;left:auto !important;right:auto !important;}';
-
-      var _revealScript =
-        '<script>document.addEventListener("DOMContentLoaded",function(){' +
-        'document.querySelectorAll("*").forEach(function(el){var cs=getComputedStyle(el);' +
-        'if(cs.display==="none")el.style.setProperty("display","block","important");' +
-        'if(cs.visibility==="hidden")el.style.setProperty("visibility","visible","important");' +
-        'if(parseFloat(cs.opacity)<0.1)el.style.setProperty("opacity","1","important");' +
-        'if(cs.position==="absolute"||cs.position==="fixed")el.style.setProperty("position","relative","important");' +
-        '});});</' + 'script>';
-
-      // Optional extraction: inject MilgExtract if available
-      var _extractScript = '';
-      if (typeof window.MilgExtract === 'function') {
-        _extractScript = '<script>setTimeout(function(){try{(' + window.MilgExtract.toString() + ')()}catch(e){console.warn("[milg-region] Extraction failed:",e)}},100);</' + 'script>';
-      }
-
-      _prog('Capturing ' + _rgnTotal + ' region screenshots...');
-
-      _clipContainerList.forEach(function(rgn, rIdx) {
-        var container = rgn.el, cr = container.getBoundingClientRect();
-        var clone = container.cloneNode(true);
-        clone.style.cssText += ';overflow:visible !important;max-height:none !important;height:auto !important;clip-path:none !important;width:' + Math.round(cr.width) + 'px !important;';
-
-        var miniHtml = '<!DOCTYPE html><html><head><meta charset=UTF-8>' +
-          (baseHref ? '<base href="' + baseHref.replace(/"/g, '&quot;') + '">' : '') +
-          allLinks + allStyles +
-          '<style>' + _revealCss + '</style>' + _revealScript + _extractScript +
-          '</head><body style="margin:0;padding:0;overflow:visible">' + clone.outerHTML + '</body></html>';
-
-        var iframeW = Math.max(Math.round(cr.width), 320);
-        var mf = document.createElement('iframe');
-        mf.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + iframeW + 'px;height:3000px;border:none;visibility:hidden;';
-        mf.setAttribute('sandbox', 'allow-same-origin allow-scripts');
-        document.body.appendChild(mf);
-
-        var rgnTimer = setTimeout(function() {
-          console.warn('[milg-region] Region ' + rIdx + ' timed out');
-          _rgnFinish(rIdx, mf, null);
-        }, 15000);
-
-        mf.srcdoc = miniHtml;
-        mf.addEventListener('load', function() {
-          setTimeout(function() {
-            try {
-              var mDoc = mf.contentDocument;
-              if (!mDoc) { _rgnFinish(rIdx, mf, null); return; }
-
-              // DOM cleanup: force-reveal + targeted height reset on container/children only
-              try {
-                var dv = mDoc.defaultView;
-                mDoc.querySelectorAll('*').forEach(function(el) {
-                  var cs = dv.getComputedStyle(el);
-                  if (cs.display === 'none') el.style.setProperty('display', 'block', 'important');
-                  if (cs.visibility === 'hidden') el.style.setProperty('visibility', 'visible', 'important');
-                  if (parseFloat(cs.opacity) < 0.1) el.style.setProperty('opacity', '1', 'important');
-                  if (cs.position === 'absolute' || cs.position === 'fixed') el.style.setProperty('position', 'relative', 'important');
-                });
-                var _cont = mDoc.body.firstElementChild;
-                if (_cont) {
-                  _cont.style.setProperty('height', 'auto', 'important');
-                  _cont.style.setProperty('max-height', 'none', 'important');
-                  _cont.style.setProperty('overflow', 'visible', 'important');
-                  for (var _ci = 0; _ci < _cont.children.length; _ci++) {
-                    var _ch = _cont.children[_ci];
-                    _ch.style.setProperty('height', 'auto', 'important');
-                    _ch.style.setProperty('max-height', 'none', 'important');
-                    _ch.style.setProperty('position', 'relative', 'important');
-                  }
-                  _cont.querySelectorAll('*').forEach(function(_desc) {
-                    var _dcs = dv.getComputedStyle(_desc);
-                    if (_dcs.display.indexOf('flex') !== -1) {
-                      _desc.style.setProperty('flex-direction', 'column', 'important');
-                      _desc.style.setProperty('gap', '0', 'important');
-                      _desc.style.setProperty('flex-wrap', 'nowrap', 'important');
-                    }
-                    if (_dcs.display.indexOf('grid') !== -1) {
-                      _desc.style.setProperty('grid-template-columns', '1fr', 'important');
-                      _desc.style.setProperty('gap', '0', 'important');
-                    }
-                  });
-                }
-              } catch (_e) {}
-
-              void mDoc.body.offsetHeight; // reflow
-
-              // Harvest extraction data if available
-              var extractedData = null;
-              try { extractedData = mf.contentWindow.__milgData || null; } catch (_e) {}
-
-              var cW = Math.max(mDoc.body.scrollWidth, mDoc.documentElement.scrollWidth);
-              var cH = Math.max(mDoc.body.scrollHeight, mDoc.documentElement.scrollHeight);
-              mf.style.width = Math.max(cW, iframeW) + 'px'; mf.style.height = cH + 'px';
-              void mDoc.body.offsetHeight;
-
-              var pms = window.modernScreenshot;
-              if (!pms || !pms.domToCanvas) { _rgnFinish(rIdx, mf, null); return; }
-              pms.domToCanvas(mDoc.documentElement, { scale: _sc, timeout: 12000 }).then(function(rc) {
-                // Crop whitespace from region screenshot
-                var finalCanvas = rc;
-                try {
-                  var _ctx = rc.getContext('2d'), _w = rc.width, _h = rc.height;
-                  if (_w > 0 && _h > 200) {
-                    var _ss = Math.max(1, Math.floor(_w / 30)), _ck = 200;
-                    var _ft = -1, _fb = -1;
-                    // Scan from top for first non-empty row
-                    for (var _y0 = 0; _y0 < _h && _ft < 0; _y0 += _ck) {
-                      var _ch2 = Math.min(_ck, _h - _y0);
-                      var _pd = _ctx.getImageData(0, _y0, _w, _ch2).data;
-                      for (var _r = 0; _r < _ch2 && _ft < 0; _r++) {
-                        for (var _x = 0; _x < _w; _x += _ss) {
-                          var _pi = (_r * _w + _x) * 4;
-                          if (_pd[_pi + 3] > 10 && (_pd[_pi] < 248 || _pd[_pi + 1] < 248 || _pd[_pi + 2] < 248)) {
-                            _ft = _y0 + _r; break;
-                          }
-                        }
-                      }
-                    }
-                    // Scan from bottom for last non-empty row
-                    for (var _y0 = Math.floor((_h - 1) / _ck) * _ck; _y0 >= 0 && _fb < 0; _y0 -= _ck) {
-                      var _ch2 = Math.min(_ck, _h - _y0);
-                      var _pd = _ctx.getImageData(0, _y0, _w, _ch2).data;
-                      for (var _r = _ch2 - 1; _r >= 0 && _fb < 0; _r--) {
-                        for (var _x = 0; _x < _w; _x += _ss) {
-                          var _pi = (_r * _w + _x) * 4;
-                          if (_pd[_pi + 3] > 10 && (_pd[_pi] < 248 || _pd[_pi + 1] < 248 || _pd[_pi + 2] < 248)) {
-                            _fb = _y0 + _r; break;
-                          }
-                        }
-                      }
-                    }
-                    if (_ft >= 0 && _fb > _ft) {
-                      var _ct = Math.max(0, _ft - 20);
-                      var _cb = Math.min(_h, _fb + 20);
-                      var _cch = _cb - _ct;
-                      if (_cch < _h * 0.85) {
-                        finalCanvas = document.createElement('canvas');
-                        finalCanvas.width = _w; finalCanvas.height = _cch;
-                        finalCanvas.getContext('2d').drawImage(rc, 0, _ct, _w, _cch, 0, 0, _w, _cch);
-                        console.log('[milg-region] Cropped canvas ' + _h + ' → ' + _cch + 'px (top=' + _ct + ')');
-                      }
-                    }
-                  }
-                } catch (_ce) { console.warn('[milg-region] Canvas crop failed:', _ce.message); finalCanvas = rc; }
-                var rUri; try { rUri = finalCanvas.toDataURL('image/webp', _quality); } catch (e) { rUri = ''; }
-                clearTimeout(rgnTimer);
-                _rgnFinish(rIdx, mf, {
-                  screenshot: rUri,
-                  screenshotMeta: { scale: _sc, canvasWidth: finalCanvas.width, canvasHeight: finalCanvas.height },
-                  pairIndices: rgn.pairIndices,
-                  containerRect: { left: Math.round(cr.left), top: Math.round(cr.top), width: Math.round(cr.width), height: Math.round(cr.height) },
-                  extractedData: extractedData
-                });
-              }).catch(function(e) { clearTimeout(rgnTimer); _rgnFinish(rIdx, mf, null); });
-            } catch (e) { clearTimeout(rgnTimer); _rgnFinish(rIdx, mf, null); }
-          }, 800); // 800ms: allow DOMContentLoaded + extraction to complete
-        });
-      });
-
-      function _rgnFinish(idx, mf, result) {
-        if (result) _rgnResults.push(result);
-        try { if (mf && mf.parentNode) mf.parentNode.removeChild(mf); } catch (e) {}
-        _rgnDone++;
-        if (_rgnDone >= _rgnTotal) {
-          clearTimeout(_rgnOverall);
-          console.log('[milg-region] Region screenshots done: ' + _rgnResults.length + '/' + _rgnTotal);
-          rgnCb(_rgnResults);
-        }
-      }
-    };
-  }
-
-  return {
-    FORCE_REVEAL_CSS: FORCE_REVEAL_CSS,
-    FORCE_REVEAL_SCRIPT: FORCE_REVEAL_SCRIPT,
-    cleanupMiniPageDom: cleanupMiniPageDom,
-    buildMiniPageHtml: buildMiniPageHtml,
-    buildRegionClone: buildRegionClone,
-    getClipDetectionScript: getClipDetectionScript,
-    // The serializable function — use: MilgRegion.getRegionFn().toString()
-    getRegionFn: function() { return _regionScreenshotFn; }
-  };
-})();
-</file>
-
 <file path="docs/analyzer.css">
 /* Analyzer — inherits vars from style.css */
 
@@ -33884,6 +33503,365 @@ test.describe('Region Screenshot Debug', () => {
     expect(reportDump.hasCleanScreenshot).toBe(true);
   });
 });
+</file>
+
+<file path="docs/analyzer-region.js">
+// make-it-look-good — Region Screenshot Module
+// Shared logic for detecting overflow:hidden containers with hidden content,
+// creating mini-page iframes, force-revealing content, and capturing screenshots.
+// Used by analyzer-iframe.js (URL analysis) and the console snippet (assembled at runtime).
+//
+// Exposes window.MilgRegion
+
+window.MilgRegion = (function() {
+  "use strict";
+
+  // --- Force-reveal CSS ---
+  // Injected into mini-page <style> to override CSS class rules that hide carousel slides.
+  // High specificity needed because original stylesheets are included in the mini-page.
+  var FORCE_REVEAL_CSS =
+    '*,*::before,*::after{transition:none !important;animation:none !important;}' +
+    'body *{visibility:visible !important;opacity:1 !important;' +
+    'transform:none !important;overflow:visible !important;' +
+    'clip-path:none !important;max-height:none !important;}' +
+    '[aria-hidden="true"],[hidden],.hidden,.d-none,.hide,' +
+    '.carousel-item,.swiper-slide,.slick-slide,' +
+    '[class*="slide"],[class*="panel"],[class*="tab-pane"]{' +
+    'display:block !important;visibility:visible !important;' +
+    'opacity:1 !important;position:relative !important;' +
+    'transform:none !important;left:auto !important;right:auto !important;}';
+
+  // --- Force-reveal script ---
+  // Runs inside the mini-page on DOMContentLoaded. Catches computed display:none
+  // from CSS classes that the static CSS above can't target generically.
+  var FORCE_REVEAL_SCRIPT =
+    'document.addEventListener("DOMContentLoaded",function(){' +
+    'document.querySelectorAll("*").forEach(function(el){' +
+    'var cs=getComputedStyle(el);' +
+    'if(cs.display==="none")el.style.setProperty("display","block","important");' +
+    'if(cs.visibility==="hidden")el.style.setProperty("visibility","visible","important");' +
+    'if(parseFloat(cs.opacity)<0.1)el.style.setProperty("opacity","1","important");' +
+    'if(cs.position==="absolute"||cs.position==="fixed")el.style.setProperty("position","relative","important");' +
+    '});' +
+    '});';
+
+  // --- DOM cleanup ---
+  // Runs from parent context after mini-page loads. Resets height constraints and
+  // removes spacer elements that cause massive whitespace in the region screenshot.
+  function cleanupMiniPageDom(mDoc) {
+    try {
+      var dv = mDoc.defaultView;
+      // Force-reveal pass (redundant with script, but covers sandbox/CSP failures)
+      mDoc.querySelectorAll('*').forEach(function(el) {
+        var cs = dv.getComputedStyle(el);
+        if (cs.display === 'none') el.style.setProperty('display', 'block', 'important');
+        if (cs.visibility === 'hidden') el.style.setProperty('visibility', 'visible', 'important');
+        if (parseFloat(cs.opacity) < 0.1) el.style.setProperty('opacity', '1', 'important');
+        if (cs.position === 'absolute' || cs.position === 'fixed') el.style.setProperty('position', 'relative', 'important');
+      });
+      // Height cleanup on container + direct children only (deeper reset causes inflation).
+      // Horizontal flex/grid layouts are preserved — canvas crop trims whitespace post-capture.
+      var container = mDoc.body.firstElementChild;
+      if (container) {
+        container.style.setProperty('height', 'auto', 'important');
+        container.style.setProperty('max-height', 'none', 'important');
+        container.style.setProperty('min-height', '0', 'important');
+        container.style.setProperty('overflow', 'visible', 'important');
+        for (var ci = 0; ci < container.children.length; ci++) {
+          var child = container.children[ci];
+          child.style.setProperty('height', 'auto', 'important');
+          child.style.setProperty('max-height', 'none', 'important');
+          child.style.setProperty('min-height', '0', 'important');
+          child.style.setProperty('position', 'relative', 'important');
+        }
+      }
+    } catch (_e) {
+      console.warn('[milg-region] DOM cleanup failed:', _e.message);
+    }
+  }
+
+  // --- Build mini-page HTML ---
+  // Assembles HTML for the mini-page iframe with force-reveal CSS/JS and optional extraction.
+  function buildMiniPageHtml(cloneOuterHtml, baseHref, allLinks, allStyles, opts) {
+    opts = opts || {};
+    var scripts = '<script>' + FORCE_REVEAL_SCRIPT + '</' + 'script>';
+    // Optional: inject extraction engine to run after force-reveal
+    if (opts.extractFnSrc) {
+      scripts += '<script>setTimeout(function(){try{(' + opts.extractFnSrc + ')()}catch(e){console.warn("[milg-region] Extraction failed:",e.message)}},100);</' + 'script>';
+    }
+    return '<!DOCTYPE html><html><head><meta charset=UTF-8>' +
+      (baseHref ? '<base href="' + baseHref.replace(/"/g, '&quot;') + '">' : '') +
+      allLinks + allStyles +
+      '<style>' + FORCE_REVEAL_CSS + '</style>' +
+      scripts +
+      '</head><body style="margin:0;padding:0;overflow:visible">' + cloneOuterHtml + '</body></html>';
+  }
+
+  // --- Build region clone ---
+  // Deep-clones the container element and applies inline style overrides.
+  function buildRegionClone(container, containerRect) {
+    var clone = container.cloneNode(true);
+    clone.style.cssText += ';overflow:visible !important;max-height:none !important;height:auto !important;clip-path:none !important;width:' + Math.round(containerRect.width) + 'px !important;';
+    return clone;
+  }
+
+  // --- Detect clipped pairs ---
+  // Marks contrast pairs as _isClipped if their element bbox is outside an overflow:hidden ancestor.
+  // Returns as a string for injection into iframe scripts.
+  function getClipDetectionScript() {
+    return 'if(window.__milgBboxRefs&&window.__milgData&&window.__milgData.colors){' +
+      'var _cp=window.__milgData.colors.contrastPairs||[];' +
+      'window.__milgBboxRefs.forEach(function(ref){' +
+        'if(!ref.el||!ref.obj||ref.key!=="bbox")return;' +
+        'var el=ref.el;var pair=ref.obj;' +
+        'var er=el.getBoundingClientRect();' +
+        'var anc=el.parentElement;' +
+        'while(anc&&anc!==document.documentElement){' +
+          'var as=getComputedStyle(anc);' +
+          'var aov=as.overflow||"";var aovx=as.overflowX||"";var aovy=as.overflowY||"";' +
+          'if(aov==="hidden"||aov==="clip"||aovx==="hidden"||aovx==="clip"||aovy==="hidden"||aovy==="clip"){' +
+            'var ar=anc.getBoundingClientRect();' +
+            'if(er.right<ar.left+1||er.left>ar.right-1||er.bottom<ar.top+1||er.top>ar.bottom-1){' +
+              'pair._isClipped=true;break' +
+            '}' +
+          '}' +
+          'anc=anc.parentElement' +
+        '}' +
+      '})' +
+    '}';
+  }
+
+  // --- Serializable region screenshot function ---
+  // This function is serialized via .toString() and injected into the analysis iframe.
+  // It MUST be self-contained — no references to outer scope variables.
+  // Parameters are bound at serialization time by the caller.
+  function _regionScreenshotFn(_sc, _quality, _prog, _cp2) {
+    return function _buildRegionScreenshots(rgnCb) {
+      // Detect clipping containers from tracked bbox refs
+      var _rgnCounter = 0, _clipContainerList = [], _clipContainers = {};
+      if (window.__milgBboxRefs) {
+        window.__milgBboxRefs.forEach(function(ref) {
+          if (!ref.el || !ref.obj || ref.key !== 'bbox' || !ref.obj._isClipped) return;
+          var clipAnc = null, anc = ref.el.parentElement;
+          while (anc && anc !== document.documentElement) {
+            var as = getComputedStyle(anc);
+            var aov = as.overflow || '', aovx = as.overflowX || '', aovy = as.overflowY || '';
+            if (aov === 'hidden' || aov === 'clip' || aovx === 'hidden' || aovx === 'clip' || aovy === 'hidden' || aovy === 'clip') {
+              var ar = anc.getBoundingClientRect();
+              if (ar.width >= 100 && ar.height >= 30) clipAnc = anc;
+            }
+            anc = anc.parentElement;
+          }
+          if (!clipAnc) return;
+          var cid = clipAnc._milgRegionId;
+          if (!cid) {
+            cid = 'rgn-' + (++_rgnCounter); clipAnc._milgRegionId = cid;
+            _clipContainerList.push({ el: clipAnc, id: cid, pairIndices: [] });
+            _clipContainers[cid] = _clipContainerList[_clipContainerList.length - 1];
+          }
+          var pi = _cp2.indexOf(ref.obj);
+          if (pi >= 0 && _clipContainers[cid].pairIndices.indexOf(pi) < 0)
+            _clipContainers[cid].pairIndices.push(pi);
+        });
+      }
+      _clipContainerList.sort(function(a, b) {
+        var ar = a.el.getBoundingClientRect(), br = b.el.getBoundingClientRect();
+        return (br.width * br.height) - (ar.width * ar.height);
+      });
+      _clipContainerList = _clipContainerList.slice(0, 5);
+      console.log('[milg-region] Found ' + _clipContainerList.length + ' clipping regions');
+      if (_clipContainerList.length === 0) { rgnCb([]); return; }
+
+      var _rgnResults = [], _rgnDone = 0, _rgnTotal = _clipContainerList.length;
+      var _rgnOverall = setTimeout(function() {
+        console.warn('[milg-region] Overall timeout (30s)');
+        rgnCb(_rgnResults);
+      }, 30000);
+
+      // Collect styles for mini-pages
+      var allStyles = ''; document.querySelectorAll('style').forEach(function(s) { allStyles += s.outerHTML; });
+      var allLinks = ''; document.querySelectorAll('link[rel=stylesheet]').forEach(function(l) { allLinks += l.outerHTML; });
+      var baseHref = (document.querySelector('base') || {}).href || '';
+
+      // Force-reveal CSS (inlined — can't reference MilgRegion from inside serialized fn)
+      var _revealCss =
+        '*,*::before,*::after{transition:none !important;animation:none !important;}' +
+        'body *{visibility:visible !important;opacity:1 !important;transform:none !important;overflow:visible !important;clip-path:none !important;max-height:none !important;}' +
+        '[aria-hidden="true"],[hidden],.hidden,.d-none,.hide,.carousel-item,.swiper-slide,.slick-slide,' +
+        '[class*="slide"],[class*="panel"],[class*="tab-pane"]{display:block !important;visibility:visible !important;opacity:1 !important;position:relative !important;transform:none !important;left:auto !important;right:auto !important;}';
+
+      var _revealScript =
+        '<script>document.addEventListener("DOMContentLoaded",function(){' +
+        'document.querySelectorAll("*").forEach(function(el){var cs=getComputedStyle(el);' +
+        'if(cs.display==="none")el.style.setProperty("display","block","important");' +
+        'if(cs.visibility==="hidden")el.style.setProperty("visibility","visible","important");' +
+        'if(parseFloat(cs.opacity)<0.1)el.style.setProperty("opacity","1","important");' +
+        'if(cs.position==="absolute"||cs.position==="fixed")el.style.setProperty("position","relative","important");' +
+        '});});</' + 'script>';
+
+      // Optional extraction: inject MilgExtract if available
+      var _extractScript = '';
+      if (typeof window.MilgExtract === 'function') {
+        _extractScript = '<script>setTimeout(function(){try{(' + window.MilgExtract.toString() + ')()}catch(e){console.warn("[milg-region] Extraction failed:",e)}},100);</' + 'script>';
+      }
+
+      _prog('Capturing ' + _rgnTotal + ' region screenshots...');
+
+      _clipContainerList.forEach(function(rgn, rIdx) {
+        var container = rgn.el, cr = container.getBoundingClientRect();
+        var clone = container.cloneNode(true);
+        clone.style.cssText += ';overflow:visible !important;max-height:none !important;height:auto !important;clip-path:none !important;width:' + Math.round(cr.width) + 'px !important;';
+
+        var miniHtml = '<!DOCTYPE html><html><head><meta charset=UTF-8>' +
+          (baseHref ? '<base href="' + baseHref.replace(/"/g, '&quot;') + '">' : '') +
+          allLinks + allStyles +
+          '<style>' + _revealCss + '</style>' + _revealScript + _extractScript +
+          '</head><body style="margin:0;padding:0;overflow:visible">' + clone.outerHTML + '</body></html>';
+
+        var iframeW = Math.max(Math.round(cr.width), 320);
+        var mf = document.createElement('iframe');
+        mf.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + iframeW + 'px;height:3000px;border:none;visibility:hidden;';
+        mf.setAttribute('sandbox', 'allow-same-origin allow-scripts');
+        document.body.appendChild(mf);
+
+        var rgnTimer = setTimeout(function() {
+          console.warn('[milg-region] Region ' + rIdx + ' timed out');
+          _rgnFinish(rIdx, mf, null);
+        }, 15000);
+
+        mf.srcdoc = miniHtml;
+        mf.addEventListener('load', function() {
+          setTimeout(function() {
+            try {
+              var mDoc = mf.contentDocument;
+              if (!mDoc) { _rgnFinish(rIdx, mf, null); return; }
+
+              // DOM cleanup: force-reveal + targeted height reset on container/children only
+              try {
+                var dv = mDoc.defaultView;
+                mDoc.querySelectorAll('*').forEach(function(el) {
+                  var cs = dv.getComputedStyle(el);
+                  if (cs.display === 'none') el.style.setProperty('display', 'block', 'important');
+                  if (cs.visibility === 'hidden') el.style.setProperty('visibility', 'visible', 'important');
+                  if (parseFloat(cs.opacity) < 0.1) el.style.setProperty('opacity', '1', 'important');
+                  if (cs.position === 'absolute' || cs.position === 'fixed') el.style.setProperty('position', 'relative', 'important');
+                });
+                var _cont = mDoc.body.firstElementChild;
+                if (_cont) {
+                  _cont.style.setProperty('height', 'auto', 'important');
+                  _cont.style.setProperty('max-height', 'none', 'important');
+                  _cont.style.setProperty('overflow', 'visible', 'important');
+                  for (var _ci = 0; _ci < _cont.children.length; _ci++) {
+                    var _ch = _cont.children[_ci];
+                    _ch.style.setProperty('height', 'auto', 'important');
+                    _ch.style.setProperty('max-height', 'none', 'important');
+                    _ch.style.setProperty('position', 'relative', 'important');
+                  }
+                }
+              } catch (_e) {}
+
+              void mDoc.body.offsetHeight; // reflow
+
+              // Harvest extraction data if available
+              var extractedData = null;
+              try { extractedData = mf.contentWindow.__milgData || null; } catch (_e) {}
+
+              // Size iframe to full document first so getBoundingClientRect gives correct coords
+              var cW = Math.max(mDoc.body.scrollWidth, mDoc.documentElement.scrollWidth);
+              var cH = Math.max(mDoc.body.scrollHeight, mDoc.documentElement.scrollHeight);
+              mf.style.width = Math.max(cW, iframeW) + 'px'; mf.style.height = cH + 'px';
+              void mDoc.body.offsetHeight;
+
+              // Compute content bounds from text nodes + replaced elements.
+              // Spacer divs from the absolute→relative conversion have no visual content
+              // and are excluded, so the bounds cover only actual carousel slides.
+              var _cTop = 1e9, _cBot = 0, _cLeft = 1e9, _cRight = 0;
+              var _cropOX = 0, _cropOY = 0;
+              try {
+                mDoc.body.querySelectorAll('*').forEach(function(el) {
+                  var r = el.getBoundingClientRect();
+                  if (r.height <= 0 || r.width <= 0) return;
+                  if (el.tagName === 'IMG' || el.tagName === 'SVG' || el.tagName === 'VIDEO' || el.tagName === 'CANVAS') {
+                    // replaced element — always counts
+                  } else {
+                    var ht = false;
+                    for (var _n = el.firstChild; _n; _n = _n.nextSibling) {
+                      if (_n.nodeType === 3 && _n.textContent.trim()) { ht = true; break; }
+                    }
+                    if (!ht) return;
+                  }
+                  if (r.top < _cTop) _cTop = r.top;
+                  if (r.bottom > _cBot) _cBot = r.bottom;
+                  if (r.left < _cLeft) _cLeft = r.left;
+                  if (r.right > _cRight) _cRight = r.right;
+                });
+              } catch (_e2) {}
+              var _cPad = 20;
+              var _doCrop = _cTop < 1e9 && _cBot > _cTop + 10 && (_cBot - _cTop + _cPad * 2) < cH * 0.8;
+              if (_doCrop) {
+                console.log('[milg-region] Content bounds: ' + Math.round(_cLeft) + ',' + Math.round(_cTop) + ' → ' + Math.round(_cRight) + ',' + Math.round(_cBot) + ' (doc: ' + cW + 'x' + cH + ')');
+                _cropOX = Math.round(Math.max(0, _cLeft - _cPad) * _sc);
+                _cropOY = Math.round(Math.max(0, _cTop - _cPad) * _sc);
+              }
+
+              var pms = window.modernScreenshot;
+              if (!pms || !pms.domToCanvas) { _rgnFinish(rIdx, mf, null); return; }
+              pms.domToCanvas(mDoc.documentElement, { scale: _sc, timeout: 12000 }).then(function(rc) {
+                // Crop canvas to DOM-computed content bounds (avoids pixel scanning)
+                var finalCanvas = rc;
+                if (_doCrop) {
+                  try {
+                    var _cx = Math.round(Math.max(0, _cLeft - _cPad) * _sc);
+                    var _cy = Math.round(Math.max(0, _cTop - _cPad) * _sc);
+                    var _cw = Math.min(Math.round((_cRight - _cLeft + _cPad * 2) * _sc), rc.width - _cx);
+                    var _ch3 = Math.min(Math.round((_cBot - _cTop + _cPad * 2) * _sc), rc.height - _cy);
+                    if (_cw > 10 && _ch3 > 10) {
+                      finalCanvas = document.createElement('canvas');
+                      finalCanvas.width = _cw; finalCanvas.height = _ch3;
+                      finalCanvas.getContext('2d').drawImage(rc, _cx, _cy, _cw, _ch3, 0, 0, _cw, _ch3);
+                      console.log('[milg-region] Cropped ' + rc.width + 'x' + rc.height + ' → ' + _cw + 'x' + _ch3);
+                    }
+                  } catch (_ce) { console.warn('[milg-region] Crop failed:', _ce.message); finalCanvas = rc; }
+                }
+                var rUri; try { rUri = finalCanvas.toDataURL('image/webp', _quality); } catch (e) { rUri = ''; }
+                clearTimeout(rgnTimer);
+                _rgnFinish(rIdx, mf, {
+                  screenshot: rUri,
+                  screenshotMeta: { scale: _sc, canvasWidth: finalCanvas.width, canvasHeight: finalCanvas.height, cropOffsetX: _cropOX, cropOffsetY: _cropOY },
+                  pairIndices: rgn.pairIndices,
+                  containerRect: { left: Math.round(cr.left), top: Math.round(cr.top), width: Math.round(cr.width), height: Math.round(cr.height) },
+                  extractedData: extractedData
+                });
+              }).catch(function(e) { clearTimeout(rgnTimer); _rgnFinish(rIdx, mf, null); });
+            } catch (e) { clearTimeout(rgnTimer); _rgnFinish(rIdx, mf, null); }
+          }, 800); // 800ms: allow DOMContentLoaded + extraction to complete
+        });
+      });
+
+      function _rgnFinish(idx, mf, result) {
+        if (result) _rgnResults.push(result);
+        try { if (mf && mf.parentNode) mf.parentNode.removeChild(mf); } catch (e) {}
+        _rgnDone++;
+        if (_rgnDone >= _rgnTotal) {
+          clearTimeout(_rgnOverall);
+          console.log('[milg-region] Region screenshots done: ' + _rgnResults.length + '/' + _rgnTotal);
+          rgnCb(_rgnResults);
+        }
+      }
+    };
+  }
+
+  return {
+    FORCE_REVEAL_CSS: FORCE_REVEAL_CSS,
+    FORCE_REVEAL_SCRIPT: FORCE_REVEAL_SCRIPT,
+    cleanupMiniPageDom: cleanupMiniPageDom,
+    buildMiniPageHtml: buildMiniPageHtml,
+    buildRegionClone: buildRegionClone,
+    getClipDetectionScript: getClipDetectionScript,
+    // The serializable function — use: MilgRegion.getRegionFn().toString()
+    getRegionFn: function() { return _regionScreenshotFn; }
+  };
+})();
 </file>
 
 <file path="docs/analyzer-snippet.js">
@@ -39195,6 +39173,7 @@ window.MilgViewer = (function() {
   var _stitchedCanvas = null;
   var _calibrationOffsetY = 0; // detected offset between DOM positions and canvas positions
   var _showExpanded = false; // always false — clean screenshot with region sections below
+  var _regionData = []; // [{findings, svg, img, frame, meta, cropOffset}] per region
 
   // Severity colors: red / yellow / blue / green
   var COLORS = {
@@ -39212,6 +39191,7 @@ window.MilgViewer = (function() {
     _meta = (reportData.raw && reportData.raw.screenshotMeta) || null;
     _activeFilter = null;
     _zoomLevel = 1;
+    _regionData = [];
 
     if (!_meta || _screenshots.length === 0) {
       simpleLightbox(img);
@@ -39337,6 +39317,7 @@ window.MilgViewer = (function() {
         }
         updateFilterButtons();
         renderOverlays();
+        renderRegionOverlays();
       }
     });
 
@@ -39351,6 +39332,7 @@ window.MilgViewer = (function() {
       zoomSelect.addEventListener('change', function() {
         _zoomLevel = parseFloat(zoomSelect.value) || 1;
         applyZoom(frame);
+        applyRegionZoom();
       });
     }
 
@@ -39365,6 +39347,7 @@ window.MilgViewer = (function() {
       zoomSelect.selectedIndex = nextIdx;
       _zoomLevel = parseFloat(zoomSelect.value) || 1;
       applyZoom(frame);
+      applyRegionZoom();
     });
 
     // Drag-to-pan (mouse + touch)
@@ -39509,7 +39492,8 @@ window.MilgViewer = (function() {
       });
     }
 
-    // Render region screenshots as independent sections below main screenshot
+    // Render region screenshots as interactive sections below main screenshot
+    _regionData = [];
     var regions = (reportData.raw && reportData.raw.regionScreenshots) || [];
     if (regions.length > 0) {
       var regionSection = document.createElement('div');
@@ -39518,6 +39502,25 @@ window.MilgViewer = (function() {
 
       regions.forEach(function(rgn, rIdx) {
         if (!rgn.screenshot || !rgn.screenshotMeta) return;
+
+        // Build flat findings list from region report (same format as _allFindings)
+        var rgnFindings = [];
+        if (rgn.regionReport && rgn.regionReport.categories) {
+          rgn.regionReport.categories.forEach(function(cat) {
+            (cat.findings || []).forEach(function(f) {
+              if (!f.locator || !f.locator.bboxes || f.locator.bboxes.length === 0) return;
+              rgnFindings.push({
+                severity: f.severity || 'info',
+                title: f.title || '',
+                detail: f.detail || '',
+                category: cat.label || '',
+                icon: cat.icon || '',
+                bboxes: f.locator.bboxes
+              });
+            });
+          });
+        }
+
         var rgnSection = document.createElement('div');
         rgnSection.className = 'milg-viewer-region-section';
         rgnSection.id = 'milg-region-' + rIdx;
@@ -39529,9 +39532,9 @@ window.MilgViewer = (function() {
         var rgnTitle = document.createElement('span');
         rgnTitle.style.cssText = 'font-size:12px;font-weight:600;color:#93c5fd;';
         rgnTitle.textContent = 'Hidden content region ' + (rIdx + 1);
-        var pairCount = (rgn.pairIndices || []).length;
-        if (pairCount > 0) {
-          rgnTitle.textContent += ' \u2014 ' + pairCount + ' contrast pair' + (pairCount !== 1 ? 's' : '');
+        var findingCount = rgnFindings.length;
+        if (findingCount > 0) {
+          rgnTitle.textContent += ' \u2014 ' + findingCount + ' finding' + (findingCount !== 1 ? 's' : '');
         }
         var backLink = document.createElement('a');
         backLink.style.cssText = 'font-size:11px;color:#60a5fa;cursor:pointer;text-decoration:none;';
@@ -39540,7 +39543,6 @@ window.MilgViewer = (function() {
           var mainFrame = _overlay && _overlay.querySelector('.milg-viewer-frame');
           if (mainFrame) {
             mainFrame.scrollIntoView({ behavior: 'smooth' });
-            // Flash the container indicator for this region
             var indicator = _overlay && _overlay.querySelector('.milg-region-indicator-' + rIdx);
             if (indicator) {
               var origStroke = indicator.getAttribute('stroke');
@@ -39561,8 +39563,7 @@ window.MilgViewer = (function() {
         rgnHeader.appendChild(backLink);
         rgnSection.appendChild(rgnHeader);
 
-        // Region sub-report: screenshot with SVG bbox overlays + findings summary
-        var rgnScale = rgn.screenshotMeta.scale || 1.5;
+        // Region frame: screenshot with dynamic SVG overlay
         var rgnFrame = document.createElement('div');
         rgnFrame.style.cssText = 'position:relative;overflow:auto;max-height:600px;';
 
@@ -39572,34 +39573,12 @@ window.MilgViewer = (function() {
         rgnImg.style.cssText = 'display:block;max-width:100%;height:auto;';
         rgnFrame.appendChild(rgnImg);
 
-        // SVG overlay with bbox findings from region extraction
-        if (rgn.regionReport && rgn.regionReport.categories) {
-          var rgnSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-          rgnSvg.setAttribute('viewBox', '0 0 ' + rgn.screenshotMeta.canvasWidth + ' ' + rgn.screenshotMeta.canvasHeight);
-          rgnSvg.setAttribute('preserveAspectRatio', 'xMinYMin meet');
-          rgnSvg.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;';
-          var rgnSc = rgnScale;
-          rgn.regionReport.categories.forEach(function(cat) {
-            (cat.findings || []).forEach(function(f) {
-              if (!f.locator || !f.locator.bboxes) return;
-              var fColor = COLORS[f.severity] || COLORS.info;
-              f.locator.bboxes.forEach(function(bb) {
-                if (!bb) return;
-                var rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-                rect.setAttribute('x', Math.round(bb.left * rgnSc));
-                rect.setAttribute('y', Math.round(bb.top * rgnSc));
-                rect.setAttribute('width', Math.max(Math.round(bb.width * rgnSc), 4));
-                rect.setAttribute('height', Math.max(Math.round(bb.height * rgnSc), 4));
-                rect.setAttribute('fill', fColor.fill);
-                rect.setAttribute('stroke', fColor.stroke);
-                rect.setAttribute('stroke-width', '1.5');
-                rect.setAttribute('rx', '2');
-                rgnSvg.appendChild(rect);
-              });
-            });
-          });
-          rgnFrame.appendChild(rgnSvg);
-        }
+        // SVG overlay — rects are rendered dynamically by renderRegionOverlays()
+        var rgnSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        rgnSvg.setAttribute('viewBox', '0 0 ' + rgn.screenshotMeta.canvasWidth + ' ' + rgn.screenshotMeta.canvasHeight);
+        rgnSvg.setAttribute('preserveAspectRatio', 'xMinYMin meet');
+        rgnSvg.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
+        rgnFrame.appendChild(rgnSvg);
 
         rgnSection.appendChild(rgnFrame);
 
@@ -39622,9 +39601,20 @@ window.MilgViewer = (function() {
           rgnSection.appendChild(summaryBar);
         }
         regionSection.appendChild(rgnSection);
+
+        // Store region state for dynamic rendering
+        _regionData.push({
+          findings: rgnFindings,
+          svg: rgnSvg,
+          img: rgnImg,
+          frame: rgnFrame,
+          meta: rgn.screenshotMeta
+        });
       });
 
       content.appendChild(regionSection);
+      // Initial render of region overlays
+      renderRegionOverlays();
     }
   }
 
@@ -39766,12 +39756,12 @@ window.MilgViewer = (function() {
     var scaleX = _meta.scale;
     var scaleY = _meta.scale;
 
-    // Build WeakSet of bbox objects that belong to regional (clipped) pairs.
-    // Uses object identity — the scoring module copies bbox references from contrastPairs
-    // into findings, so finding.bboxes[j] === contrastPairs[k].bbox for the same pair.
+    // Build set of bboxes that belong to region containers — hidden from main overlay.
+    // Three filters: WeakSet (object identity), string-key fallback, and containerRect overlap.
     var _regionalBboxes = typeof WeakSet !== 'undefined' ? new WeakSet() : null;
-    var _regionalBboxKeys = {}; // fallback for environments without WeakSet
+    var _regionalBboxKeys = {};
     var regions = (_reportData && _reportData.raw && _reportData.raw.regionScreenshots) || [];
+    var _containerRects = regions.map(function(rgn) { return rgn.containerRect; }).filter(Boolean);
     if (!_showExpanded && _reportData && _reportData.raw && _reportData.raw.colors) {
       var _contrastPairs = _reportData.raw.colors.contrastPairs || [];
       regions.forEach(function(rgn) {
@@ -39783,7 +39773,6 @@ window.MilgViewer = (function() {
           }
         });
       });
-      // Also add all _isClipped pairs (some may not be in regionScreenshots if capture timed out)
       _contrastPairs.forEach(function(cp) {
         if (cp._isClipped && cp.bbox) {
           if (_regionalBboxes) _regionalBboxes.add(cp.bbox);
@@ -39813,12 +39802,21 @@ window.MilgViewer = (function() {
       finding.bboxes.forEach(function(bbox, bbIdx) {
         // For single-bbox filter (magnifying glass), skip other bboxes in this finding
         if (_activeFilter.type === 'findingBbox' && bbIdx !== _activeFilter.bboxIdx) return;
-        // Skip clipped bboxes on clean screenshot — these belong to region sections, not main overlay.
-        // Uses WeakSet (object identity) with string-key fallback for robustness.
+        // Skip bboxes that belong to region containers — shown in region section, not main overlay.
+        // Three checks: WeakSet identity, string-key fallback, and containerRect overlap.
         if (!_showExpanded && bbox) {
           var _isRegional = (_regionalBboxes && _regionalBboxes.has(bbox)) ||
             _regionalBboxKeys[Math.round(bbox.left) + ',' + Math.round(bbox.top) + ',' + Math.round(bbox.width) + ',' + Math.round(bbox.height)];
-          if (_isRegional) return; // Don't render — container indicator is drawn separately
+          if (!_isRegional) {
+            var bcx = bbox.left + bbox.width / 2, bcy = bbox.top + bbox.height / 2;
+            for (var _ri = 0; _ri < _containerRects.length; _ri++) {
+              var _cr = _containerRects[_ri];
+              if (bcx >= _cr.left && bcx <= _cr.left + _cr.width && bcy >= _cr.top && bcy <= _cr.top + _cr.height) {
+                _isRegional = true; break;
+              }
+            }
+          }
+          if (_isRegional) return;
         }
         var x = Math.round(bbox.left * scaleX);
         var y = Math.round(bbox.top * scaleY) - _calibrationOffsetY;
@@ -39941,6 +39939,65 @@ window.MilgViewer = (function() {
           }
         }
       });
+    });
+  }
+
+  // Render bbox overlays on all region screenshots — respects active filter
+  function renderRegionOverlays() {
+    _regionData.forEach(function(rd) {
+      if (!rd.svg || !rd.findings) return;
+      while (rd.svg.firstChild) rd.svg.removeChild(rd.svg.firstChild);
+      var scale = rd.meta.scale || 1.5;
+      var cox = rd.meta.cropOffsetX || 0;
+      var coy = rd.meta.cropOffsetY || 0;
+
+      rd.findings.forEach(function(finding, fIdx) {
+        if (_activeFilter) {
+          if (_activeFilter.type === 'category' && finding.icon !== _activeFilter.value) return;
+          if (_activeFilter.type === 'severity' && _activeFilter.value !== 'all' && finding.severity !== _activeFilter.value) return;
+        }
+        var color = COLORS[finding.severity] || COLORS.info;
+        finding.bboxes.forEach(function(bbox) {
+          if (!bbox) return;
+          var x = Math.round(bbox.left * scale) - cox;
+          var y = Math.round(bbox.top * scale) - coy;
+          var w = Math.max(Math.round(bbox.width * scale), 4);
+          var h = Math.max(Math.round(bbox.height * scale), 4);
+
+          var rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+          rect.setAttribute('x', x);
+          rect.setAttribute('y', y);
+          rect.setAttribute('width', w);
+          rect.setAttribute('height', h);
+          rect.setAttribute('fill', color.fill);
+          rect.setAttribute('stroke', color.stroke);
+          rect.setAttribute('stroke-width', '1.5');
+          rect.setAttribute('rx', '2');
+          rect.setAttribute('data-finding', fIdx);
+          rd.svg.appendChild(rect);
+        });
+      });
+    });
+  }
+
+  // Apply zoom level to region frames
+  function applyRegionZoom() {
+    _regionData.forEach(function(rd) {
+      if (!rd.img || !rd.svg) return;
+      if (_zoomLevel === 1) {
+        rd.img.style.width = '';
+        rd.img.style.maxWidth = '100%';
+        rd.svg.style.width = '';
+        rd.svg.style.height = '';
+      } else {
+        var baseWidth = rd.meta.canvasWidth || 640;
+        var zoomedWidth = Math.round(baseWidth * _zoomLevel);
+        rd.img.style.maxWidth = 'none';
+        rd.img.style.width = zoomedWidth + 'px';
+        rd.svg.style.width = zoomedWidth + 'px';
+        var aspect = (rd.meta.canvasHeight || 400) / (rd.meta.canvasWidth || 640);
+        rd.svg.style.height = Math.round(zoomedWidth * aspect) + 'px';
+      }
     });
   }
 
@@ -40676,6 +40733,7 @@ window.MilgViewer = (function() {
         _activeFilter = { type: 'finding', value: vIdx };
         updateFilterButtons();
         renderOverlays();
+        renderRegionOverlays();
       });
     });
 
@@ -40816,6 +40874,7 @@ window.MilgViewer = (function() {
     _activeFilter = { type: 'finding', value: findingIdx };
     updateFilterButtons();
     renderOverlays();
+    renderRegionOverlays();
     // Flash the finding's rects
     var svg = _overlay && _overlay.querySelector('.milg-viewer-svg');
     if (svg) {
@@ -44956,7 +45015,7 @@ console.log('[milg] analyzer.js v3.6 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.7</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.8</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -45393,32 +45452,32 @@ console.log('[milg] analyzer.js v3.6 loaded');
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=3.7"></script>
-  <script src="scoring/contrast.js?v=3.7"></script>
-  <script src="scoring/typography.js?v=3.7"></script>
-  <script src="scoring/spacing.js?v=3.7"></script>
-  <script src="scoring/touch.js?v=3.7"></script>
-  <script src="scoring/accessibility.js?v=3.7"></script>
-  <script src="scoring/responsive.js?v=3.7"></script>
-  <script src="scoring/consistency.js?v=3.7"></script>
-  <script src="scoring/cognitive.js?v=3.7"></script>
-  <script src="scoring/layout.js?v=3.7"></script>
-  <script src="scoring/performance.js?v=3.7"></script>
-  <script src="scoring/readability.js?v=3.7"></script>
-  <script src="scoring/filters.js?v=3.7"></script>
-  <script src="scoring/balance.js?v=3.7"></script>
+  <script src="scoring/registry.js?v=3.8"></script>
+  <script src="scoring/contrast.js?v=3.8"></script>
+  <script src="scoring/typography.js?v=3.8"></script>
+  <script src="scoring/spacing.js?v=3.8"></script>
+  <script src="scoring/touch.js?v=3.8"></script>
+  <script src="scoring/accessibility.js?v=3.8"></script>
+  <script src="scoring/responsive.js?v=3.8"></script>
+  <script src="scoring/consistency.js?v=3.8"></script>
+  <script src="scoring/cognitive.js?v=3.8"></script>
+  <script src="scoring/layout.js?v=3.8"></script>
+  <script src="scoring/performance.js?v=3.8"></script>
+  <script src="scoring/readability.js?v=3.8"></script>
+  <script src="scoring/filters.js?v=3.8"></script>
+  <script src="scoring/balance.js?v=3.8"></script>
   <!-- Queue + Report rendering + UI -->
-  <script src="analyzer-queue.js?v=3.7"></script>
-  <script src="analyzer-report.js?v=3.7"></script>
-  <script src="analyzer-crawl.js?v=3.7"></script>
-  <script src="analyzer-extract.js?v=3.7"></script>
-  <script src="analyzer-region.js?v=3.7"></script>
-  <script src="analyzer-iframe.js?v=3.7"></script>
-  <script src="analyzer-proxy.js?v=3.7"></script>
-  <script src="analyzer-crawl-ui.js?v=3.7"></script>
-  <script src="analyzer-contrast-verify.js?v=3.7"></script>
-  <script src="analyzer-viewer.js?v=3.7"></script>
-  <script src="analyzer.js?v=3.7"></script>
+  <script src="analyzer-queue.js?v=3.8"></script>
+  <script src="analyzer-report.js?v=3.8"></script>
+  <script src="analyzer-crawl.js?v=3.8"></script>
+  <script src="analyzer-extract.js?v=3.8"></script>
+  <script src="analyzer-region.js?v=3.8"></script>
+  <script src="analyzer-iframe.js?v=3.8"></script>
+  <script src="analyzer-proxy.js?v=3.8"></script>
+  <script src="analyzer-crawl-ui.js?v=3.8"></script>
+  <script src="analyzer-contrast-verify.js?v=3.8"></script>
+  <script src="analyzer-viewer.js?v=3.8"></script>
+  <script src="analyzer.js?v=3.8"></script>
 </body>
 </html>
 </file>
