@@ -788,6 +788,13 @@ window.MilgIframe = (function() {
               'var _buildRegionScreenshots=(' + _regionScreenshotFn.toString() + ')(_sc,' + ss.quality + ',_prog,_cp2);' +
               '_buildRegionScreenshots(function(_regionResults){' +
               'window.__milgRegionScreenshots=_regionResults;' +
+              // Save clean-screenshot bbox coordinates before Phase B expansion.
+              // The viewer displays the clean screenshot, so bboxes must match pre-expansion layout.
+              'var _savedBboxes=[];' +
+              'if(window.__milgBboxRefs){window.__milgBboxRefs.forEach(function(ref){' +
+                'if(ref.obj&&ref.obj[ref.key]){var b=ref.obj[ref.key];' +
+                '_savedBboxes.push({obj:ref.obj,key:ref.key,left:b.left,top:b.top,width:b.width,height:b.height})}' +
+              '})}' +
               // Phase B: Expand overflow:hidden containers with transformed descendants (carousels/sliders)
               'var _expanded=0;' +
               'document.querySelectorAll("*").forEach(function(container){' +
@@ -830,6 +837,8 @@ window.MilgIframe = (function() {
               'var fullUri;try{fullUri=fc.toDataURL("image/webp",' + ss.quality + ')}catch(e){console.warn("[milg-warn] WebP conversion failed:",e.message);fullUri=""}' +
               // Update send helper with actual canvas dimensions
               'var _cw=fc.width,_ch=fc.height;' +
+              // Restore clean-screenshot bbox coordinates so updatedData matches the displayed image
+              '_savedBboxes.forEach(function(s){s.obj[s.key]={left:s.left,top:s.top,width:s.width,height:s.height}});' +
               'var _maskResults={};' + // Defined HERE so _sendFinal can access it (same scope)
               'function _sendFinal(maskUri){' +
                 'var _raw=window.__milgData||null;' +

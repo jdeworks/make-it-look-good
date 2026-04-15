@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.9 loaded');
+console.log('[milg] analyzer.js v3.9.1 loaded');
 
 (function() {
   "use strict";
@@ -722,8 +722,24 @@ console.log('[milg] analyzer.js v3.9 loaded');
     if (_isTabSwitch && data._cachedReportData) {
       reportData = data._cachedReportData;
     } else {
+      // Filter out carousel/region content before main scoring so findings only contain main-page elements.
+      // Region content gets its own independent scoring below via rgn.regionReport.
+      var _origPairs = data.colors ? data.colors.contrastPairs : null;
+      var _origTouch = data.interaction ? data.interaction.touchTargets : null;
+      var _origHeadings = data.typography ? data.typography.headings : null;
+      if (_origPairs) data.colors.contrastPairs = _origPairs.filter(function(cp) { return !cp._regionContainerId; });
+      if (_origTouch) data.interaction.touchTargets = _origTouch.filter(function(t) { return !t._regionContainerId; });
+      if (_origHeadings) data.typography.headings = _origHeadings.filter(function(h) { return !h._regionContainerId; });
+      var _filteredCount = (_origPairs ? _origPairs.length - data.colors.contrastPairs.length : 0);
+      if (_filteredCount > 0) _log('[milg] Filtered ' + _filteredCount + ' region pairs from main scoring');
+
       reportData = MilgScoring.runScoring(data);
       if (_isTabSwitch) data._cachedReportData = reportData;
+
+      // Restore originals (region pairIndices reference the full array)
+      if (_origPairs) data.colors.contrastPairs = _origPairs;
+      if (_origTouch) data.interaction.touchTargets = _origTouch;
+      if (_origHeadings) data.typography.headings = _origHeadings;
     }
     // Score region sub-pages independently
     var _regionScreenshots = reportData.raw && reportData.raw.regionScreenshots || [];

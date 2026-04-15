@@ -64,16 +64,16 @@ window.MilgViewer = (function() {
 
     // Add passing elements from raw data that have bboxes (headings, touch targets that passed)
     var raw = reportData.raw || {};
-    // Passing headings
+    // Passing headings (skip region content — analyzed in region section)
     (raw.typography && raw.typography.headings || []).forEach(function(h) {
-      if (!h.bbox) return;
+      if (!h.bbox || h._regionContainerId) return;
       _allFindings.push({ severity: 'pass', title: h.tag.toUpperCase() + ': "' + (h.text || '').substring(0, 40) + '"', detail: h.fontSize + ' ' + h.fontWeight, category: 'Typography', icon: 'type', bboxes: [h.bbox] });
     });
-    // Passing touch targets (those NOT in the findings = they passed)
+    // Passing touch targets (skip region content, those NOT in the findings = they passed)
     var failSelectors = {};
     _allFindings.forEach(function(f) { if (f.icon === 'touch' && f.severity !== 'pass') failSelectors[f.title] = true; });
     (raw.interaction && raw.interaction.touchTargets || []).forEach(function(t) {
-      if (!t.bbox || Math.min(t.width, t.height) < 24) return; // only show reasonably-sized passing ones
+      if (!t.bbox || t._regionContainerId || Math.min(t.width, t.height) < 24) return;
       _allFindings.push({ severity: 'pass', title: t.element + ' ' + t.width + '\u00d7' + t.height + 'px', detail: (t.text || '') + ' — ' + t.selector, category: 'Touch Targets', icon: 'touch', bboxes: [t.bbox] });
     });
 
@@ -455,7 +455,8 @@ window.MilgViewer = (function() {
           svg: rgnSvg,
           img: rgnImg,
           frame: rgnFrame,
-          meta: rgn.screenshotMeta
+          meta: rgn.screenshotMeta,
+          regionRef: rgn  // live reference for async verify results (rgn.regionVerifyResults)
         });
       });
 
@@ -626,6 +627,15 @@ window.MilgViewer = (function() {
           _regionalBboxKeys[Math.round(cp.bbox.left) + ',' + Math.round(cp.bbox.top) + ',' + Math.round(cp.bbox.width) + ',' + Math.round(cp.bbox.height)] = true;
         }
       });
+      // Also exclude non-contrast items inside region containers (headings, touch targets)
+      function _addRegionalBbox(item) {
+        if ((item._isClipped || item._regionContainerId) && item.bbox) {
+          if (_regionalBboxes) _regionalBboxes.add(item.bbox);
+          _regionalBboxKeys[Math.round(item.bbox.left) + ',' + Math.round(item.bbox.top) + ',' + Math.round(item.bbox.width) + ',' + Math.round(item.bbox.height)] = true;
+        }
+      }
+      (raw.typography && raw.typography.headings || []).forEach(_addRegionalBbox);
+      (raw.interaction && raw.interaction.touchTargets || []).forEach(_addRegionalBbox);
     }
 
     // Build pixel verification lookups: by selector AND by bbox position+size
@@ -787,9 +797,13 @@ window.MilgViewer = (function() {
       while (rd.svg.firstChild) rd.svg.removeChild(rd.svg.firstChild);
       // No filter active → no overlays (matches main renderOverlays behavior)
       if (!_activeFilter) return;
-      // Verify/finding/findingBbox filters are main-screenshot-specific
-      if (_activeFilter.type === 'verify' || _activeFilter.type === 'verifySelector' ||
-          _activeFilter.type === 'finding' || _activeFilter.type === 'findingBbox') return;
+      // Verify filters → delegate to region verify renderer
+      if (_activeFilter.type === 'verify' || _activeFilter.type === 'verifySelector') {
+        renderRegionVerifyOverlays(rd);
+        return;
+      }
+      // finding/findingBbox are main-screenshot-specific (indices into _allFindings)
+      if (_activeFilter.type === 'finding' || _activeFilter.type === 'findingBbox') return;
 
       var scale = rd.meta.scale || 1.5;
       var cox = rd.meta.cropOffsetX || 0;
@@ -890,7 +904,7 @@ window.MilgViewer = (function() {
     });
   }
 
-  // Apply zoom level to region frames
+  // Apply zoom level to region frames — matches main screenshot zoom behavior
   function applyRegionZoom() {
     _regionData.forEach(function(rd) {
       if (!rd.img || !rd.svg) return;
@@ -899,6 +913,7 @@ window.MilgViewer = (function() {
         rd.img.style.maxWidth = '100%';
         rd.svg.style.width = '';
         rd.svg.style.height = '';
+        if (rd.frame) rd.frame.style.maxHeight = '600px';
       } else {
         var baseWidth = rd.meta.canvasWidth || 640;
         var zoomedWidth = Math.round(baseWidth * _zoomLevel);
@@ -907,6 +922,7 @@ window.MilgViewer = (function() {
         rd.svg.style.width = zoomedWidth + 'px';
         var aspect = (rd.meta.canvasHeight || 400) / (rd.meta.canvasWidth || 640);
         rd.svg.style.height = Math.round(zoomedWidth * aspect) + 'px';
+        if (rd.frame) rd.frame.style.maxHeight = 'none';
       }
     });
   }
@@ -1542,6 +1558,91 @@ window.MilgViewer = (function() {
     lbl.setAttribute('pointer-events', 'none'); lbl.setAttribute('class', 'milg-debug-overlay');
     lbl.textContent = mode === 'mask' ? 'MASK | dark:'+insideCount : 'ZONES | boundary:'+edgeCount+' FG:'+insideCount;
     svg.appendChild(lbl);
+  }
+
+  // Render pixel verify overlays on a region screenshot
+  function renderRegionVerifyOverlays(rd) {
+    if (!rd.svg || !rd.regionRef) return;
+    var results = rd.regionRef.regionVerifyResults;
+    if (!results || results.length === 0) return;
+    while (rd.svg.firstChild) rd.svg.removeChild(rd.svg.firstChild);
+
+    var scale = rd.meta.scale || 1.5;
+    var cox = rd.meta.cropOffsetX || 0;
+    var coy = rd.meta.cropOffsetY || 0;
+    var showFails = _activeFilter.value === 'fails';
+    var filterLayer = null;
+    if (_activeFilter.value && _activeFilter.value.indexOf('layer') === 0) {
+      filterLayer = parseInt(_activeFilter.value.substring(5));
+    }
+    var filterSelector = _activeFilter.type === 'verifySelector' ? _activeFilter.value : null;
+
+    var SEV_R = { error: 3, warning: 2, info: 1, pass: 0 };
+    results.forEach(function(vr, vIdx) {
+      if (vr.skipped) return;
+      if (filterSelector && vr.selector !== filterSelector) return;
+      if (!filterSelector && showFails && !vr.crossesBoundary) return;
+      if (!filterSelector && filterLayer !== null && (vr.maskLayer || 0) !== filterLayer) return;
+      var bbox = vr.bbox;
+      if (!bbox) return;
+
+      var x = Math.round(bbox.left * scale) - cox;
+      var y = Math.round(bbox.top * scale) - coy;
+      var w = Math.round(bbox.width * scale);
+      var h = Math.round(bbox.height * scale);
+
+      var worstSevAtPos = 'pass';
+      if (vr.bbox) {
+        var bL = Math.round(vr.bbox.left), bT = Math.round(vr.bbox.top);
+        var bW = Math.round(vr.bbox.width), bH = Math.round(vr.bbox.height);
+        rd.findings.forEach(function(f) {
+          f.bboxes.forEach(function(bb) {
+            if (Math.abs(Math.round(bb.left) - bL) <= 3 && Math.abs(Math.round(bb.top) - bT) <= 3 &&
+                Math.abs(Math.round(bb.width) - bW) <= 3 && Math.abs(Math.round(bb.height) - bH) <= 3) {
+              if ((SEV_R[f.severity] || 0) > (SEV_R[worstSevAtPos] || 0)) worstSevAtPos = f.severity;
+            }
+          });
+        });
+      }
+
+      var fill, stroke, dash;
+      if (worstSevAtPos === 'error' || (vr.crossesBoundary && vr.cssPasses && !vr.pixelPasses)) {
+        fill = 'rgba(239,68,68,0.25)'; stroke = '#ef4444'; dash = '6 2';
+      } else if (worstSevAtPos === 'warning' || vr.isVariableBg) {
+        fill = 'rgba(234,179,8,0.15)'; stroke = '#eab308'; dash = '4 2';
+      } else if (vr.crossesBoundary && !vr.cssPasses && vr.pixelPasses) {
+        fill = 'rgba(34,197,94,0.2)'; stroke = '#22c55e'; dash = '4 3';
+      } else {
+        fill = 'rgba(34,197,94,0.08)'; stroke = '#86efac'; dash = '';
+      }
+
+      var rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      rect.setAttribute('x', x);
+      rect.setAttribute('y', y);
+      rect.setAttribute('width', Math.max(w, 4));
+      rect.setAttribute('height', Math.max(h, 4));
+      rect.setAttribute('fill', fill);
+      rect.setAttribute('stroke', stroke);
+      rect.setAttribute('stroke-width', '1.5');
+      rect.setAttribute('rx', '2');
+      if (dash) rect.setAttribute('stroke-dasharray', dash);
+      rect.setAttribute('data-verify', vIdx);
+      rd.svg.appendChild(rect);
+
+      if (w > 30 && h > 12) {
+        var label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        label.setAttribute('x', x + 3);
+        label.setAttribute('y', y + 11);
+        label.setAttribute('font-size', '10');
+        label.setAttribute('fill', stroke);
+        label.setAttribute('font-family', 'system-ui, sans-serif');
+        label.setAttribute('font-weight', '600');
+        label.setAttribute('pointer-events', 'none');
+        label.textContent = (vr.pixelRatioP10 || vr.pixelRatio || '?') + ':1';
+        rd.svg.appendChild(label);
+      }
+    });
+    console.log('[milg-viewer] Region verify overlays: ' + results.length + ' results, ' + rd.svg.querySelectorAll('rect[data-verify]').length + ' rects');
   }
 
   var _tooltipHideTimer = null;
