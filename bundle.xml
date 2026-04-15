@@ -40738,7 +40738,7 @@ window.MilgViewer = (function() {
           bboxCount++;
         });
       });
-      if (bboxCount > 0) console.log('[D] region ' + rIdx + ' rects=' + bboxCount + '/' + rd.findings.length + ' filter=' + _activeFilter.type + ':' + _activeFilter.value);
+      console.log('[D] region ' + rIdx + ' rects=' + bboxCount + ' findings=' + rd.findings.length + ' filter=' + _activeFilter.type + ':' + _activeFilter.value);
 
       // Interactive handlers — full parity with main overlay (tooltip, click overlap picker, shift+click debug)
       var rdFindings = rd.findings;
@@ -43404,7 +43404,9 @@ window.MilgIframe = (function() {
           var _dp = iframe._milgData.colors ? iframe._milgData.colors.contrastPairs : [];
           var _dRcid = _dp.filter(function(p) { return !!p._regionContainerId; }).length;
           var _dClip = _dp.filter(function(p) { return !!p._isClipped; }).length;
-          console.log('[D] parent received pairs=' + _dp.length + ' rcid=' + _dRcid + ' clipped=' + _dClip);
+          var _dMask = _dp.filter(function(p) { return !!p._maskBmp; }).length;
+          var _dRgns = (iframe._milgData.regionScreenshots || []).length;
+          console.log('[D] parent pairs=' + _dp.length + ' rcid=' + _dRcid + ' clipped=' + _dClip + ' masks=' + _dMask + ' regions=' + _dRgns);
         }
         // If hidden panels were detected, trigger unhidden screenshot pass
         var hpc = iframe._milgData.layout && iframe._milgData.layout.hiddenPanelCount;
@@ -44290,7 +44292,7 @@ console.log('[milg] analyzer.js v3.9.4 loaded');
       if (_origTouch) data.interaction.touchTargets = _origTouch.filter(function(t) { return !t._regionContainerId; });
       if (_origHeadings) data.typography.headings = _origHeadings.filter(function(h) { return !h._regionContainerId; });
       var _filteredCount = (_origPairs ? _origPairs.length - data.colors.contrastPairs.length : 0);
-      if (_filteredCount > 0) _log('[milg] Filtered ' + _filteredCount + ' region pairs from main scoring');
+      console.log('[D] scoring filter: ' + (_origPairs ? _origPairs.length : 0) + '→' + (data.colors ? data.colors.contrastPairs.length : 0) + ' pairs (removed ' + _filteredCount + ' rcid)');
 
       reportData = MilgScoring.runScoring(data);
       if (_isTabSwitch) data._cachedReportData = reportData;
@@ -44302,13 +44304,15 @@ console.log('[milg] analyzer.js v3.9.4 loaded');
     }
     // Score region sub-pages independently
     var _regionScreenshots = reportData.raw && reportData.raw.regionScreenshots || [];
-    _regionScreenshots.forEach(function(rgn) {
+    _regionScreenshots.forEach(function(rgn, ri) {
       if (!rgn.extractedData) return;
       try {
         rgn.regionReport = MilgScoring.runScoring(rgn.extractedData);
-        _log('[milg] Region scored:', rgn.regionReport.overall + '/100', rgn.regionReport.grade);
+        var _rgnFindings = 0;
+        (rgn.regionReport.categories || []).forEach(function(c) { (c.findings || []).forEach(function(f) { if (f.locator && f.locator.bboxes && f.locator.bboxes.length) _rgnFindings++; }); });
+        console.log('[D] region ' + ri + ' scored ' + rgn.regionReport.overall + '/100 findings_with_bbox=' + _rgnFindings);
       } catch (e) {
-        _log('[milg] Region scoring failed:', e.message);
+        console.log('[D] region ' + ri + ' scoring failed: ' + e.message);
       }
     });
 

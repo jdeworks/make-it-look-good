@@ -837,7 +837,7 @@ window.MilgViewer = (function() {
           bboxCount++;
         });
       });
-      if (bboxCount > 0) console.log('[D] region ' + rIdx + ' rects=' + bboxCount + '/' + rd.findings.length + ' filter=' + _activeFilter.type + ':' + _activeFilter.value);
+      console.log('[D] region ' + rIdx + ' rects=' + bboxCount + ' findings=' + rd.findings.length + ' filter=' + _activeFilter.type + ':' + _activeFilter.value);
 
       // Interactive handlers — full parity with main overlay (tooltip, click overlap picker, shift+click debug)
       var rdFindings = rd.findings;

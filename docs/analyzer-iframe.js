@@ -1227,7 +1227,9 @@ window.MilgIframe = (function() {
           var _dp = iframe._milgData.colors ? iframe._milgData.colors.contrastPairs : [];
           var _dRcid = _dp.filter(function(p) { return !!p._regionContainerId; }).length;
           var _dClip = _dp.filter(function(p) { return !!p._isClipped; }).length;
-          console.log('[D] parent received pairs=' + _dp.length + ' rcid=' + _dRcid + ' clipped=' + _dClip);
+          var _dMask = _dp.filter(function(p) { return !!p._maskBmp; }).length;
+          var _dRgns = (iframe._milgData.regionScreenshots || []).length;
+          console.log('[D] parent pairs=' + _dp.length + ' rcid=' + _dRcid + ' clipped=' + _dClip + ' masks=' + _dMask + ' regions=' + _dRgns);
         }
         // If hidden panels were detected, trigger unhidden screenshot pass
         var hpc = iframe._milgData.layout && iframe._milgData.layout.hiddenPanelCount;
