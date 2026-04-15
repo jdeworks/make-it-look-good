@@ -1,130 +1,89 @@
-# Task: Add mask pipeline to region mini-pages (v3.10)
+# Task: Fix remaining region issues (v3.10.4 → v3.11)
 
 ## Context
 
-The analyzer detects overflow:hidden containers (carousels, tabs) and creates "region" sub-pages with independent analysis. **v3.9.4 fixed the main overlay exclusion** — carousel bboxes no longer leak onto the main screenshot. But **region pixel verification is broken** because region mini-pages don't capture text masks.
+The analyzer detects overflow:hidden containers (carousels, tabs), creates "region" mini-pages with independent analysis, and runs pixel verification on them. v3.10–v3.10.4 added the mask pipeline, mask data flow, false-positive stripping, right-click debug menus, and bbox exclusion. Two issues remain.
 
-## Current status (v3.9.4)
+## Current status (v3.10.4)
 
 ### What works
-- `_regionContainerId` tagging: 60/116 pairs tagged, survives postMessage ✓
-- Pre-scoring filter: scoring sees only 56 main-page pairs ✓  
-- Verify exclusion: `clippedSkipped=60` (both `_isClipped` and `_regionContainerId` pairs skipped) ✓
-- Region extraction + scoring: 60 pairs extracted, scored 82/100 ✓
-- Region overlays: severity/category filters show bboxes on region screenshot ✓
-- Diagnostic copy button: `_milgCopyDiag()` or header clipboard icon captures `[D]`, `[milg-verify]`, `[milg-region]`, `[milg]` logs ✓
+- Region mask capture: `maskResults=58 maskBmp=58` — masks flow through the dict correctly
+- Region pixel verify: `verified=58 noFgBg=2` — verify runs and produces results
+- Main page masks: `maskBmp=56/56 verified=56` — fully working
+- Region false-positive stripping: horizontal scroll, offscreen elements, hidden panels removed from region scoring
+- Right-click debug menu: works on all 4 overlay types (finding, verify, region finding, region verify)
+- Region scoring: 83/100 with 13 errors, 3 warnings, 13 info
 
 ### What's broken
-- **Region pixel verify**: `maskBmp=0/60 verified=0 noFgBg=60` — ALL region pairs fail because no mask data exists
-- Region mini-pages run `MilgExtract` + single `domToCanvas` but NOT the mask capture pipeline
-- Without `_maskBmp`, the edge-based verifier can't run, grid fallback can't find FG/BG
-- "Pixel Verified" and "Pixel Fails" filters show nothing on region screenshots
 
-## The problem: missing mask pipeline in region mini-pages
+#### 1. Region verify overlays don't render
+Despite 58 verified pairs, "Pixel Verified" and "Pixel Fails" filters show nothing on the region screenshot. The `[milg] Region pixel verify:` callback log never appears in diagnostics, meaning the verify callback chain was dying before `rgn.regionVerifyResults` got set. v3.10.4 added try-catch around `bgEdgePairs` (the suspected crash site) but this hasn't been confirmed working yet.
 
-### Main page mask flow (works — in analyzer-iframe.js)
-1. After screenshot capture, for each text layer:
-   - Set layer text to black via inline `color: #000`
-   - `domToCanvas()` to capture mask bitmap
-   - Read pixel data, threshold at 240
-   - Bit-pack into Uint8Array, base64 encode
-   - Store on each pair: `_maskBmp`, `_maskPacked`, `_maskW`, `_maskH`, `_maskLayer`, `_maskDark`
-2. The verify function checks `pair._maskBmp` to decide edge vs grid method
-3. Edge method uses the mask to identify text vs background pixels
+**Diagnostic to check**: After deploying v3.10.4, run fink-translate.com and check `_milgCopyDiag()` for:
+- `[milg] Region pixel verify: N results` — if this appears, the callback fix worked
+- `[milg-verify] bboxEdge error:` — if this appears, the bgEdgePairs crash was the cause
+- `[D] renderRegionVerifyOverlays bail:` — if this appears, results aren't reaching the viewer
 
-### Region mini-page flow (broken — in analyzer-region.js `_regionScreenshotFn`)
-1. Clone container → mini-page iframe → force-reveal → `MilgExtract()` → single `domToCanvas()` → return
-2. NO mask capture pass
-3. Region pairs have no `_maskBmp` → verify produces zero results
+If the callback fix didn't help, the crash is somewhere else in the verify pipeline between the stats log and the callback. The next step would be wrapping the ENTIRE `onAllLoaded` function body in try-catch.
 
-## What needs to change
+#### 2. Main page overlay still shows findings for hidden elements
+Findings like "4 jagged alignment(s)" and "7 distinct border-radius values" appear on the main screenshot at bbox positions inside the carousel area (e.g., `{left:444, top:2088}`). These come from scoring modules that analyze aggregate page metrics including hidden carousel content.
 
-The user's directive: **"The mini pages should be handled the same as the main page. Not just the bbox but also the interaction with them like masking and pixel compare. In multi-viewport analysis we do something similar — we run the whole logic again with a different viewport. In this case we run the whole logic again with a different DOM tree."**
+v3.10.4 added "region-bounds" exclusion: builds a merged bounding rect from all clipped/region contrast pair bboxes and excludes any finding bbox whose center falls within it. This hasn't been confirmed working yet.
 
-The region mini-page needs to also run the mask pipeline. This means adding to `_regionScreenshotFn` (or a post-processing step):
+**Diagnostic to check**: Look for `[D] viewer exclusion keys=N regionBounds=N [coords]` in the output. The coords should cover the Y range where the carousel sits (~y:2000–2300 based on the debug data). If `regionBounds=0`, the clipped pairs don't have bboxes, or the merge logic has a bug.
 
-1. After the region screenshot `domToCanvas`, identify text elements (build layers like the main pipeline)
-2. For each layer: set text color to black → `domToCanvas` → extract mask → unpack per pair
-3. Store `_maskBmp` etc. on `rgn.extractedData.colors.contrastPairs`
-4. Then when `MilgContrastVerify.verify(miniReport)` runs for the region, pairs have masks and verification works
+The user's last debug capture showed the leaking bbox at `{left:444, top:2088}`. The region bounds should contain center point `(605, 2107.5)`. If the bounds don't cover this, the merge tolerance (50px Y) might need increasing, or the clipped pair bboxes are in a different Y range than expected.
 
-### Key constraint
-Must work for **console snippet AND HTML paste AND URL** — build on same modules. For console snippet, code must be self-contained in one assembled function.
+**Fallback approach**: If region-bounds exclusion still fails, the most reliable fix is to filter findings in `analyzer.js` AFTER scoring but BEFORE passing to the viewer. Iterate `reportData.categories[].findings[]`, check each finding's `locator.bboxes` against clipped pair bbox positions (using a spatial index or Y-range check), and remove findings where ALL bboxes are inside regions.
+
+#### 3. Region overlay shows only info-level findings (blue boxes)
+The score bar shows 13 errors, 3 warnings, 13 info — but the overlay only shows blue (info) boxes. This is likely CORRECT behavior: the error findings (probably contrast and typography) don't have `locator.bboxes` in the region context, so they're excluded from the overlay by the `f.locator.bboxes.length === 0` filter in the viewer's region findings builder (line ~357). Only info-level findings (border-radius, alignment) have bboxes.
+
+To verify: check `window.__milgLastReport.raw.regionScreenshots[0].regionReport.categories` in the console and inspect which categories have error-level findings with bboxes vs without.
 
 ## Key files
 
-| File | What to change |
-|------|----------------|
-| `docs/analyzer-region.js` | `_regionScreenshotFn` (line 155) — add mask capture after screenshot |
-| `docs/analyzer-iframe.js` | Reference for mask pipeline (Phase D, lines ~900-1095) — the mask layer logic to replicate |
-| `docs/analyzer-viewer.js` | `renderRegionVerifyOverlays()` already exists (line ~1600), will work once data exists |
-| `docs/analyzer-contrast-verify.js` | Already handles `_maskBmp` pairs correctly, no changes needed |
+| File | What changed in v3.10–v3.10.4 |
+|------|------|
+| `docs/analyzer-region.js` | Mask capture pipeline, maskResults dict, increased timeouts |
+| `docs/analyzer-contrast-verify.js` | cropOffset in prepareContext + verifyBboxEdge, try-catch around bgEdgePairs |
+| `docs/analyzer-viewer.js` | Right-click debug menu, region-bounds exclusion, diagnostic logging |
+| `docs/analyzer.js` | Region false-positive stripping, maskResults application before verify |
 
 ## Data flow reference
 
 ```
-Region mini-page iframe:
-  MilgExtract() → __milgData with contrastPairs + __milgBboxRefs
-  domToCanvas() → screenshot (already working)
-  *** ADD: mask layer detection → domToCanvas per layer → unpack _maskBmp per pair ***
-  
-Return to parent:
-  { screenshot, screenshotMeta, extractedData (with _maskBmp on pairs), ... }
+Region mini-page iframe (analyzer-region.js):
+  MilgExtract() → __milgData + __milgBboxRefs
+  domToCanvas() → screenshot
+  Mask pipeline: kill transitions → mask style → overlap layers → domToCanvas per layer
+    → extract/bit-pack/base64 → store in _mMaskResults dict + on pairs
+  Return: { screenshot, screenshotMeta, extractedData, maskResults, containerRect }
 
-Scoring (analyzer.js):
-  MilgScoring.runScoring(rgn.extractedData) → rgn.regionReport (already working)
+Parent receives via postMessage structured clone (analyzer-iframe.js):
+  reportData.raw.regionScreenshots[i] = above data
 
-Pixel verify (analyzer.js ~line 963):
+Scoring (analyzer.js ~line 771):
+  Strip layout false positives (hscroll, offscreen, hidden panels)
+  MilgScoring.runScoring(rgn.extractedData) → rgn.regionReport
+
+Verify (analyzer.js ~line 1004):
+  Apply maskResults dict → pairs get _maskBmp/_maskW/_maskH/_maskDark
+  Build miniReport with region screenshot + extraction colors
   MilgContrastVerify.verify(miniReport) → rgn.regionVerifyResults
-  *** WILL WORK once pairs have _maskBmp ***
 
 Viewer (analyzer-viewer.js):
-  renderRegionVerifyOverlays(rd) reads rd.regionRef.regionVerifyResults
-  *** WILL WORK once verify produces results ***
+  renderRegionOverlays() → severity/category filter overlays
+  renderRegionVerifyOverlays(rd) → pixel verify overlays (reads rd.regionRef.regionVerifyResults)
 ```
-
-## Mask pipeline details (from analyzer-iframe.js)
-
-The mask capture in the main page works like this (simplified):
-
-```javascript
-// 1. Build pair-element list from __milgBboxRefs
-var _pairEls = [];
-_refs.forEach(function(ref) {
-    if (ref.obj.ratio !== undefined) {
-        _pairEls.push({ pair: ref.obj, el: ref.el, idx: _pairs.indexOf(ref.obj) });
-    }
-});
-
-// 2. Group into layers (overlapping elements get separate layers)
-var _layers = buildOverlapLayers(_pairEls, scaleX, scaleY);
-
-// 3. For each layer:
-layer.forEach(function(pe) { pe.el.style.color = '#000'; });
-domToCanvas(root, { scale }).then(function(maskCanvas) {
-    var ctx = maskCanvas.getContext('2d');
-    // For each element in the layer:
-    layer.forEach(function(pe) {
-        var bbox = pe.pair.bbox;
-        var imgData = ctx.getImageData(bx, by, bw, bh);
-        // Threshold: pixel < 240 brightness = text
-        // Bit-pack into Uint8Array, base64 encode
-        pe.pair._maskBmp = base64String;
-        pe.pair._maskW = bw;
-        pe.pair._maskH = bh;
-        pe.pair._maskDark = darkPixelCount;
-    });
-    layer.forEach(function(pe) { pe.el.style.color = ''; }); // reset
-});
-```
-
-The region version needs to do the same in the mini-page iframe context.
 
 ## Version
-Current: v3.9.4. Bump to v3.10 after implementing.
+Current: v3.10.4. Bump to v3.11 after fixing.
 
 ## Testing
 1. Run fink-translate.com → check `_milgCopyDiag()` output
-2. Region verify stats should show `maskBmp=N/60 verified=N` (not 0/60)
-3. Click "Pixel Verified" → region screenshot should show overlays
-4. Click "Pixel Fails" → region should highlight failing pairs (if any)
+2. `[milg] Region pixel verify: N results` should appear (verify callback works)
+3. Region "Pixel Verified" filter should show overlay boxes
+4. Main screenshot should NOT show findings with bboxes in the carousel area
+5. `[D] viewer exclusion regionBounds=N [coords]` should show the carousel Y range
