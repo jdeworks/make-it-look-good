@@ -612,6 +612,7 @@ window.MilgViewer = (function() {
     var _regionalBboxKeys = {};
     var regions = (_reportData && _reportData.raw && _reportData.raw.regionScreenshots) || [];
     var _regionContainerRects = regions.map(function(r) { return r.containerRect; }).filter(Boolean);
+    console.log('[D] exclusion containerRects=' + _regionContainerRects.length + ' ' + JSON.stringify(_regionContainerRects));
     if (!_showExpanded && _reportData && _reportData.raw && _reportData.raw.colors) {
       var _contrastPairs = _reportData.raw.colors.contrastPairs || [];
       regions.forEach(function(rgn) {
@@ -1583,9 +1584,15 @@ window.MilgViewer = (function() {
 
   // Render pixel verify overlays on a region screenshot
   function renderRegionVerifyOverlays(rd) {
-    if (!rd.svg || !rd.regionRef) return;
+    if (!rd.svg || !rd.regionRef) {
+      console.log('[D] renderRegionVerifyOverlays bail: svg=' + !!rd.svg + ' regionRef=' + !!rd.regionRef);
+      return;
+    }
     var results = rd.regionRef.regionVerifyResults;
-    if (!results || results.length === 0) return;
+    if (!results || results.length === 0) {
+      console.log('[D] renderRegionVerifyOverlays bail: results=' + (results ? results.length : 'null') + ' keys=' + Object.keys(rd.regionRef).join(','));
+      return;
+    }
     while (rd.svg.firstChild) rd.svg.removeChild(rd.svg.firstChild);
 
     var scale = rd.meta.scale || 1.5;
