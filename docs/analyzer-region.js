@@ -357,12 +357,14 @@ window.MilgRegion = (function() {
                   } catch (_ce) { console.warn('[milg-region] Crop failed:', _ce.message); finalCanvas = rc; }
                 }
                 var rUri; try { rUri = finalCanvas.toDataURL('image/webp', _quality); } catch (e) { rUri = ''; }
+                var _mMaskResults = {}; // pair index → {bmp, packed, w, h, layer, dark}
                 var _rgnResult = {
                   screenshot: rUri,
                   screenshotMeta: { scale: _sc, canvasWidth: finalCanvas.width, canvasHeight: finalCanvas.height, cropOffsetX: _cropOX, cropOffsetY: _cropOY },
                   pairIndices: rgn.pairIndices,
                   containerRect: { left: Math.round(cr.left), top: Math.round(cr.top), width: Math.round(cr.width), height: Math.round(cr.height) },
-                  extractedData: extractedData
+                  extractedData: extractedData,
+                  maskResults: _mMaskResults
                 };
 
                 // --- Mask capture pipeline (same as main page Phase A-D) ---
@@ -464,8 +466,8 @@ window.MilgRegion = (function() {
                 var _mLi = 0;
                 function _mNextLayer() {
                   if (_mLi >= _mLayers.length) {
-                    var _maskCount = _mPairs.filter(function(p) { return !!p._maskBmp; }).length;
-                    console.log('[milg-region] All ' + _mLayers.length + ' mask layers done, ' + _maskCount + '/' + _mPairs.length + ' pairs masked');
+                    var _maskCount = Object.keys(_mMaskResults).length;
+                    console.log('[milg-region] All ' + _mLayers.length + ' mask layers done, maskResults=' + _maskCount + '/' + _mPairs.length);
                     clearTimeout(rgnTimer);
                     _rgnFinish(rIdx, mf, _rgnResult);
                     return;
@@ -564,12 +566,15 @@ window.MilgRegion = (function() {
                         var _packed = new Uint8Array(_byteLen);
                         for (var _bi = 0; _bi < bmp.length; _bi++) if (bmp[_bi]) _packed[_bi >> 3] |= (1 << (_bi & 7));
                         var _binStr = ''; for (var _bi2 = 0; _bi2 < _packed.length; _bi2++) _binStr += String.fromCharCode(_packed[_bi2]);
-                        pe.pair._maskBmp = btoa(_binStr);
+                        var _b64 = btoa(_binStr);
+                        // Store on pair (cross-frame) AND in dict (same-frame, survives iframe removal)
+                        pe.pair._maskBmp = _b64;
                         pe.pair._maskPacked = true;
                         pe.pair._maskW = bw;
                         pe.pair._maskH = bh;
                         pe.pair._maskLayer = _mLi;
                         pe.pair._maskDark = _dk;
+                        _mMaskResults[pe.idx] = { bmp: _b64, packed: true, w: bw, h: bh, layer: _mLi, dark: _dk };
                       } catch (_me) {}
                     });
                     if (_fillFallbacks > 0) console.log('[milg-region] Mask layer ' + _mLi + ': ' + _fillFallbacks + ' fillText fallbacks');

@@ -607,9 +607,11 @@ window.MilgViewer = (function() {
     // Build set of bboxes that belong to region containers — hidden from main overlay.
     // Primary: _regionContainerId (DOM hierarchy-based, set during clip detection).
     // Fallback: WeakSet (object identity), string-key, _isClipped flag.
+    // Additional: container-rect overlap (catches alignment/consistency findings in hidden areas).
     var _regionalBboxes = typeof WeakSet !== 'undefined' ? new WeakSet() : null;
     var _regionalBboxKeys = {};
     var regions = (_reportData && _reportData.raw && _reportData.raw.regionScreenshots) || [];
+    var _regionContainerRects = regions.map(function(r) { return r.containerRect; }).filter(Boolean);
     if (!_showExpanded && _reportData && _reportData.raw && _reportData.raw.colors) {
       var _contrastPairs = _reportData.raw.colors.contrastPairs || [];
       regions.forEach(function(rgn) {
@@ -669,6 +671,12 @@ window.MilgViewer = (function() {
           var _isRegional = (_regionalBboxes && _regionalBboxes.has(bbox)) ||
             _regionalBboxKeys[Math.round(bbox.left) + ',' + Math.round(bbox.top) + ',' + Math.round(bbox.width) + ',' + Math.round(bbox.height)];
           if (_isRegional) return;
+          // Container-rect fallback: exclude bboxes whose center falls within a region container
+          var _bcx = bbox.left + bbox.width / 2, _bcy = bbox.top + bbox.height / 2;
+          for (var _ri = 0; _ri < _regionContainerRects.length; _ri++) {
+            var _rc = _regionContainerRects[_ri];
+            if (_bcx >= _rc.left && _bcx <= _rc.left + _rc.width && _bcy >= _rc.top && _bcy <= _rc.top + _rc.height) return;
+          }
         }
         var x = Math.round(bbox.left * scaleX);
         var y = Math.round(bbox.top * scaleY) - _calibrationOffsetY;

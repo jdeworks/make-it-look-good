@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.10.1 loaded');
+console.log('[milg] analyzer.js v3.10.2 loaded');
 
 (function() {
   "use strict";
@@ -1006,6 +1006,26 @@ console.log('[milg] analyzer.js v3.10.1 loaded');
           (function _verifyNextRegion(idx) {
             if (idx >= _rgnList.length) return;
             var rgn = _rgnList[idx];
+            // Apply mask results from the region's maskResults dict (avoids cross-frame issues)
+            var _rgnPairs = rgn.extractedData.colors ? rgn.extractedData.colors.contrastPairs || [] : [];
+            var _mr = rgn.maskResults || {};
+            var _mrKeys = Object.keys(_mr);
+            if (_mrKeys.length > 0) {
+              _mrKeys.forEach(function(k) {
+                var i = parseInt(k, 10);
+                var mr = _mr[k];
+                if (_rgnPairs[i] && mr) {
+                  _rgnPairs[i]._maskBmp = mr.bmp;
+                  _rgnPairs[i]._maskPacked = !!mr.packed;
+                  _rgnPairs[i]._maskW = mr.w;
+                  _rgnPairs[i]._maskH = mr.h;
+                  _rgnPairs[i]._maskLayer = mr.layer;
+                  _rgnPairs[i]._maskDark = mr.dark;
+                }
+              });
+            }
+            var _rgnMaskCount = _rgnPairs.filter(function(p) { return !!p._maskBmp; }).length;
+            console.log('[D] region ' + idx + ' verify: pairs=' + _rgnPairs.length + ' maskResults=' + _mrKeys.length + ' maskBmp=' + _rgnMaskCount);
             var miniReport = {
               raw: {
                 screenshots: [rgn.screenshot],
