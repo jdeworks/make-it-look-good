@@ -655,10 +655,13 @@ window.MilgViewer = (function() {
           var _isRegional = (_regionalBboxes && _regionalBboxes.has(bbox)) ||
             _regionalBboxKeys[Math.round(bbox.left) + ',' + Math.round(bbox.top) + ',' + Math.round(bbox.width) + ',' + Math.round(bbox.height)];
           if (!_isRegional) {
-            var bcx = bbox.left + bbox.width / 2, bcy = bbox.top + bbox.height / 2;
+            // Expand horizontally to catch adjacent carousel slides (hidden panels are
+            // positioned left/right of the visible container via transform/position).
             for (var _ri = 0; _ri < _containerRects.length; _ri++) {
               var _cr = _containerRects[_ri];
-              if (bcx >= _cr.left && bcx <= _cr.left + _cr.width && bcy >= _cr.top && bcy <= _cr.top + _cr.height) {
+              var _exW = _cr.width * 3; // 3× container width on each side
+              if (bbox.left + bbox.width > _cr.left - _exW && bbox.left < _cr.left + _cr.width + _exW &&
+                  bbox.top + bbox.height > _cr.top && bbox.top < _cr.top + _cr.height) {
                 _isRegional = true; break;
               }
             }
@@ -789,20 +792,24 @@ window.MilgViewer = (function() {
     });
   }
 
-  // Render bbox overlays on all region screenshots — respects active filter
+  // Render bbox overlays on all region screenshots — same filter behavior as main overlay
   function renderRegionOverlays() {
     _regionData.forEach(function(rd) {
       if (!rd.svg || !rd.findings) return;
       while (rd.svg.firstChild) rd.svg.removeChild(rd.svg.firstChild);
+      // No filter active → no overlays (matches main renderOverlays behavior)
+      if (!_activeFilter) return;
+      // Verify/finding/findingBbox filters are main-screenshot-specific
+      if (_activeFilter.type === 'verify' || _activeFilter.type === 'verifySelector' ||
+          _activeFilter.type === 'finding' || _activeFilter.type === 'findingBbox') return;
+
       var scale = rd.meta.scale || 1.5;
       var cox = rd.meta.cropOffsetX || 0;
       var coy = rd.meta.cropOffsetY || 0;
 
       rd.findings.forEach(function(finding, fIdx) {
-        if (_activeFilter) {
-          if (_activeFilter.type === 'category' && finding.icon !== _activeFilter.value) return;
-          if (_activeFilter.type === 'severity' && _activeFilter.value !== 'all' && finding.severity !== _activeFilter.value) return;
-        }
+        if (_activeFilter.type === 'category' && finding.icon !== _activeFilter.value) return;
+        if (_activeFilter.type === 'severity' && _activeFilter.value !== 'all' && finding.severity !== _activeFilter.value) return;
         var color = COLORS[finding.severity] || COLORS.info;
         finding.bboxes.forEach(function(bbox) {
           if (!bbox) return;
@@ -823,6 +830,33 @@ window.MilgViewer = (function() {
           rect.setAttribute('data-finding', fIdx);
           rd.svg.appendChild(rect);
         });
+      });
+
+      // Interactive handlers — tooltip, click (same UX as main overlay)
+      var rdFindings = rd.findings;
+      rd.svg.querySelectorAll('rect[data-finding]').forEach(function(rect) {
+        rect.style.cursor = 'pointer';
+        rect.addEventListener('mouseenter', function(e) {
+          var fIdx = parseInt(rect.getAttribute('data-finding'));
+          var f = rdFindings[fIdx];
+          if (!f) return;
+          clearTimeout(_tooltipHideTimer);
+          hideTooltip();
+          _tooltip = document.createElement('div');
+          _tooltip.className = 'milg-viewer-tooltip';
+          _tooltip.addEventListener('mouseenter', function() { clearTimeout(_tooltipHideTimer); });
+          _tooltip.addEventListener('mouseleave', function() { scheduleHideTooltip(); });
+          var sevClass = 'milg-viewer-sev-' + f.severity;
+          var shortTitle = f.title.length > 60 ? f.title.substring(0, 57) + '...' : f.title;
+          _tooltip.innerHTML =
+            '<div style="display:flex;align-items:baseline;gap:6px;padding:3px 0">' +
+            '<span class="milg-viewer-tooltip-badge ' + sevClass + '" style="flex-shrink:0;font-size:9px;padding:1px 5px">' + f.severity + '</span>' +
+            '<span style="font-size:11px;color:#e2e8f0;line-height:1.3">' + shortTitle + '</span></div>' +
+            (f.detail ? '<div style="padding:2px 0 0 36px;font-size:10px;color:rgba(255,255,255,0.5);line-height:1.4">' + f.detail.substring(0, 200) + '</div>' : '') +
+            '<div style="padding:2px 0 0 36px;font-size:9px;color:rgba(255,255,255,0.3)">' + f.category + '</div>';
+          positionTooltip(e);
+        });
+        rect.addEventListener('mouseleave', function() { scheduleHideTooltip(); });
       });
     });
   }
