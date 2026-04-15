@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.6 loaded');
+console.log('[milg] analyzer.js v3.9 loaded');
 
 (function() {
   "use strict";
