@@ -605,7 +605,7 @@ window.MilgIframe = (function() {
             '}' +
           '}' +
         '});' +
-        'if(_revealed>0)console.log("[iframe-ss] Force-revealed "+_revealed+" scroll-animated elements (IO disabled in offscreen iframes)");' +
+        'if(_revealed>0)0&&console.log("[iframe-ss] Force-revealed "+_revealed+" scroll-animated elements (IO disabled in offscreen iframes)");' +
         // Also inject a style to fast-forward any remaining CSS animations
         'var _ffStyle=document.createElement("style");' +
         '_ffStyle.textContent="*,*::before,*::after{animation-delay:0s !important;animation-duration:0.01s !important;transition-duration:0s !important;transition-delay:0s !important;}";' +
@@ -617,11 +617,11 @@ window.MilgIframe = (function() {
         // Overflow expansion for carousels is deferred — happens AFTER clean screenshot capture
         'void document.body.offsetHeight;' +
         '_prog("Waiting for animations to settle...");' +
-        'console.log("[iframe-ss] Phase 2: Waiting for animations to finalize...");' +
+        '0&&console.log("[iframe-ss] Phase 2: Waiting for animations to finalize...");' +
         'setTimeout(function(){' +
           'if(typeof window.__milgReReadBboxes==="function"){' +
             'var res=window.__milgReReadBboxes();' +
-            'console.log("[iframe-ss] Re-read bboxes: "+res)' +
+            '0&&console.log("[iframe-ss] Re-read bboxes: "+res)' +
           '}' +
           'var fullH=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);' +
           'console.log("[iframe-ss] scrollHeight="+fullH+" vh="+vh);' +
@@ -781,7 +781,7 @@ window.MilgIframe = (function() {
                     'anc=anc.parentElement' +
                   '}' +
                 '});' +
-                'console.log("[iframe-ss] Tagged "+_rcc+" clipping containers for region exclusion")' +
+                'console.log("[D] tagged "+_rcc+" clip containers, clipped="+window.__milgBboxRefs.filter(function(r){return r.obj&&r.obj._isClipped}).length+"/"+window.__milgBboxRefs.length)' +
               '}' +
               // Inject and run region screenshot function (serialized to avoid escaping issues)
               'var _cp2=window.__milgData&&window.__milgData.colors?window.__milgData.colors.contrastPairs||[]:[];' +
@@ -871,8 +871,11 @@ window.MilgIframe = (function() {
                   'screenshotCleanMeta:{canvasWidth:_cleanW,canvasHeight:_cleanH},' +
                   'regionScreenshots:window.__milgRegionScreenshots||[],' +
                   'updatedData:updatedData};' +
-                'var _maskCount=updatedData&&updatedData.colors&&updatedData.colors.contrastPairs?updatedData.colors.contrastPairs.filter(function(p){return !!p._maskBmp}).length:0;' +
-                'console.log("[iframe-ss] postMessage: ss="+((fullUri||"").length/1024|0)+"KB ud="+(JSON.stringify(updatedData||{}).length/1024|0)+"KB masks="+_maskCount+"/"+((updatedData&&updatedData.colors&&updatedData.colors.contrastPairs||[]).length));' +
+                'var _udPairs=updatedData&&updatedData.colors?updatedData.colors.contrastPairs||[]:[];' +
+                'var _maskCount=_udPairs.filter(function(p){return !!p._maskBmp}).length;' +
+                'var _rcidCount=_udPairs.filter(function(p){return !!p._regionContainerId}).length;' +
+                'var _clipCount=_udPairs.filter(function(p){return !!p._isClipped}).length;' +
+                'console.log("[D] iframe→parent pairs="+_udPairs.length+" rcid="+_rcidCount+" clipped="+_clipCount+" masks="+_maskCount);' +
                 'try{parent.postMessage(msg,"*")}catch(e){' +
                   'console.warn("[milg-warn] postMessage failed ("+e.message+"), retrying without updatedData");' +
                   'msg.updatedData=null;' +
@@ -1221,6 +1224,10 @@ window.MilgIframe = (function() {
             if (ud.layout.offscreenElements) iframe._milgData.layout.offscreenElements = ud.layout.offscreenElements;
             if (ud.layout.hiddenPanelIssues) iframe._milgData.layout.hiddenPanelIssues = ud.layout.hiddenPanelIssues;
           }
+          var _dp = iframe._milgData.colors ? iframe._milgData.colors.contrastPairs : [];
+          var _dRcid = _dp.filter(function(p) { return !!p._regionContainerId; }).length;
+          var _dClip = _dp.filter(function(p) { return !!p._isClipped; }).length;
+          console.log('[D] parent received pairs=' + _dp.length + ' rcid=' + _dRcid + ' clipped=' + _dClip);
         }
         // If hidden panels were detected, trigger unhidden screenshot pass
         var hpc = iframe._milgData.layout && iframe._milgData.layout.hiddenPanelCount;

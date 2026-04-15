@@ -636,6 +636,7 @@ window.MilgViewer = (function() {
       }
       (raw.typography && raw.typography.headings || []).forEach(_addRegionalBbox);
       (raw.interaction && raw.interaction.touchTargets || []).forEach(_addRegionalBbox);
+      console.log('[D] viewer exclusion keys=' + Object.keys(_regionalBboxKeys).length + ' findings=' + _allFindings.length);
     }
 
     // Build pixel verification lookups: by selector AND by bbox position+size
@@ -835,7 +836,7 @@ window.MilgViewer = (function() {
           bboxCount++;
         });
       });
-      console.log('[milg-viewer] Region ' + rIdx + ' overlays: ' + rd.findings.length + ' findings, ' + bboxCount + ' rects, filter=' + _activeFilter.type + ':' + _activeFilter.value + ', scale=' + scale + ', crop=' + cox + ',' + coy + ', viewBox=' + rd.svg.getAttribute('viewBox'));
+      if (bboxCount > 0) console.log('[D] region ' + rIdx + ' rects=' + bboxCount + '/' + rd.findings.length + ' filter=' + _activeFilter.type + ':' + _activeFilter.value);
 
       // Interactive handlers — full parity with main overlay (tooltip, click overlap picker, shift+click debug)
       var rdFindings = rd.findings;
