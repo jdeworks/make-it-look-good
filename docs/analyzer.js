@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.9.3 loaded');
+console.log('[milg] analyzer.js v3.9.4 loaded');
 
 (function() {
   "use strict";
@@ -27,6 +27,31 @@ console.log('[milg] analyzer.js v3.9.3 loaded');
   // --- Debug ---
   var _debug = (location.search.indexOf('debug') !== -1) || localStorage.getItem('milg-debug') === 'true';
   function _log() { if (_debug) console.log.apply(console, arguments); }
+
+  // --- Diagnostic log capture (filtered, for copy-to-clipboard) ---
+  var _diagLogs = [];
+  var _diagPrefixes = ['[D]', '[milg-verify]', '[milg-region]', '[milg]'];
+  (function() {
+    var _origLog = console.log;
+    var _origWarn = console.warn;
+    console.log = function() {
+      _origLog.apply(console, arguments);
+      var msg = Array.prototype.join.call(arguments, ' ');
+      for (var i = 0; i < _diagPrefixes.length; i++) {
+        if (msg.indexOf(_diagPrefixes[i]) !== -1) { _diagLogs.push(msg); break; }
+      }
+    };
+    console.warn = function() {
+      _origWarn.apply(console, arguments);
+      var msg = Array.prototype.join.call(arguments, ' ');
+      if (msg.indexOf('[milg') !== -1) _diagLogs.push('WARN: ' + msg);
+    };
+  })();
+  window._milgCopyDiag = function() {
+    var text = 'v' + document.querySelector('h1 span') .textContent.trim() + '\n' + _diagLogs.join('\n');
+    navigator.clipboard.writeText(text).then(function() { alert('Copied ' + _diagLogs.length + ' diagnostic lines'); });
+    return text;
+  };
 
   // --- State ---
   var reportData = null;
