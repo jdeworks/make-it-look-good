@@ -793,8 +793,9 @@ window.MilgViewer = (function() {
 
   // Render bbox overlays on all region screenshots — same filter behavior as main overlay
   function renderRegionOverlays() {
+    console.log('[D] renderRegionOverlays regions=' + _regionData.length + ' filter=' + (_activeFilter ? _activeFilter.type + ':' + _activeFilter.value : 'none'));
     _regionData.forEach(function(rd, rIdx) {
-      if (!rd.svg || !rd.findings) return;
+      if (!rd.svg || !rd.findings) { console.log('[D] region ' + rIdx + ' skip: svg=' + !!rd.svg + ' findings=' + (rd.findings ? rd.findings.length : 'null')); return; }
       while (rd.svg.firstChild) rd.svg.removeChild(rd.svg.firstChild);
       // No filter active → no overlays (matches main renderOverlays behavior)
       if (!_activeFilter) return;

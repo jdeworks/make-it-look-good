@@ -48,7 +48,7 @@ console.log('[milg] analyzer.js v3.9.4 loaded');
     };
   })();
   window._milgCopyDiag = function() {
-    var text = 'v' + document.querySelector('h1 span') .textContent.trim() + '\n' + _diagLogs.join('\n');
+    var text = document.querySelector('h1 span').textContent.trim() + '\n' + _diagLogs.join('\n');
     navigator.clipboard.writeText(text).then(function() { alert('Copied ' + _diagLogs.length + ' diagnostic lines'); });
     return text;
   };
