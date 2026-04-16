@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11 loaded');
+console.log('[milg] analyzer.js v3.11.1 loaded');
 
 (function() {
   "use strict";
@@ -1048,6 +1048,10 @@ console.log('[milg] analyzer.js v3.11 loaded');
             MilgContrastVerify.verify(miniReport, function(rgnResults) {
               rgn.regionVerifyResults = rgnResults || [];
               _log('[milg] Region pixel verify:', rgnResults ? rgnResults.length : 0, 'results');
+              // Re-render region overlays if verify filter is active (results arrived async)
+              if (typeof MilgViewer !== 'undefined' && MilgViewer.refreshRegionOverlays) {
+                MilgViewer.refreshRegionOverlays();
+              }
               _verifyNextRegion(idx + 1);
             });
           })(0);

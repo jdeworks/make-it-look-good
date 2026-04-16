@@ -429,11 +429,12 @@ window.MilgViewer = (function() {
 
         rgnSection.appendChild(rgnFrame);
 
-        // Findings summary bar
+        // Findings summary bar — only count findings with bboxes (those are the ones rendered as overlays)
         if (rgn.regionReport) {
           var errCount = 0, warnCount = 0, infoCount = 0;
           (rgn.regionReport.categories || []).forEach(function(cat) {
             (cat.findings || []).forEach(function(f) {
+              if (!f.locator || !f.locator.bboxes || f.locator.bboxes.length === 0) return;
               if (f.severity === 'error') errCount++;
               else if (f.severity === 'warning') warnCount++;
               else if (f.severity === 'info') infoCount++;
@@ -2448,6 +2449,7 @@ window.MilgViewer = (function() {
     close: close,
     showFinding: showFinding,
     showFindingBbox: showFindingBbox,
-    showVerifyResult: showVerifyResult
+    showVerifyResult: showVerifyResult,
+    refreshRegionOverlays: renderRegionOverlays
   };
 })();
