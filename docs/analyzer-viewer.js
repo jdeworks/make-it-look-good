@@ -996,6 +996,10 @@ window.MilgViewer = (function() {
     var vScaleX = _meta.scale;
     var vScaleY = _meta.scale;
 
+    // Build region container rects for exclusion — same as non-verify overlay path
+    var regions = (_reportData && _reportData.raw && _reportData.raw.regionScreenshots) || [];
+    var _vRegionRects = regions.map(function(r) { return r.containerRect; }).filter(Boolean);
+
     // Layer filter: "layerN" shows only that layer
     var filterLayer = null;
     if (_activeFilter.value && _activeFilter.value.indexOf('layer') === 0) {
@@ -1006,6 +1010,7 @@ window.MilgViewer = (function() {
     var filterSelector = _activeFilter.type === 'verifySelector' ? _activeFilter.value : null;
 
     var _vrNoBbox = 0;
+    var _vrRegionExcluded = 0;
     results.forEach(function(vr, vIdx) {
       if (vr.skipped) return; // Hidden region elements — shown in region sections
       if (filterSelector && vr.selector !== filterSelector) return;
@@ -1013,6 +1018,16 @@ window.MilgViewer = (function() {
       if (!filterSelector && filterLayer !== null && (vr.maskLayer || 0) !== filterLayer) return;
       var bbox = vr.bbox;
       if (!bbox) { _vrNoBbox++; return; }
+      // Exclude verify rects whose center falls inside a region container rect
+      if (_vRegionRects.length > 0) {
+        var _bcx = bbox.left + bbox.width / 2, _bcy = bbox.top + bbox.height / 2;
+        var _inRegion = false;
+        for (var _ri = 0; _ri < _vRegionRects.length; _ri++) {
+          var _rc = _vRegionRects[_ri];
+          if (_bcx >= _rc.left && _bcx <= _rc.left + _rc.width && _bcy >= _rc.top && _bcy <= _rc.top + _rc.height) { _inRegion = true; break; }
+        }
+        if (_inRegion) { _vrRegionExcluded++; return; }
+      }
 
       var x = Math.round(bbox.left * vScaleX);
       var y = Math.round(bbox.top * vScaleY) - _calibrationOffsetY;
@@ -1083,7 +1098,7 @@ window.MilgViewer = (function() {
       rect._bgKeyMap = vr._bgKeyMap || null;
       rect._sectionOffset = (vr.sectionIdx && _meta.viewportHeight) ? vr.sectionIdx * Math.round(_meta.viewportHeight * vScaleX) : 0;
     });
-    console.log('[milg-viewer] Verify rects created:', svg.querySelectorAll('rect[data-verify]').length, 'noBbox:', _vrNoBbox);
+    console.log('[milg-viewer] Verify rects created:', svg.querySelectorAll('rect[data-verify]').length, 'noBbox:', _vrNoBbox, 'regionExcluded:', _vrRegionExcluded);
 
     // BBox edge contrast results — render as dashed yellow rects
     var bboxEdgeResults = (_reportData && _reportData._bboxEdgeResults) || [];
@@ -1301,9 +1316,7 @@ window.MilgViewer = (function() {
           showDebugLayer(rect, svg, 'zones', null);
         }
       }
-      rect.addEventListener('contextmenu', function(e) {
-        showDebugMenu(e, svg, { findings: _allFindings, verifyResults: results, scale: _meta.scale, cropOX: 0, cropOY: 0, meta: _meta, context: 'main', calibrationOffsetY: _calibrationOffsetY });
-      });
+      rect.addEventListener('contextmenu', _cycleDebug);
       rect.addEventListener('dblclick', _cycleDebug);
       rect.addEventListener('click', function(e) {
         e.preventDefault(); e.stopPropagation();
@@ -1623,12 +1636,17 @@ window.MilgViewer = (function() {
   function renderRegionVerifyOverlays(rd) {
     if (!rd.svg || !rd.regionRef) return;
     var results = rd.regionRef.regionVerifyResults;
-    if (!results || results.length === 0) return;
+    if (!results || results.length === 0) {
+      console.log('[D] renderRegionVerifyOverlays: no results (regionRef keys=' + Object.keys(rd.regionRef).join(',') + ')');
+      return;
+    }
     while (rd.svg.firstChild) rd.svg.removeChild(rd.svg.firstChild);
 
     var scale = rd.meta.scale || 1.5;
     var cox = rd.meta.cropOffsetX || 0;
     var coy = rd.meta.cropOffsetY || 0;
+    var vb = rd.svg.getAttribute('viewBox');
+    console.log('[D] renderRegionVerifyOverlays: results=' + results.length + ' scale=' + scale + ' cropOff=' + cox + ',' + coy + ' viewBox=' + vb);
     var showFails = _activeFilter.value === 'fails';
     var filterLayer = null;
     if (_activeFilter.value && _activeFilter.value.indexOf('layer') === 0) {
@@ -1701,7 +1719,10 @@ window.MilgViewer = (function() {
         rd.svg.appendChild(label);
       }
     });
-    console.log('[milg-viewer] Region verify overlays: ' + results.length + ' results, ' + rd.svg.querySelectorAll('rect[data-verify]').length + ' rects');
+    var _rvRects = rd.svg.querySelectorAll('rect[data-verify]');
+    var _firstRect = _rvRects.length > 0 ? _rvRects[0] : null;
+    console.log('[milg-viewer] Region verify overlays: ' + results.length + ' results, ' + _rvRects.length + ' rects' +
+      (_firstRect ? ' first=[' + _firstRect.getAttribute('x') + ',' + _firstRect.getAttribute('y') + ' ' + _firstRect.getAttribute('width') + 'x' + _firstRect.getAttribute('height') + ']' : ''));
     // Context menu on region verify rects
     var _rvSvg = rd.svg, _rvResults = results, _rvScale = scale, _rvCox = cox, _rvCoy = coy, _rvMeta = rd.meta, _rvFindings = rd.findings;
     rd.svg.querySelectorAll('rect[data-verify]').forEach(function(rect) {
