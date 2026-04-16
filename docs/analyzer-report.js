@@ -69,23 +69,16 @@ window.MilgReport = (function() {
 
     // Deep scan viewport info handled by persistent tabs above report — no inline bar needed
 
-    // --- Screenshots (collapsible, before scores) ---
-    if (report.raw.screenshots && report.raw.screenshots.length > 0) {
-      html += '<details class="report-screenshots">';
-      html += '<summary style="cursor:pointer;font-size:14px;font-weight:600;padding:8px 0;color:var(--text-secondary)">Page Screenshots (' + report.raw.screenshots.length + ')</summary>';
-      html += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;margin-bottom:16px">';
-      report.raw.screenshots.forEach(function(src, idx) {
-        html += '<div class="screenshot-thumb" style="flex:1;min-width:200px;max-width:400px">';
-        if (report.raw.screenshots.length > 1) {
-          html += '<div style="padding:4px 8px;font-size:10px;color:var(--text-secondary);border-bottom:1px solid var(--border);background:var(--bg-alt)">Section ' + (idx + 1) + '</div>';
-        }
-        html += '<img src="' + src + '" alt="Page screenshot ' + (idx + 1) + '" class="screenshot-img" style="width:100%;display:block;cursor:zoom-in" onclick="window.__milgZoomScreenshot(this,' + idx + ')" loading="lazy">';
-        html += '</div>';
-      });
+    // --- Screenshot preview (small clickable thumbnail → opens full viewer) ---
+    var _previewSrc = report.raw.screenshotClean || (report.raw.screenshots && report.raw.screenshots[0]) || null;
+    if (_previewSrc) {
+      html += '<div class="report-screenshots" style="margin:8px 0 16px">';
+      html += '<div style="max-width:240px;border:1px solid var(--border);border-radius:6px;overflow:hidden;cursor:zoom-in;transition:box-shadow 0.2s" ' +
+        'onmouseenter="this.style.boxShadow=\'0 0 0 2px var(--primary)\'" onmouseleave="this.style.boxShadow=\'none\'">';
+      html += '<img src="' + _previewSrc + '" alt="Page screenshot" style="width:100%;display:block" onclick="window.__milgZoomScreenshot(this,0)" loading="lazy">';
+      html += '<div style="padding:4px 8px;font-size:10px;color:var(--text-secondary);background:var(--bg-alt);text-align:center">Click to open viewer</div>';
       html += '</div>';
-      // Note: screenshotsUnhidden (hidden panels revealed) no longer displayed here —
-      // hidden/clipped content is shown via region screenshots in the viewer instead
-      html += '</details>';
+      html += '</div>';
     }
 
     // --- Category cards ---
