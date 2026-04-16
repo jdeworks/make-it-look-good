@@ -1723,12 +1723,48 @@ window.MilgViewer = (function() {
     var _firstRect = _rvRects.length > 0 ? _rvRects[0] : null;
     console.log('[milg-viewer] Region verify overlays: ' + results.length + ' results, ' + _rvRects.length + ' rects' +
       (_firstRect ? ' first=[' + _firstRect.getAttribute('x') + ',' + _firstRect.getAttribute('y') + ' ' + _firstRect.getAttribute('width') + 'x' + _firstRect.getAttribute('height') + ']' : ''));
-    // Context menu on region verify rects
-    var _rvSvg = rd.svg, _rvResults = results, _rvScale = scale, _rvCox = cox, _rvCoy = coy, _rvMeta = rd.meta, _rvFindings = rd.findings;
+    // Interactive handlers on region verify rects — full parity with main verify overlay
+    var _rvSvg = rd.svg, _rvResults = results;
     rd.svg.querySelectorAll('rect[data-verify]').forEach(function(rect) {
+      var _viIdx = parseInt(rect.getAttribute('data-verify'));
+      var vr = results[_viIdx];
       rect.style.cursor = 'pointer';
-      rect.addEventListener('contextmenu', function(e) {
-        showDebugMenu(e, _rvSvg, { findings: _rvFindings, verifyResults: _rvResults, scale: _rvScale, cropOX: _rvCox, cropOY: _rvCoy, meta: _rvMeta, context: 'region' });
+      // Store data for interactions (same as main verify rects)
+      rect._samplePoints = vr ? vr.samplePoints || null : null;
+      rect._debug = vr ? vr._debug || null : null;
+      rect._sectionOffset = 0; // regions have no section offset
+      rect._bgKeyMap = null;
+
+      // Hover: tooltip + FG/BG highlight
+      rect.addEventListener('mouseenter', function(e) {
+        showVerifyTooltip(e, _viIdx, _rvResults);
+      });
+      rect.addEventListener('mouseleave', function() { scheduleHideTooltip(); });
+
+      // Right-click: cycle mask/zones debug layers
+      function _rvCycleDebug(e) {
+        e.preventDefault(); e.stopPropagation();
+        if (!rect._debug) return;
+        var modes = ['none', 'mask', 'zones'];
+        var current = rect._debugMode || 'none';
+        var idx = modes.indexOf(current);
+        var next = modes[(idx + 1) % modes.length];
+        rect._debugMode = next;
+        if (next === 'none') {
+          _rvSvg.querySelectorAll('.milg-debug-overlay').forEach(function(el) { el.remove(); });
+        } else if (next === 'mask') {
+          showDebugLayer(rect, _rvSvg, 'mask', null);
+        } else if (next === 'zones') {
+          showDebugLayer(rect, _rvSvg, 'zones', null);
+        }
+      }
+      rect.addEventListener('contextmenu', _rvCycleDebug);
+      rect.addEventListener('dblclick', _rvCycleDebug);
+
+      // Click: cycle sample point dots (worst/P10/median/P90/best)
+      rect.addEventListener('click', function(e) {
+        e.preventDefault(); e.stopPropagation();
+        _toggleDots(rect, _rvSvg);
       });
     });
   }
@@ -1845,9 +1881,9 @@ window.MilgViewer = (function() {
     positionTooltip(e);
   }
 
-  function showVerifyTooltip(e, vIdx) {
+  function showVerifyTooltip(e, vIdx, optResults) {
     hideTooltip();
-    var vr = (_reportData && _reportData._contrastVerifyResults) ? _reportData._contrastVerifyResults[vIdx] : null;
+    var vr = optResults ? optResults[vIdx] : ((_reportData && _reportData._contrastVerifyResults) ? _reportData._contrastVerifyResults[vIdx] : null);
     if (!vr) return;
 
     _tooltip = document.createElement('div');
