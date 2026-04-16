@@ -853,6 +853,7 @@ window.MilgViewer = (function() {
       if (!_activeFilter) return;
       // Verify filters → delegate to region verify renderer
       if (_activeFilter.type === 'verify' || _activeFilter.type === 'verifySelector') {
+        console.log('[D] region ' + rIdx + ' delegating to renderRegionVerifyOverlays: regionRef=' + !!rd.regionRef + ' verifyResults=' + (rd.regionRef && rd.regionRef.regionVerifyResults ? rd.regionRef.regionVerifyResults.length : 'null'));
         renderRegionVerifyOverlays(rd);
         return;
       }
@@ -1621,13 +1622,14 @@ window.MilgViewer = (function() {
 
   // Render pixel verify overlays on a region screenshot
   function renderRegionVerifyOverlays(rd) {
+    console.log('[D] renderRegionVerifyOverlays ENTER: svg=' + !!rd.svg + ' regionRef=' + !!rd.regionRef);
     if (!rd.svg || !rd.regionRef) {
       console.log('[D] renderRegionVerifyOverlays bail: svg=' + !!rd.svg + ' regionRef=' + !!rd.regionRef);
       return;
     }
     var results = rd.regionRef.regionVerifyResults;
+    console.log('[D] renderRegionVerifyOverlays results=' + (results ? results.length : 'null') + ' keys=' + Object.keys(rd.regionRef).join(','));
     if (!results || results.length === 0) {
-      console.log('[D] renderRegionVerifyOverlays bail: results=' + (results ? results.length : 'null') + ' keys=' + Object.keys(rd.regionRef).join(','));
       return;
     }
     while (rd.svg.firstChild) rd.svg.removeChild(rd.svg.firstChild);
