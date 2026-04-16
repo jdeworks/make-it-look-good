@@ -1,89 +1,43 @@
-# Task: Fix remaining region issues (v3.10.4 → v3.11)
+# Task: Verify v3.11 region fixes
 
-## Context
+## What was fixed in v3.11
 
-The analyzer detects overflow:hidden containers (carousels, tabs), creates "region" mini-pages with independent analysis, and runs pixel verification on them. v3.10–v3.10.4 added the mask pipeline, mask data flow, false-positive stripping, right-click debug menus, and bbox exclusion. Two issues remain.
+### Fix 1: Region verify callback crash (analyzer-contrast-verify.js)
+**Root cause**: `processBatch()` runs via `setTimeout` — if `verifyPair()` throws on ANY pair, the batch loop dies silently (unhandled async error) and the callback never fires. The v3.10.4 try-catch only protected `bgEdgePairs` AFTER batch completion.
+**Fix**: Wrapped `verifyPair()` call in try-catch inside `processBatch`. Individual pair errors are logged as `[milg-verify] verifyPair[N] error:` and counted as `noFgBg`.
 
-## Current status (v3.10.4)
+### Fix 2: Layout findings leak into main overlay (3 files)
+**Root cause**: `layout.alignmentElements` and `layout.borderRadii` were not included in `updatedData` sent from iframe to parent. The `_regionContainerId` and `_rcid` tags (set during force-reveal) never reached the parent data. Three gaps compounded:
+1. `updatedData` omitted layout items → `_rcid` lost in transit
+2. Viewer's `_addRegionalBbox` only processed headings/touchTargets → string-key exclusion missed layout items
+3. Scoring didn't filter layout items → carousel elements inflated aggregate counts
 
-### What works
-- Region mask capture: `maskResults=58 maskBmp=58` — masks flow through the dict correctly
-- Region pixel verify: `verified=58 noFgBg=2` — verify runs and produces results
-- Main page masks: `maskBmp=56/56 verified=56` — fully working
-- Region false-positive stripping: horizontal scroll, offscreen elements, hidden panels removed from region scoring
-- Right-click debug menu: works on all 4 overlay types (finding, verify, region finding, region verify)
-- Region scoring: 83/100 with 13 errors, 3 warnings, 13 info
+**Fixes applied:**
+- `analyzer-iframe.js`: Added `alignmentElements` and `borderRadii` to `updatedData` + parent merge
+- `analyzer.js`: Filter `alignmentElements` by `_regionContainerId` and `borderRadii` by `_rcid` before main scoring (restore after)
+- `analyzer-viewer.js`: Added `alignmentElements` and `borderRadii` to `_addRegionalBbox` exclusion sets
 
-### What's broken
+## Testing (v3.11)
+1. Confirm header shows **v3.11**
+2. Run fink-translate.com → `_milgCopyDiag()`:
+   - `[milg] Region pixel verify: N results` should appear (callback now survives pair errors)
+   - `[milg-verify] verifyPair[N] error:` may appear (shows which pairs crashed — for future debugging)
+   - `[D] scoring filter: ... align removed=N` should show carousel alignment elements were excluded
+3. Region "Pixel Verified"/"Pixel Fails" filters should now render overlays
+4. Main screenshot should NOT show jagged alignment / border-radius bboxes in carousel area
+5. Region overlay should still show its own findings independently
 
-#### 1. Region verify overlays don't render
-Despite 58 verified pairs, "Pixel Verified" and "Pixel Fails" filters show nothing on the region screenshot. The `[milg] Region pixel verify:` callback log never appears in diagnostics, meaning the verify callback chain was dying before `rgn.regionVerifyResults` got set. v3.10.4 added try-catch around `bgEdgePairs` (the suspected crash site) but this hasn't been confirmed working yet.
+## Key files changed
+| File | Change |
+|------|--------|
+| `docs/analyzer-contrast-verify.js` | try-catch around verifyPair in processBatch |
+| `docs/analyzer-iframe.js` | alignmentElements + borderRadii in updatedData + parent merge |
+| `docs/analyzer.js` | Filter layout items before scoring, restore after |
+| `docs/analyzer-viewer.js` | Add layout items to _addRegionalBbox exclusion |
+| `docs/analyzer.html` | Version bump v3.11 |
 
-**Diagnostic to check**: After deploying v3.10.4, run fink-translate.com and check `_milgCopyDiag()` for:
-- `[milg] Region pixel verify: N results` — if this appears, the callback fix worked
-- `[milg-verify] bboxEdge error:` — if this appears, the bgEdgePairs crash was the cause
-- `[D] renderRegionVerifyOverlays bail:` — if this appears, results aren't reaching the viewer
-
-If the callback fix didn't help, the crash is somewhere else in the verify pipeline between the stats log and the callback. The next step would be wrapping the ENTIRE `onAllLoaded` function body in try-catch.
-
-#### 2. Main page overlay still shows findings for hidden elements
-Findings like "4 jagged alignment(s)" and "7 distinct border-radius values" appear on the main screenshot at bbox positions inside the carousel area (e.g., `{left:444, top:2088}`). These come from scoring modules that analyze aggregate page metrics including hidden carousel content.
-
-v3.10.4 added "region-bounds" exclusion: builds a merged bounding rect from all clipped/region contrast pair bboxes and excludes any finding bbox whose center falls within it. This hasn't been confirmed working yet.
-
-**Diagnostic to check**: Look for `[D] viewer exclusion keys=N regionBounds=N [coords]` in the output. The coords should cover the Y range where the carousel sits (~y:2000–2300 based on the debug data). If `regionBounds=0`, the clipped pairs don't have bboxes, or the merge logic has a bug.
-
-The user's last debug capture showed the leaking bbox at `{left:444, top:2088}`. The region bounds should contain center point `(605, 2107.5)`. If the bounds don't cover this, the merge tolerance (50px Y) might need increasing, or the clipped pair bboxes are in a different Y range than expected.
-
-**Fallback approach**: If region-bounds exclusion still fails, the most reliable fix is to filter findings in `analyzer.js` AFTER scoring but BEFORE passing to the viewer. Iterate `reportData.categories[].findings[]`, check each finding's `locator.bboxes` against clipped pair bbox positions (using a spatial index or Y-range check), and remove findings where ALL bboxes are inside regions.
-
-#### 3. Region overlay shows only info-level findings (blue boxes)
-The score bar shows 13 errors, 3 warnings, 13 info — but the overlay only shows blue (info) boxes. This is likely CORRECT behavior: the error findings (probably contrast and typography) don't have `locator.bboxes` in the region context, so they're excluded from the overlay by the `f.locator.bboxes.length === 0` filter in the viewer's region findings builder (line ~357). Only info-level findings (border-radius, alignment) have bboxes.
-
-To verify: check `window.__milgLastReport.raw.regionScreenshots[0].regionReport.categories` in the console and inspect which categories have error-level findings with bboxes vs without.
-
-## Key files
-
-| File | What changed in v3.10–v3.10.4 |
-|------|------|
-| `docs/analyzer-region.js` | Mask capture pipeline, maskResults dict, increased timeouts |
-| `docs/analyzer-contrast-verify.js` | cropOffset in prepareContext + verifyBboxEdge, try-catch around bgEdgePairs |
-| `docs/analyzer-viewer.js` | Right-click debug menu, region-bounds exclusion, diagnostic logging |
-| `docs/analyzer.js` | Region false-positive stripping, maskResults application before verify |
-
-## Data flow reference
-
-```
-Region mini-page iframe (analyzer-region.js):
-  MilgExtract() → __milgData + __milgBboxRefs
-  domToCanvas() → screenshot
-  Mask pipeline: kill transitions → mask style → overlap layers → domToCanvas per layer
-    → extract/bit-pack/base64 → store in _mMaskResults dict + on pairs
-  Return: { screenshot, screenshotMeta, extractedData, maskResults, containerRect }
-
-Parent receives via postMessage structured clone (analyzer-iframe.js):
-  reportData.raw.regionScreenshots[i] = above data
-
-Scoring (analyzer.js ~line 771):
-  Strip layout false positives (hscroll, offscreen, hidden panels)
-  MilgScoring.runScoring(rgn.extractedData) → rgn.regionReport
-
-Verify (analyzer.js ~line 1004):
-  Apply maskResults dict → pairs get _maskBmp/_maskW/_maskH/_maskDark
-  Build miniReport with region screenshot + extraction colors
-  MilgContrastVerify.verify(miniReport) → rgn.regionVerifyResults
-
-Viewer (analyzer-viewer.js):
-  renderRegionOverlays() → severity/category filter overlays
-  renderRegionVerifyOverlays(rd) → pixel verify overlays (reads rd.regionRef.regionVerifyResults)
-```
+## If verify still shows 0 results
+The try-catch will now log `[milg-verify] verifyPair[N] error:` for crashing pairs. If ALL pairs crash, results will be empty but the callback WILL fire (no more silent death). Check the error messages to understand what region pairs have differently (likely a coordinate/meta issue).
 
 ## Version
-Current: v3.10.4. Bump to v3.11 after fixing.
-
-## Testing
-1. Run fink-translate.com → check `_milgCopyDiag()` output
-2. `[milg] Region pixel verify: N results` should appear (verify callback works)
-3. Region "Pixel Verified" filter should show overlay boxes
-4. Main screenshot should NOT show findings with bboxes in the carousel area
-5. `[D] viewer exclusion regionBounds=N [coords]` should show the carousel Y range
+Current: v3.11

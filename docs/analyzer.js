@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.10.4 loaded');
+console.log('[milg] analyzer.js v3.11 loaded');
 
 (function() {
   "use strict";
@@ -752,11 +752,20 @@ console.log('[milg] analyzer.js v3.10.4 loaded');
       var _origPairs = data.colors ? data.colors.contrastPairs : null;
       var _origTouch = data.interaction ? data.interaction.touchTargets : null;
       var _origHeadings = data.typography ? data.typography.headings : null;
+      var _origAlign = data.layout ? data.layout.alignmentElements : null;
+      var _origRadii = data.layout ? data.layout.borderRadii : null;
       if (_origPairs) data.colors.contrastPairs = _origPairs.filter(function(cp) { return !cp._regionContainerId; });
       if (_origTouch) data.interaction.touchTargets = _origTouch.filter(function(t) { return !t._regionContainerId; });
       if (_origHeadings) data.typography.headings = _origHeadings.filter(function(h) { return !h._regionContainerId; });
+      if (_origAlign) data.layout.alignmentElements = _origAlign.filter(function(a) { return !a._regionContainerId; });
+      if (_origRadii) data.layout.borderRadii = _origRadii.filter(function(r) {
+        // borderRadii entries have bboxes[] array — exclude if ALL sample bboxes have _rcid
+        if (!r.bboxes || r.bboxes.length === 0) return true;
+        return r.bboxes.some(function(b) { return !b._rcid; });
+      });
       var _filteredCount = (_origPairs ? _origPairs.length - data.colors.contrastPairs.length : 0);
-      console.log('[D] scoring filter: ' + (_origPairs ? _origPairs.length : 0) + '→' + (data.colors ? data.colors.contrastPairs.length : 0) + ' pairs (removed ' + _filteredCount + ' rcid)');
+      var _filteredAlign = (_origAlign ? _origAlign.length - data.layout.alignmentElements.length : 0);
+      console.log('[D] scoring filter: ' + (_origPairs ? _origPairs.length : 0) + '→' + (data.colors ? data.colors.contrastPairs.length : 0) + ' pairs (removed ' + _filteredCount + ' rcid) align removed=' + _filteredAlign);
 
       reportData = MilgScoring.runScoring(data);
       if (_isTabSwitch) data._cachedReportData = reportData;
@@ -765,6 +774,8 @@ console.log('[milg] analyzer.js v3.10.4 loaded');
       if (_origPairs) data.colors.contrastPairs = _origPairs;
       if (_origTouch) data.interaction.touchTargets = _origTouch;
       if (_origHeadings) data.typography.headings = _origHeadings;
+      if (_origAlign) data.layout.alignmentElements = _origAlign;
+      if (_origRadii) data.layout.borderRadii = _origRadii;
     }
     // Score region sub-pages independently
     var _regionScreenshots = reportData.raw && reportData.raw.regionScreenshots || [];

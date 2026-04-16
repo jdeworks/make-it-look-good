@@ -630,16 +630,27 @@ window.MilgViewer = (function() {
           _regionalBboxKeys[Math.round(cp.bbox.left) + ',' + Math.round(cp.bbox.top) + ',' + Math.round(cp.bbox.width) + ',' + Math.round(cp.bbox.height)] = true;
         }
       });
-      // Also exclude non-contrast items inside region containers (headings, touch targets)
+      // Also exclude non-contrast items inside region containers (headings, touch targets, alignment, border-radius)
       function _addRegionalBbox(item) {
         if ((item._isClipped || item._regionContainerId) && item.bbox) {
           if (_regionalBboxes) _regionalBboxes.add(item.bbox);
           _regionalBboxKeys[Math.round(item.bbox.left) + ',' + Math.round(item.bbox.top) + ',' + Math.round(item.bbox.width) + ',' + Math.round(item.bbox.height)] = true;
         }
       }
+      // borderRadii entries have bboxes[] array instead of single bbox
+      function _addRegionalRadii(item) {
+        if (item.bboxes) item.bboxes.forEach(function(b) {
+          if (b && b._rcid) {
+            if (_regionalBboxes) _regionalBboxes.add(b);
+            _regionalBboxKeys[Math.round(b.left) + ',' + Math.round(b.top) + ',' + Math.round(b.width) + ',' + Math.round(b.height)] = true;
+          }
+        });
+      }
       var _raw = _reportData.raw || {};
       (_raw.typography && _raw.typography.headings || []).forEach(_addRegionalBbox);
       (_raw.interaction && _raw.interaction.touchTargets || []).forEach(_addRegionalBbox);
+      (_raw.layout && _raw.layout.alignmentElements || []).forEach(_addRegionalBbox);
+      (_raw.layout && _raw.layout.borderRadii || []).forEach(_addRegionalRadii);
       // Build bounding rect from ALL clipped/region bboxes — covers the full hidden area
       var _regionBounds = [];
       _contrastPairs.forEach(function(cp) {

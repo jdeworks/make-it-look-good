@@ -34009,98 +34009,6 @@ test.describe('Region Screenshot Debug', () => {
 });
 </file>
 
-<file path="NEXT-SESSION-PROMPT.md">
-# Task: Fix remaining region issues (v3.10.4 → v3.11)
-
-## Context
-
-The analyzer detects overflow:hidden containers (carousels, tabs), creates "region" mini-pages with independent analysis, and runs pixel verification on them. v3.10–v3.10.4 added the mask pipeline, mask data flow, false-positive stripping, right-click debug menus, and bbox exclusion. Two issues remain.
-
-## Current status (v3.10.4)
-
-### What works
-- Region mask capture: `maskResults=58 maskBmp=58` — masks flow through the dict correctly
-- Region pixel verify: `verified=58 noFgBg=2` — verify runs and produces results
-- Main page masks: `maskBmp=56/56 verified=56` — fully working
-- Region false-positive stripping: horizontal scroll, offscreen elements, hidden panels removed from region scoring
-- Right-click debug menu: works on all 4 overlay types (finding, verify, region finding, region verify)
-- Region scoring: 83/100 with 13 errors, 3 warnings, 13 info
-
-### What's broken
-
-#### 1. Region verify overlays don't render
-Despite 58 verified pairs, "Pixel Verified" and "Pixel Fails" filters show nothing on the region screenshot. The `[milg] Region pixel verify:` callback log never appears in diagnostics, meaning the verify callback chain was dying before `rgn.regionVerifyResults` got set. v3.10.4 added try-catch around `bgEdgePairs` (the suspected crash site) but this hasn't been confirmed working yet.
-
-**Diagnostic to check**: After deploying v3.10.4, run fink-translate.com and check `_milgCopyDiag()` for:
-- `[milg] Region pixel verify: N results` — if this appears, the callback fix worked
-- `[milg-verify] bboxEdge error:` — if this appears, the bgEdgePairs crash was the cause
-- `[D] renderRegionVerifyOverlays bail:` — if this appears, results aren't reaching the viewer
-
-If the callback fix didn't help, the crash is somewhere else in the verify pipeline between the stats log and the callback. The next step would be wrapping the ENTIRE `onAllLoaded` function body in try-catch.
-
-#### 2. Main page overlay still shows findings for hidden elements
-Findings like "4 jagged alignment(s)" and "7 distinct border-radius values" appear on the main screenshot at bbox positions inside the carousel area (e.g., `{left:444, top:2088}`). These come from scoring modules that analyze aggregate page metrics including hidden carousel content.
-
-v3.10.4 added "region-bounds" exclusion: builds a merged bounding rect from all clipped/region contrast pair bboxes and excludes any finding bbox whose center falls within it. This hasn't been confirmed working yet.
-
-**Diagnostic to check**: Look for `[D] viewer exclusion keys=N regionBounds=N [coords]` in the output. The coords should cover the Y range where the carousel sits (~y:2000–2300 based on the debug data). If `regionBounds=0`, the clipped pairs don't have bboxes, or the merge logic has a bug.
-
-The user's last debug capture showed the leaking bbox at `{left:444, top:2088}`. The region bounds should contain center point `(605, 2107.5)`. If the bounds don't cover this, the merge tolerance (50px Y) might need increasing, or the clipped pair bboxes are in a different Y range than expected.
-
-**Fallback approach**: If region-bounds exclusion still fails, the most reliable fix is to filter findings in `analyzer.js` AFTER scoring but BEFORE passing to the viewer. Iterate `reportData.categories[].findings[]`, check each finding's `locator.bboxes` against clipped pair bbox positions (using a spatial index or Y-range check), and remove findings where ALL bboxes are inside regions.
-
-#### 3. Region overlay shows only info-level findings (blue boxes)
-The score bar shows 13 errors, 3 warnings, 13 info — but the overlay only shows blue (info) boxes. This is likely CORRECT behavior: the error findings (probably contrast and typography) don't have `locator.bboxes` in the region context, so they're excluded from the overlay by the `f.locator.bboxes.length === 0` filter in the viewer's region findings builder (line ~357). Only info-level findings (border-radius, alignment) have bboxes.
-
-To verify: check `window.__milgLastReport.raw.regionScreenshots[0].regionReport.categories` in the console and inspect which categories have error-level findings with bboxes vs without.
-
-## Key files
-
-| File | What changed in v3.10–v3.10.4 |
-|------|------|
-| `docs/analyzer-region.js` | Mask capture pipeline, maskResults dict, increased timeouts |
-| `docs/analyzer-contrast-verify.js` | cropOffset in prepareContext + verifyBboxEdge, try-catch around bgEdgePairs |
-| `docs/analyzer-viewer.js` | Right-click debug menu, region-bounds exclusion, diagnostic logging |
-| `docs/analyzer.js` | Region false-positive stripping, maskResults application before verify |
-
-## Data flow reference
-
-```
-Region mini-page iframe (analyzer-region.js):
-  MilgExtract() → __milgData + __milgBboxRefs
-  domToCanvas() → screenshot
-  Mask pipeline: kill transitions → mask style → overlap layers → domToCanvas per layer
-    → extract/bit-pack/base64 → store in _mMaskResults dict + on pairs
-  Return: { screenshot, screenshotMeta, extractedData, maskResults, containerRect }
-
-Parent receives via postMessage structured clone (analyzer-iframe.js):
-  reportData.raw.regionScreenshots[i] = above data
-
-Scoring (analyzer.js ~line 771):
-  Strip layout false positives (hscroll, offscreen, hidden panels)
-  MilgScoring.runScoring(rgn.extractedData) → rgn.regionReport
-
-Verify (analyzer.js ~line 1004):
-  Apply maskResults dict → pairs get _maskBmp/_maskW/_maskH/_maskDark
-  Build miniReport with region screenshot + extraction colors
-  MilgContrastVerify.verify(miniReport) → rgn.regionVerifyResults
-
-Viewer (analyzer-viewer.js):
-  renderRegionOverlays() → severity/category filter overlays
-  renderRegionVerifyOverlays(rd) → pixel verify overlays (reads rd.regionRef.regionVerifyResults)
-```
-
-## Version
-Current: v3.10.4. Bump to v3.11 after fixing.
-
-## Testing
-1. Run fink-translate.com → check `_milgCopyDiag()` output
-2. `[milg] Region pixel verify: N results` should appear (verify callback works)
-3. Region "Pixel Verified" filter should show overlay boxes
-4. Main screenshot should NOT show findings with bboxes in the carousel area
-5. `[D] viewer exclusion regionBounds=N [coords]` should show the carousel Y range
-</file>
-
 <file path="docs/analyzer-snippet-screenshots.js">
 // make-it-look-good — Design Extraction Snippet (with screenshots)
 // Version: v1.1
@@ -35123,6 +35031,52 @@ Current: v3.10.4. Bump to v3.11 after fixing.
     window.MilgExtract();
   }
 })();
+</file>
+
+<file path="NEXT-SESSION-PROMPT.md">
+# Task: Verify v3.11 region fixes
+
+## What was fixed in v3.11
+
+### Fix 1: Region verify callback crash (analyzer-contrast-verify.js)
+**Root cause**: `processBatch()` runs via `setTimeout` — if `verifyPair()` throws on ANY pair, the batch loop dies silently (unhandled async error) and the callback never fires. The v3.10.4 try-catch only protected `bgEdgePairs` AFTER batch completion.
+**Fix**: Wrapped `verifyPair()` call in try-catch inside `processBatch`. Individual pair errors are logged as `[milg-verify] verifyPair[N] error:` and counted as `noFgBg`.
+
+### Fix 2: Layout findings leak into main overlay (3 files)
+**Root cause**: `layout.alignmentElements` and `layout.borderRadii` were not included in `updatedData` sent from iframe to parent. The `_regionContainerId` and `_rcid` tags (set during force-reveal) never reached the parent data. Three gaps compounded:
+1. `updatedData` omitted layout items → `_rcid` lost in transit
+2. Viewer's `_addRegionalBbox` only processed headings/touchTargets → string-key exclusion missed layout items
+3. Scoring didn't filter layout items → carousel elements inflated aggregate counts
+
+**Fixes applied:**
+- `analyzer-iframe.js`: Added `alignmentElements` and `borderRadii` to `updatedData` + parent merge
+- `analyzer.js`: Filter `alignmentElements` by `_regionContainerId` and `borderRadii` by `_rcid` before main scoring (restore after)
+- `analyzer-viewer.js`: Added `alignmentElements` and `borderRadii` to `_addRegionalBbox` exclusion sets
+
+## Testing (v3.11)
+1. Confirm header shows **v3.11**
+2. Run fink-translate.com → `_milgCopyDiag()`:
+   - `[milg] Region pixel verify: N results` should appear (callback now survives pair errors)
+   - `[milg-verify] verifyPair[N] error:` may appear (shows which pairs crashed — for future debugging)
+   - `[D] scoring filter: ... align removed=N` should show carousel alignment elements were excluded
+3. Region "Pixel Verified"/"Pixel Fails" filters should now render overlays
+4. Main screenshot should NOT show jagged alignment / border-radius bboxes in carousel area
+5. Region overlay should still show its own findings independently
+
+## Key files changed
+| File | Change |
+|------|--------|
+| `docs/analyzer-contrast-verify.js` | try-catch around verifyPair in processBatch |
+| `docs/analyzer-iframe.js` | alignmentElements + borderRadii in updatedData + parent merge |
+| `docs/analyzer.js` | Filter layout items before scoring, restore after |
+| `docs/analyzer-viewer.js` | Add layout items to _addRegionalBbox exclusion |
+| `docs/analyzer.html` | Version bump v3.11 |
+
+## If verify still shows 0 results
+The try-catch will now log `[milg-verify] verifyPair[N] error:` for crashing pairs. If ALL pairs crash, results will be empty but the callback WILL fire (no more silent death). Check the error messages to understand what region pairs have differently (likely a coordinate/meta issue).
+
+## Version
+Current: v3.11
 </file>
 
 <file path="docs/analyzer-report.js">
@@ -36525,636 +36479,6 @@ test.describe('Preset Scoring', () => {
 });
 </file>
 
-<file path="docs/analyzer-region.js">
-// make-it-look-good — Region Screenshot Module
-// Shared logic for detecting overflow:hidden containers with hidden content,
-// creating mini-page iframes, force-revealing content, and capturing screenshots.
-// Used by analyzer-iframe.js (URL analysis) and the console snippet (assembled at runtime).
-//
-// Exposes window.MilgRegion
-
-window.MilgRegion = (function() {
-  "use strict";
-
-  // --- Force-reveal CSS ---
-  // Injected into mini-page <style> to override CSS class rules that hide carousel slides.
-  // High specificity needed because original stylesheets are included in the mini-page.
-  var FORCE_REVEAL_CSS =
-    '*,*::before,*::after{transition:none !important;animation:none !important;}' +
-    'body *{visibility:visible !important;opacity:1 !important;' +
-    'transform:none !important;overflow:visible !important;' +
-    'clip-path:none !important;max-height:none !important;}' +
-    '[aria-hidden="true"],[hidden],.hidden,.d-none,.hide,' +
-    '.carousel-item,.swiper-slide,.slick-slide,' +
-    '[class*="slide"],[class*="panel"],[class*="tab-pane"]{' +
-    'display:block !important;visibility:visible !important;' +
-    'opacity:1 !important;position:relative !important;' +
-    'transform:none !important;left:auto !important;right:auto !important;}';
-
-  // --- Force-reveal script ---
-  // Runs inside the mini-page on DOMContentLoaded. Catches computed display:none
-  // from CSS classes that the static CSS above can't target generically.
-  var FORCE_REVEAL_SCRIPT =
-    'document.addEventListener("DOMContentLoaded",function(){' +
-    'document.querySelectorAll("*").forEach(function(el){' +
-    'var cs=getComputedStyle(el);' +
-    'if(cs.display==="none")el.style.setProperty("display","block","important");' +
-    'if(cs.visibility==="hidden")el.style.setProperty("visibility","visible","important");' +
-    'if(parseFloat(cs.opacity)<0.1)el.style.setProperty("opacity","1","important");' +
-    'if(cs.position==="absolute"||cs.position==="fixed")el.style.setProperty("position","relative","important");' +
-    '});' +
-    '});';
-
-  // --- DOM cleanup ---
-  // Runs from parent context after mini-page loads. Resets height constraints and
-  // removes spacer elements that cause massive whitespace in the region screenshot.
-  function cleanupMiniPageDom(mDoc) {
-    try {
-      var dv = mDoc.defaultView;
-      // Force-reveal pass (redundant with script, but covers sandbox/CSP failures)
-      mDoc.querySelectorAll('*').forEach(function(el) {
-        var cs = dv.getComputedStyle(el);
-        if (cs.display === 'none') el.style.setProperty('display', 'block', 'important');
-        if (cs.visibility === 'hidden') el.style.setProperty('visibility', 'visible', 'important');
-        if (parseFloat(cs.opacity) < 0.1) el.style.setProperty('opacity', '1', 'important');
-        if (cs.position === 'absolute' || cs.position === 'fixed') el.style.setProperty('position', 'relative', 'important');
-      });
-      // Height cleanup on container + direct children only (deeper reset causes inflation).
-      // Horizontal flex/grid layouts are preserved — canvas crop trims whitespace post-capture.
-      var container = mDoc.body.firstElementChild;
-      if (container) {
-        container.style.setProperty('height', 'auto', 'important');
-        container.style.setProperty('max-height', 'none', 'important');
-        container.style.setProperty('min-height', '0', 'important');
-        container.style.setProperty('overflow', 'visible', 'important');
-        for (var ci = 0; ci < container.children.length; ci++) {
-          var child = container.children[ci];
-          child.style.setProperty('height', 'auto', 'important');
-          child.style.setProperty('max-height', 'none', 'important');
-          child.style.setProperty('min-height', '0', 'important');
-          child.style.setProperty('position', 'relative', 'important');
-        }
-      }
-    } catch (_e) {
-      console.warn('[milg-region] DOM cleanup failed:', _e.message);
-    }
-  }
-
-  // --- Build mini-page HTML ---
-  // Assembles HTML for the mini-page iframe with force-reveal CSS/JS and optional extraction.
-  function buildMiniPageHtml(cloneOuterHtml, baseHref, allLinks, allStyles, opts) {
-    opts = opts || {};
-    var scripts = '<script>' + FORCE_REVEAL_SCRIPT + '</' + 'script>';
-    // Optional: inject extraction engine to run after force-reveal
-    if (opts.extractFnSrc) {
-      scripts += '<script>setTimeout(function(){try{(' + opts.extractFnSrc + ')()}catch(e){console.warn("[milg-region] Extraction failed:",e.message)}},100);</' + 'script>';
-    }
-    return '<!DOCTYPE html><html><head><meta charset=UTF-8>' +
-      (baseHref ? '<base href="' + baseHref.replace(/"/g, '&quot;') + '">' : '') +
-      allLinks + allStyles +
-      '<style>' + FORCE_REVEAL_CSS + '</style>' +
-      scripts +
-      '</head><body style="margin:0;padding:0;overflow:visible">' + cloneOuterHtml + '</body></html>';
-  }
-
-  // --- Build region clone ---
-  // Deep-clones the container element and applies inline style overrides.
-  function buildRegionClone(container, containerRect) {
-    var clone = container.cloneNode(true);
-    clone.style.cssText += ';overflow:visible !important;max-height:none !important;height:auto !important;clip-path:none !important;width:' + Math.round(containerRect.width) + 'px !important;';
-    return clone;
-  }
-
-  // --- Detect clipped pairs ---
-  // Marks contrast pairs as _isClipped if their element bbox is outside an overflow:hidden ancestor.
-  // Returns as a string for injection into iframe scripts.
-  function getClipDetectionScript() {
-    return 'if(window.__milgBboxRefs&&window.__milgData&&window.__milgData.colors){' +
-      'var _cp=window.__milgData.colors.contrastPairs||[];' +
-      // Pass 1: Mark _isClipped pairs (element completely outside overflow:hidden ancestor)
-      'window.__milgBboxRefs.forEach(function(ref){' +
-        'if(!ref.el||!ref.obj||ref.key!=="bbox")return;' +
-        'var el=ref.el;var pair=ref.obj;' +
-        'var er=el.getBoundingClientRect();' +
-        'var anc=el.parentElement;' +
-        'while(anc&&anc!==document.documentElement){' +
-          'var as=getComputedStyle(anc);' +
-          'var aov=as.overflow||"";var aovx=as.overflowX||"";var aovy=as.overflowY||"";' +
-          'if(aov==="hidden"||aov==="clip"||aovx==="hidden"||aovx==="clip"||aovy==="hidden"||aovy==="clip"){' +
-            'var ar=anc.getBoundingClientRect();' +
-            'if(er.right<ar.left+1||er.left>ar.right-1||er.bottom<ar.top+1||er.top>ar.bottom-1){' +
-              'pair._isClipped=true;break' +
-            '}' +
-          '}' +
-          'anc=anc.parentElement' +
-        '}' +
-      '});' +
-      // Pass 2: Identify containers with clipped content and tag ALL their descendant pairs
-      'var _rcc=0;' +
-      'window.__milgBboxRefs.forEach(function(ref){' +
-        'if(!ref.el||!ref.obj||ref.key!=="bbox"||!ref.obj._isClipped)return;' +
-        'var anc=ref.el.parentElement;' +
-        'while(anc&&anc!==document.documentElement){' +
-          'var as=getComputedStyle(anc);' +
-          'var aov=as.overflow||"";var aovx=as.overflowX||"";var aovy=as.overflowY||"";' +
-          'if(aov==="hidden"||aov==="clip"||aovx==="hidden"||aovx==="clip"||aovy==="hidden"||aovy==="clip"){' +
-            'var ar=anc.getBoundingClientRect();' +
-            'if(ar.width>=100&&ar.height>=30&&!anc._mrc){anc._mrc="rgn-"+(++_rcc)}' +
-            'break' +
-          '}' +
-          'anc=anc.parentElement' +
-        '}' +
-      '});' +
-      'window.__milgBboxRefs.forEach(function(ref){' +
-        'if(!ref.el||!ref.obj||ref.key!=="bbox")return;' +
-        'var anc=ref.el;' +
-        'while(anc){' +
-          'if(anc._mrc){ref.obj._regionContainerId=anc._mrc;break}' +
-          'anc=anc.parentElement' +
-        '}' +
-      '})' +
-    '}';
-  }
-
-  // --- Serializable region screenshot function ---
-  // This function is serialized via .toString() and injected into the analysis iframe.
-  // It MUST be self-contained — no references to outer scope variables.
-  // Parameters are bound at serialization time by the caller.
-  function _regionScreenshotFn(_sc, _quality, _prog, _cp2) {
-    return function _buildRegionScreenshots(rgnCb) {
-      // Detect clipping containers from tracked bbox refs
-      var _rgnCounter = 0, _clipContainerList = [], _clipContainers = {};
-      if (window.__milgBboxRefs) {
-        window.__milgBboxRefs.forEach(function(ref) {
-          if (!ref.el || !ref.obj || ref.key !== 'bbox' || !ref.obj._isClipped) return;
-          var clipAnc = null, anc = ref.el.parentElement;
-          while (anc && anc !== document.documentElement) {
-            var as = getComputedStyle(anc);
-            var aov = as.overflow || '', aovx = as.overflowX || '', aovy = as.overflowY || '';
-            if (aov === 'hidden' || aov === 'clip' || aovx === 'hidden' || aovx === 'clip' || aovy === 'hidden' || aovy === 'clip') {
-              var ar = anc.getBoundingClientRect();
-              if (ar.width >= 100 && ar.height >= 30) clipAnc = anc;
-            }
-            anc = anc.parentElement;
-          }
-          if (!clipAnc) return;
-          var cid = clipAnc._milgRegionId;
-          if (!cid) {
-            cid = 'rgn-' + (++_rgnCounter); clipAnc._milgRegionId = cid;
-            _clipContainerList.push({ el: clipAnc, id: cid, pairIndices: [] });
-            _clipContainers[cid] = _clipContainerList[_clipContainerList.length - 1];
-          }
-          var pi = _cp2.indexOf(ref.obj);
-          if (pi >= 0 && _clipContainers[cid].pairIndices.indexOf(pi) < 0)
-            _clipContainers[cid].pairIndices.push(pi);
-        });
-      }
-      _clipContainerList.sort(function(a, b) {
-        var ar = a.el.getBoundingClientRect(), br = b.el.getBoundingClientRect();
-        return (br.width * br.height) - (ar.width * ar.height);
-      });
-      _clipContainerList = _clipContainerList.slice(0, 5);
-      console.log('[milg-region] Found ' + _clipContainerList.length + ' clipping regions');
-      if (_clipContainerList.length === 0) { rgnCb([]); return; }
-
-      var _rgnResults = [], _rgnDone = 0, _rgnTotal = _clipContainerList.length;
-      var _rgnOverall = setTimeout(function() {
-        console.warn('[milg-region] Overall timeout (90s)');
-        rgnCb(_rgnResults);
-      }, 90000);
-
-      // Collect styles for mini-pages
-      var allStyles = ''; document.querySelectorAll('style').forEach(function(s) { allStyles += s.outerHTML; });
-      var allLinks = ''; document.querySelectorAll('link[rel=stylesheet]').forEach(function(l) { allLinks += l.outerHTML; });
-      var baseHref = (document.querySelector('base') || {}).href || '';
-
-      // Force-reveal CSS (inlined — can't reference MilgRegion from inside serialized fn)
-      var _revealCss =
-        '*,*::before,*::after{transition:none !important;animation:none !important;}' +
-        'body *{visibility:visible !important;opacity:1 !important;transform:none !important;overflow:visible !important;clip-path:none !important;max-height:none !important;}' +
-        '[aria-hidden="true"],[hidden],.hidden,.d-none,.hide,.carousel-item,.swiper-slide,.slick-slide,' +
-        '[class*="slide"],[class*="panel"],[class*="tab-pane"]{display:block !important;visibility:visible !important;opacity:1 !important;position:relative !important;transform:none !important;left:auto !important;right:auto !important;}';
-
-      var _revealScript =
-        '<script>document.addEventListener("DOMContentLoaded",function(){' +
-        'document.querySelectorAll("*").forEach(function(el){var cs=getComputedStyle(el);' +
-        'if(cs.display==="none")el.style.setProperty("display","block","important");' +
-        'if(cs.visibility==="hidden")el.style.setProperty("visibility","visible","important");' +
-        'if(parseFloat(cs.opacity)<0.1)el.style.setProperty("opacity","1","important");' +
-        'if(cs.position==="absolute"||cs.position==="fixed")el.style.setProperty("position","relative","important");' +
-        '});});</' + 'script>';
-
-      // Optional extraction: inject MilgExtract if available
-      var _extractScript = '';
-      if (typeof window.MilgExtract === 'function') {
-        _extractScript = '<script>setTimeout(function(){try{(' + window.MilgExtract.toString() + ')()}catch(e){console.warn("[milg-region] Extraction failed:",e)}},100);</' + 'script>';
-      }
-
-      _prog('Capturing ' + _rgnTotal + ' region screenshots...');
-
-      _clipContainerList.forEach(function(rgn, rIdx) {
-        var container = rgn.el, cr = container.getBoundingClientRect();
-        var clone = container.cloneNode(true);
-        clone.style.cssText += ';overflow:visible !important;max-height:none !important;height:auto !important;clip-path:none !important;width:' + Math.round(cr.width) + 'px !important;';
-
-        var miniHtml = '<!DOCTYPE html><html><head><meta charset=UTF-8>' +
-          (baseHref ? '<base href="' + baseHref.replace(/"/g, '&quot;') + '">' : '') +
-          allLinks + allStyles +
-          '<style>' + _revealCss + '</style>' + _revealScript + _extractScript +
-          '</head><body style="margin:0;padding:0;overflow:visible">' + clone.outerHTML + '</body></html>';
-
-        var iframeW = Math.max(Math.round(cr.width), 320);
-        var mf = document.createElement('iframe');
-        mf.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + iframeW + 'px;height:3000px;border:none;visibility:hidden;';
-        mf.setAttribute('sandbox', 'allow-same-origin allow-scripts');
-        document.body.appendChild(mf);
-
-        var rgnTimer = setTimeout(function() {
-          console.warn('[milg-region] Region ' + rIdx + ' timed out');
-          _rgnFinish(rIdx, mf, null);
-        }, 45000);
-
-        mf.srcdoc = miniHtml;
-        mf.addEventListener('load', function() {
-          setTimeout(function() {
-            try {
-              var mDoc = mf.contentDocument;
-              if (!mDoc) { _rgnFinish(rIdx, mf, null); return; }
-
-              // DOM cleanup: force-reveal + targeted height reset on container/children only
-              try {
-                var dv = mDoc.defaultView;
-                mDoc.querySelectorAll('*').forEach(function(el) {
-                  var cs = dv.getComputedStyle(el);
-                  if (cs.display === 'none') el.style.setProperty('display', 'block', 'important');
-                  if (cs.visibility === 'hidden') el.style.setProperty('visibility', 'visible', 'important');
-                  if (parseFloat(cs.opacity) < 0.1) el.style.setProperty('opacity', '1', 'important');
-                  if (cs.position === 'absolute' || cs.position === 'fixed') el.style.setProperty('position', 'relative', 'important');
-                });
-                var _cont = mDoc.body.firstElementChild;
-                if (_cont) {
-                  _cont.style.setProperty('height', 'auto', 'important');
-                  _cont.style.setProperty('max-height', 'none', 'important');
-                  _cont.style.setProperty('overflow', 'visible', 'important');
-                  for (var _ci = 0; _ci < _cont.children.length; _ci++) {
-                    var _ch = _cont.children[_ci];
-                    _ch.style.setProperty('height', 'auto', 'important');
-                    _ch.style.setProperty('max-height', 'none', 'important');
-                    _ch.style.setProperty('position', 'relative', 'important');
-                  }
-                }
-              } catch (_e) {}
-
-              void mDoc.body.offsetHeight; // reflow
-
-              // Harvest extraction data if available
-              var extractedData = null;
-              try { extractedData = mf.contentWindow.__milgData || null; } catch (_e) {}
-
-              // Size iframe to full document first so getBoundingClientRect gives correct coords
-              var cW = Math.max(mDoc.body.scrollWidth, mDoc.documentElement.scrollWidth);
-              var cH = Math.max(mDoc.body.scrollHeight, mDoc.documentElement.scrollHeight);
-              mf.style.width = Math.max(cW, iframeW) + 'px'; mf.style.height = cH + 'px';
-              void mDoc.body.offsetHeight;
-
-              // Compute content bounds from text nodes + replaced elements.
-              // Spacer divs from the absolute→relative conversion have no visual content
-              // and are excluded, so the bounds cover only actual carousel slides.
-              var _cTop = 1e9, _cBot = 0, _cLeft = 1e9, _cRight = 0;
-              var _cropOX = 0, _cropOY = 0;
-              try {
-                mDoc.body.querySelectorAll('*').forEach(function(el) {
-                  var r = el.getBoundingClientRect();
-                  if (r.height <= 0 || r.width <= 0) return;
-                  if (el.tagName === 'IMG' || el.tagName === 'SVG' || el.tagName === 'VIDEO' || el.tagName === 'CANVAS') {
-                    // replaced element — always counts
-                  } else {
-                    var ht = false;
-                    for (var _n = el.firstChild; _n; _n = _n.nextSibling) {
-                      if (_n.nodeType === 3 && _n.textContent.trim()) { ht = true; break; }
-                    }
-                    if (!ht) return;
-                  }
-                  if (r.top < _cTop) _cTop = r.top;
-                  if (r.bottom > _cBot) _cBot = r.bottom;
-                  if (r.left < _cLeft) _cLeft = r.left;
-                  if (r.right > _cRight) _cRight = r.right;
-                });
-              } catch (_e2) {}
-              var _cPad = 20;
-              var _doCrop = _cTop < 1e9 && _cBot > _cTop + 10 && (_cBot - _cTop + _cPad * 2) < cH * 0.8;
-              // Compute crop offset from EXTRACTION bboxes, not DOM content bounds.
-              // The extraction runs before the iframe resize, so its bbox coordinates
-              // differ from post-resize DOM positions. The viewer maps extraction bboxes
-              // via (bbox * scale - cropOffset), so cropOffset must match extraction coords.
-              var _exTop = 1e9, _exLeft = 1e9;
-              if (_doCrop && extractedData && extractedData.colors) {
-                (extractedData.colors.contrastPairs || []).forEach(function(cp) {
-                  if (cp.bbox) {
-                    if (cp.bbox.top < _exTop) _exTop = cp.bbox.top;
-                    if (cp.bbox.left < _exLeft) _exLeft = cp.bbox.left;
-                  }
-                });
-              }
-              if (_doCrop) {
-                console.log('[milg-region] Content bounds: ' + Math.round(_cLeft) + ',' + Math.round(_cTop) + ' → ' + Math.round(_cRight) + ',' + Math.round(_cBot) + ' (doc: ' + cW + 'x' + cH + ')');
-                // Use extraction bbox origin for crop offset (aligns with viewer coordinate mapping)
-                var _exPadX = _exLeft < 1e9 ? Math.max(0, _exLeft - _cPad) : Math.max(0, _cLeft - _cPad);
-                var _exPadY = _exTop < 1e9 ? Math.max(0, _exTop - _cPad) : Math.max(0, _cTop - _cPad);
-                _cropOX = Math.round(_exPadX * _sc);
-                _cropOY = Math.round(_exPadY * _sc);
-              }
-
-              var pms = window.modernScreenshot;
-              if (!pms || !pms.domToCanvas) { _rgnFinish(rIdx, mf, null); return; }
-              pms.domToCanvas(mDoc.documentElement, { scale: _sc, timeout: 12000 }).then(function(rc) {
-                // Crop canvas to DOM-computed content bounds (avoids pixel scanning)
-                var finalCanvas = rc;
-                if (_doCrop) {
-                  try {
-                    var _cx = Math.round(Math.max(0, _cLeft - _cPad) * _sc);
-                    var _cy = Math.round(Math.max(0, _cTop - _cPad) * _sc);
-                    var _cw = Math.min(Math.round((_cRight - _cLeft + _cPad * 2) * _sc), rc.width - _cx);
-                    var _ch3 = Math.min(Math.round((_cBot - _cTop + _cPad * 2) * _sc), rc.height - _cy);
-                    if (_cw > 10 && _ch3 > 10) {
-                      finalCanvas = document.createElement('canvas');
-                      finalCanvas.width = _cw; finalCanvas.height = _ch3;
-                      finalCanvas.getContext('2d').drawImage(rc, _cx, _cy, _cw, _ch3, 0, 0, _cw, _ch3);
-                      console.log('[milg-region] Cropped ' + rc.width + 'x' + rc.height + ' → ' + _cw + 'x' + _ch3);
-                    }
-                  } catch (_ce) { console.warn('[milg-region] Crop failed:', _ce.message); finalCanvas = rc; }
-                }
-                var rUri; try { rUri = finalCanvas.toDataURL('image/webp', _quality); } catch (e) { rUri = ''; }
-                var _mMaskResults = {}; // pair index → {bmp, packed, w, h, layer, dark}
-                var _rgnResult = {
-                  screenshot: rUri,
-                  screenshotMeta: { scale: _sc, canvasWidth: finalCanvas.width, canvasHeight: finalCanvas.height, cropOffsetX: _cropOX, cropOffsetY: _cropOY },
-                  pairIndices: rgn.pairIndices,
-                  containerRect: { left: Math.round(cr.left), top: Math.round(cr.top), width: Math.round(cr.width), height: Math.round(cr.height) },
-                  extractedData: extractedData,
-                  maskResults: _mMaskResults
-                };
-
-                // --- Mask capture pipeline (same as main page Phase A-D) ---
-                var _mRefs; try { _mRefs = mf.contentWindow.__milgBboxRefs || []; } catch (_e) { _mRefs = []; }
-                var _mPairs = extractedData && extractedData.colors ? extractedData.colors.contrastPairs || [] : [];
-
-                // Build pair-element list (contrast pairs with DOM elements)
-                var _mPairEls = [];
-                _mRefs.forEach(function(ref) {
-                  if (!ref.el || !ref.obj || ref.obj.ratio === undefined) return;
-                  var idx = _mPairs.indexOf(ref.obj);
-                  if (idx >= 0) _mPairEls.push({ el: ref.el, pair: ref.obj, idx: idx });
-                });
-                console.log('[milg-region] Mask: ' + _mPairEls.length + '/' + _mRefs.length + ' pair elements');
-
-                if (_mPairEls.length === 0) {
-                  clearTimeout(rgnTimer);
-                  _rgnFinish(rIdx, mf, _rgnResult);
-                  return;
-                }
-
-                // Phase A: Kill ALL transitions before color changes
-                var _mDv = mDoc.defaultView;
-                mDoc.querySelectorAll('*').forEach(function(el) {
-                  el.style.setProperty('transition-duration', '0s', 'important');
-                  el.style.setProperty('transition', 'none', 'important');
-                });
-                void mDoc.body.offsetHeight;
-
-                // Neutralize absolute/fixed overlays (same logic as main pipeline)
-                var _mNeutralized = 0;
-                mDoc.querySelectorAll('*').forEach(function(el) {
-                  var cs = _mDv.getComputedStyle(el);
-                  if (cs.position === 'absolute' || cs.position === 'fixed') {
-                    if (!el.textContent.trim()) {
-                      el.style.setProperty('display', 'none', 'important'); _mNeutralized++;
-                    } else if (cs.pointerEvents === 'none') {
-                      el.style.setProperty('background', 'transparent', 'important');
-                      el.style.setProperty('background-image', 'none', 'important'); _mNeutralized++;
-                    }
-                  }
-                });
-                if (_mNeutralized) console.log('[milg-region] Neutralized ' + _mNeutralized + ' overlays');
-                void mDoc.body.offsetHeight;
-
-                // Re-read bboxes after neutralization (hiding overlays can shift layout)
-                if (typeof mf.contentWindow.__milgReReadBboxes === 'function') {
-                  try { mf.contentWindow.__milgReReadBboxes(); } catch (_e) {}
-                }
-
-                // Phase B: Global mask style — white bg, white text, hide media
-                var _mMask = mDoc.createElement('style');
-                _mMask.setAttribute('data-milg-mask', '1');
-                _mMask.textContent = '*,*::before,*::after{color:#fff !important;background-color:transparent !important;background-image:none !important;background:transparent !important;border-color:transparent !important;box-shadow:none !important;text-shadow:none !important;outline-color:transparent !important;-webkit-text-fill-color:#fff !important;opacity:1 !important;transition:none !important;animation:none !important;}html{background:#fff !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}';
-                mDoc.head.appendChild(_mMask);
-                void mDoc.body.offsetHeight;
-
-                // Re-read bboxes after mask style (layout may shift)
-                if (typeof mf.contentWindow.__milgReReadBboxes === 'function') {
-                  try { mf.contentWindow.__milgReReadBboxes(); } catch (_e) {}
-                }
-
-                // Build overlap layers (use pair.bbox which __milgReReadBboxes keeps current)
-                function _mOverlaps(a, b) {
-                  var ab = a.pair.bbox, bb = b.pair.bbox;
-                  if (!ab || !bb) return false;
-                  return ab.left < bb.left + bb.width && ab.left + ab.width > bb.left &&
-                    ab.top < bb.top + bb.height && ab.top + ab.height > bb.top;
-                }
-                var _mLayers = [], _mRemaining = _mPairEls.slice();
-                while (_mRemaining.length > 0) {
-                  var _mLayer = [], _mNext = [];
-                  _mRemaining.forEach(function(pe) {
-                    if (_mLayer.some(function(l) { return _mOverlaps(pe, l); })) _mNext.push(pe);
-                    else _mLayer.push(pe);
-                  });
-                  _mLayers.push(_mLayer); _mRemaining = _mNext;
-                }
-                console.log('[milg-region] ' + _mPairEls.length + ' elements in ' + _mLayers.length + ' mask layers');
-
-                // Bake text-transform into actual text (domToCanvas doesn't always preserve it)
-                var _mTtFixed = 0;
-                mDoc.querySelectorAll('*').forEach(function(el) {
-                  var tt = _mDv.getComputedStyle(el).textTransform;
-                  if (tt === 'uppercase' || tt === 'lowercase' || tt === 'capitalize') {
-                    var walker = mDoc.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
-                    var tn; while (tn = walker.nextNode()) {
-                      var orig = tn.textContent; if (!orig.trim()) continue;
-                      if (tt === 'uppercase') tn.textContent = orig.toUpperCase();
-                      else if (tt === 'lowercase') tn.textContent = orig.toLowerCase();
-                      else if (tt === 'capitalize') tn.textContent = orig.replace(/\b\w/g, function(c) { return c.toUpperCase(); });
-                      _mTtFixed++;
-                    }
-                  }
-                });
-                if (_mTtFixed) console.log('[milg-region] Baked text-transform for ' + _mTtFixed + ' text nodes');
-
-                // Phase D: Capture one mask per layer
-                var _mLi = 0;
-                function _mNextLayer() {
-                  if (_mLi >= _mLayers.length) {
-                    var _maskCount = Object.keys(_mMaskResults).length;
-                    console.log('[milg-region] All ' + _mLayers.length + ' mask layers done, maskResults=' + _maskCount + '/' + _mPairs.length);
-                    clearTimeout(rgnTimer);
-                    _rgnFinish(rIdx, mf, _rgnResult);
-                    return;
-                  }
-                  var layer = _mLayers[_mLi]; _mLi++;
-                  _prog('Region ' + (rIdx + 1) + ': mask layer ' + _mLi + '/' + _mLayers.length + '...');
-
-                  // Set layer elements to black via inline style
-                  layer.forEach(function(pe) {
-                    pe.el.style.setProperty('color', '#000', 'important');
-                    pe.el.style.setProperty('-webkit-text-fill-color', '#000', 'important');
-                    pe.el.querySelectorAll('*').forEach(function(ch) {
-                      ch.style.setProperty('color', '#000', 'important');
-                      ch.style.setProperty('-webkit-text-fill-color', '#000', 'important');
-                    });
-                  });
-                  void mDoc.body.offsetHeight;
-
-                  var _mLayerDone = false;
-                  var _mLayerTimer = setTimeout(function() {
-                    if (!_mLayerDone) { _mLayerDone = true; console.warn('[milg-region] Mask layer ' + _mLi + ' timed out'); setTimeout(_mNextLayer, 0); }
-                  }, 15000);
-
-                  pms.domToCanvas(mDoc.documentElement, { scale: _sc, timeout: 12000 }).then(function(mc) {
-                    if (_mLayerDone) return; _mLayerDone = true; clearTimeout(_mLayerTimer);
-                    var mCtx = mc.getContext('2d', { willReadFrequently: true });
-                    var _fillFallbacks = 0;
-                    layer.forEach(function(pe) {
-                      var bbox = pe.pair.bbox;
-                      if (!bbox) return;
-                      var bx = Math.max(0, Math.round(bbox.left * _sc));
-                      var by = Math.max(0, Math.round(bbox.top * _sc));
-                      var bw = Math.min(Math.round(bbox.width * _sc), mc.width - bx);
-                      var bh = Math.min(Math.round(bbox.height * _sc), mc.height - by);
-                      if (bw < 2 || bh < 2) return;
-                      try {
-                        var px = mCtx.getImageData(bx, by, bw, bh).data;
-                        var bmp = new Uint8Array(bw * bh);
-                        for (var y = 0; y < bh; y++) for (var x = 0; x < bw; x++) {
-                          var i = (y * bw + x) * 4;
-                          if ((px[i] + px[i + 1] + px[i + 2]) / 3 < 240) bmp[y * bw + x] = 1;
-                        }
-                        var _dk = 0; for (var _b = 0; _b < bmp.length; _b++) if (bmp[_b]) _dk++;
-
-                        // fillText fallback when domToCanvas didn't render text
-                        if (_dk === 0 && bw > 3 && pe.pair.text) {
-                          try {
-                            var cs = _mDv.getComputedStyle(pe.el);
-                            var _fc = document.createElement('canvas'); _fc.width = bw; _fc.height = bh;
-                            var _fx = _fc.getContext('2d'); _fx.fillStyle = '#fff'; _fx.fillRect(0, 0, bw, bh);
-                            var _fs = parseFloat(cs.fontSize) * _sc;
-                            _fx.fillStyle = '#000';
-                            _fx.font = cs.fontStyle + ' ' + cs.fontWeight + ' ' + _fs + 'px ' + cs.fontFamily;
-                            _fx.textBaseline = 'top';
-                            var _pl = (parseFloat(cs.paddingLeft) || 0) * _sc;
-                            var _pt2 = (parseFloat(cs.paddingTop) || 0) * _sc;
-                            var _pr = (parseFloat(cs.paddingRight) || 0) * _sc;
-                            var _ta = cs.textAlign;
-                            var _txt = pe.pair.text.replace(/\[placeholder\] /, '');
-                            var _lh = parseFloat(cs.lineHeight) * _sc || _fs * 1.2;
-                            var _contentW = bw - _pl - _pr;
-                            var _words = _txt.split(/\s+/); var _lines = []; var _line = '';
-                            for (var _w = 0; _w < _words.length; _w++) {
-                              var _test = _line ? _line + ' ' + _words[_w] : _words[_w];
-                              if (_fx.measureText(_test).width > _contentW && _line) { _lines.push(_line); _line = _words[_w]; }
-                              else _line = _test;
-                            }
-                            _lines.push(_line);
-                            var _totalH = _lines.length * _lh;
-                            var _tyStart = _pt2;
-                            var _par = pe.el.parentElement; var _pcs = _par ? _mDv.getComputedStyle(_par) : null;
-                            if (_pcs) {
-                              if (_pcs.display.indexOf('flex') >= 0 && _pcs.alignItems === 'center') _tyStart = Math.max(0, (bh - _totalH) / 2);
-                              else if (bh > _totalH + _pt2 * 2) _tyStart = _pt2;
-                            }
-                            for (var _li2 = 0; _li2 < _lines.length; _li2++) {
-                              var _lw = _fx.measureText(_lines[_li2]).width;
-                              var _tx = _pl;
-                              if (_ta === 'center') _tx = (_contentW - _lw) / 2 + _pl;
-                              else if (_ta === 'right' || _ta === 'end') _tx = _contentW - _lw + _pl;
-                              _fx.fillText(_lines[_li2], _tx, _tyStart + _li2 * _lh);
-                            }
-                            var _fpx = _fx.getImageData(0, 0, bw, bh).data;
-                            bmp = new Uint8Array(bw * bh);
-                            for (var _fy = 0; _fy < bh; _fy++) for (var _fxx = 0; _fxx < bw; _fxx++) {
-                              var _fi = (_fy * bw + _fxx) * 4;
-                              if ((_fpx[_fi] + _fpx[_fi + 1] + _fpx[_fi + 2]) / 3 < 240) bmp[_fy * bw + _fxx] = 1;
-                            }
-                            _dk = 0; for (var _fb = 0; _fb < bmp.length; _fb++) if (bmp[_fb]) _dk++;
-                            _fillFallbacks++;
-                          } catch (_fe) {}
-                        }
-
-                        // Bit-pack bitmap: 8 pixels per byte, then base64 encode
-                        var _byteLen = Math.ceil(bmp.length / 8);
-                        var _packed = new Uint8Array(_byteLen);
-                        for (var _bi = 0; _bi < bmp.length; _bi++) if (bmp[_bi]) _packed[_bi >> 3] |= (1 << (_bi & 7));
-                        var _binStr = ''; for (var _bi2 = 0; _bi2 < _packed.length; _bi2++) _binStr += String.fromCharCode(_packed[_bi2]);
-                        var _b64 = btoa(_binStr);
-                        // Store on pair (cross-frame) AND in dict (same-frame, survives iframe removal)
-                        pe.pair._maskBmp = _b64;
-                        pe.pair._maskPacked = true;
-                        pe.pair._maskW = bw;
-                        pe.pair._maskH = bh;
-                        pe.pair._maskLayer = _mLi;
-                        pe.pair._maskDark = _dk;
-                        _mMaskResults[pe.idx] = { bmp: _b64, packed: true, w: bw, h: bh, layer: _mLi, dark: _dk };
-                      } catch (_me) {}
-                    });
-                    if (_fillFallbacks > 0) console.log('[milg-region] Mask layer ' + _mLi + ': ' + _fillFallbacks + ' fillText fallbacks');
-                    // Reset layer elements
-                    layer.forEach(function(pe) {
-                      pe.el.style.removeProperty('color');
-                      pe.el.style.removeProperty('-webkit-text-fill-color');
-                      pe.el.querySelectorAll('*').forEach(function(ch) {
-                        ch.style.removeProperty('color');
-                        ch.style.removeProperty('-webkit-text-fill-color');
-                      });
-                    });
-                    setTimeout(_mNextLayer, 0);
-                  }).catch(function(e) {
-                    if (_mLayerDone) return; _mLayerDone = true; clearTimeout(_mLayerTimer);
-                    console.warn('[milg-region] Mask layer ' + _mLi + ' failed:', e);
-                    setTimeout(_mNextLayer, 0);
-                  });
-                }
-                _mNextLayer();
-              }).catch(function(e) { clearTimeout(rgnTimer); _rgnFinish(rIdx, mf, null); });
-            } catch (e) { clearTimeout(rgnTimer); _rgnFinish(rIdx, mf, null); }
-          }, 800); // 800ms: allow DOMContentLoaded + extraction to complete
-        });
-      });
-
-      function _rgnFinish(idx, mf, result) {
-        if (result) _rgnResults.push(result);
-        try { if (mf && mf.parentNode) mf.parentNode.removeChild(mf); } catch (e) {}
-        _rgnDone++;
-        if (_rgnDone >= _rgnTotal) {
-          clearTimeout(_rgnOverall);
-          console.log('[milg-region] Region screenshots done: ' + _rgnResults.length + '/' + _rgnTotal);
-          rgnCb(_rgnResults);
-        }
-      }
-    };
-  }
-
-  return {
-    FORCE_REVEAL_CSS: FORCE_REVEAL_CSS,
-    FORCE_REVEAL_SCRIPT: FORCE_REVEAL_SCRIPT,
-    cleanupMiniPageDom: cleanupMiniPageDom,
-    buildMiniPageHtml: buildMiniPageHtml,
-    buildRegionClone: buildRegionClone,
-    getClipDetectionScript: getClipDetectionScript,
-    // The serializable function — use: MilgRegion.getRegionFn().toString()
-    getRegionFn: function() { return _regionScreenshotFn; }
-  };
-})();
-</file>
-
 <file path="docs/analyzer-contrast-verify.js">
 // make-it-look-good — Pixel-Sampled Contrast Verification
 // Samples actual pixel colors from screenshots at text element locations,
@@ -38477,9 +37801,14 @@ window.MilgContrastVerify = (function() {
       function processBatch() {
         var end = Math.min(qi + BATCH_SIZE, pairs.length);
         for (var i = qi; i < end; i++) {
-          var result = verifyPair(pairs[i], sectionCanvases, meta, maskCanvasData);
-          if (result) { results.push(result); _vStats.verified++; }
-          else _vStats.noFgBg++;
+          try {
+            var result = verifyPair(pairs[i], sectionCanvases, meta, maskCanvasData);
+            if (result) { results.push(result); _vStats.verified++; }
+            else _vStats.noFgBg++;
+          } catch (_vpErr) {
+            console.warn('[milg-verify] verifyPair[' + i + '] error:', _vpErr.message || _vpErr);
+            _vStats.noFgBg++;
+          }
         }
         qi = end;
         if (qi < pairs.length) {
@@ -38778,6 +38107,636 @@ window.MilgContrastVerify = (function() {
     renderSummaryHtml: renderSummaryHtml,
     contrastRatio: contrastRatio,
     parseRgb: parseRgb
+  };
+})();
+</file>
+
+<file path="docs/analyzer-region.js">
+// make-it-look-good — Region Screenshot Module
+// Shared logic for detecting overflow:hidden containers with hidden content,
+// creating mini-page iframes, force-revealing content, and capturing screenshots.
+// Used by analyzer-iframe.js (URL analysis) and the console snippet (assembled at runtime).
+//
+// Exposes window.MilgRegion
+
+window.MilgRegion = (function() {
+  "use strict";
+
+  // --- Force-reveal CSS ---
+  // Injected into mini-page <style> to override CSS class rules that hide carousel slides.
+  // High specificity needed because original stylesheets are included in the mini-page.
+  var FORCE_REVEAL_CSS =
+    '*,*::before,*::after{transition:none !important;animation:none !important;}' +
+    'body *{visibility:visible !important;opacity:1 !important;' +
+    'transform:none !important;overflow:visible !important;' +
+    'clip-path:none !important;max-height:none !important;}' +
+    '[aria-hidden="true"],[hidden],.hidden,.d-none,.hide,' +
+    '.carousel-item,.swiper-slide,.slick-slide,' +
+    '[class*="slide"],[class*="panel"],[class*="tab-pane"]{' +
+    'display:block !important;visibility:visible !important;' +
+    'opacity:1 !important;position:relative !important;' +
+    'transform:none !important;left:auto !important;right:auto !important;}';
+
+  // --- Force-reveal script ---
+  // Runs inside the mini-page on DOMContentLoaded. Catches computed display:none
+  // from CSS classes that the static CSS above can't target generically.
+  var FORCE_REVEAL_SCRIPT =
+    'document.addEventListener("DOMContentLoaded",function(){' +
+    'document.querySelectorAll("*").forEach(function(el){' +
+    'var cs=getComputedStyle(el);' +
+    'if(cs.display==="none")el.style.setProperty("display","block","important");' +
+    'if(cs.visibility==="hidden")el.style.setProperty("visibility","visible","important");' +
+    'if(parseFloat(cs.opacity)<0.1)el.style.setProperty("opacity","1","important");' +
+    'if(cs.position==="absolute"||cs.position==="fixed")el.style.setProperty("position","relative","important");' +
+    '});' +
+    '});';
+
+  // --- DOM cleanup ---
+  // Runs from parent context after mini-page loads. Resets height constraints and
+  // removes spacer elements that cause massive whitespace in the region screenshot.
+  function cleanupMiniPageDom(mDoc) {
+    try {
+      var dv = mDoc.defaultView;
+      // Force-reveal pass (redundant with script, but covers sandbox/CSP failures)
+      mDoc.querySelectorAll('*').forEach(function(el) {
+        var cs = dv.getComputedStyle(el);
+        if (cs.display === 'none') el.style.setProperty('display', 'block', 'important');
+        if (cs.visibility === 'hidden') el.style.setProperty('visibility', 'visible', 'important');
+        if (parseFloat(cs.opacity) < 0.1) el.style.setProperty('opacity', '1', 'important');
+        if (cs.position === 'absolute' || cs.position === 'fixed') el.style.setProperty('position', 'relative', 'important');
+      });
+      // Height cleanup on container + direct children only (deeper reset causes inflation).
+      // Horizontal flex/grid layouts are preserved — canvas crop trims whitespace post-capture.
+      var container = mDoc.body.firstElementChild;
+      if (container) {
+        container.style.setProperty('height', 'auto', 'important');
+        container.style.setProperty('max-height', 'none', 'important');
+        container.style.setProperty('min-height', '0', 'important');
+        container.style.setProperty('overflow', 'visible', 'important');
+        for (var ci = 0; ci < container.children.length; ci++) {
+          var child = container.children[ci];
+          child.style.setProperty('height', 'auto', 'important');
+          child.style.setProperty('max-height', 'none', 'important');
+          child.style.setProperty('min-height', '0', 'important');
+          child.style.setProperty('position', 'relative', 'important');
+        }
+      }
+    } catch (_e) {
+      console.warn('[milg-region] DOM cleanup failed:', _e.message);
+    }
+  }
+
+  // --- Build mini-page HTML ---
+  // Assembles HTML for the mini-page iframe with force-reveal CSS/JS and optional extraction.
+  function buildMiniPageHtml(cloneOuterHtml, baseHref, allLinks, allStyles, opts) {
+    opts = opts || {};
+    var scripts = '<script>' + FORCE_REVEAL_SCRIPT + '</' + 'script>';
+    // Optional: inject extraction engine to run after force-reveal
+    if (opts.extractFnSrc) {
+      scripts += '<script>setTimeout(function(){try{(' + opts.extractFnSrc + ')()}catch(e){console.warn("[milg-region] Extraction failed:",e.message)}},100);</' + 'script>';
+    }
+    return '<!DOCTYPE html><html><head><meta charset=UTF-8>' +
+      (baseHref ? '<base href="' + baseHref.replace(/"/g, '&quot;') + '">' : '') +
+      allLinks + allStyles +
+      '<style>' + FORCE_REVEAL_CSS + '</style>' +
+      scripts +
+      '</head><body style="margin:0;padding:0;overflow:visible">' + cloneOuterHtml + '</body></html>';
+  }
+
+  // --- Build region clone ---
+  // Deep-clones the container element and applies inline style overrides.
+  function buildRegionClone(container, containerRect) {
+    var clone = container.cloneNode(true);
+    clone.style.cssText += ';overflow:visible !important;max-height:none !important;height:auto !important;clip-path:none !important;width:' + Math.round(containerRect.width) + 'px !important;';
+    return clone;
+  }
+
+  // --- Detect clipped pairs ---
+  // Marks contrast pairs as _isClipped if their element bbox is outside an overflow:hidden ancestor.
+  // Returns as a string for injection into iframe scripts.
+  function getClipDetectionScript() {
+    return 'if(window.__milgBboxRefs&&window.__milgData&&window.__milgData.colors){' +
+      'var _cp=window.__milgData.colors.contrastPairs||[];' +
+      // Pass 1: Mark _isClipped pairs (element completely outside overflow:hidden ancestor)
+      'window.__milgBboxRefs.forEach(function(ref){' +
+        'if(!ref.el||!ref.obj||ref.key!=="bbox")return;' +
+        'var el=ref.el;var pair=ref.obj;' +
+        'var er=el.getBoundingClientRect();' +
+        'var anc=el.parentElement;' +
+        'while(anc&&anc!==document.documentElement){' +
+          'var as=getComputedStyle(anc);' +
+          'var aov=as.overflow||"";var aovx=as.overflowX||"";var aovy=as.overflowY||"";' +
+          'if(aov==="hidden"||aov==="clip"||aovx==="hidden"||aovx==="clip"||aovy==="hidden"||aovy==="clip"){' +
+            'var ar=anc.getBoundingClientRect();' +
+            'if(er.right<ar.left+1||er.left>ar.right-1||er.bottom<ar.top+1||er.top>ar.bottom-1){' +
+              'pair._isClipped=true;break' +
+            '}' +
+          '}' +
+          'anc=anc.parentElement' +
+        '}' +
+      '});' +
+      // Pass 2: Identify containers with clipped content and tag ALL their descendant pairs
+      'var _rcc=0;' +
+      'window.__milgBboxRefs.forEach(function(ref){' +
+        'if(!ref.el||!ref.obj||ref.key!=="bbox"||!ref.obj._isClipped)return;' +
+        'var anc=ref.el.parentElement;' +
+        'while(anc&&anc!==document.documentElement){' +
+          'var as=getComputedStyle(anc);' +
+          'var aov=as.overflow||"";var aovx=as.overflowX||"";var aovy=as.overflowY||"";' +
+          'if(aov==="hidden"||aov==="clip"||aovx==="hidden"||aovx==="clip"||aovy==="hidden"||aovy==="clip"){' +
+            'var ar=anc.getBoundingClientRect();' +
+            'if(ar.width>=100&&ar.height>=30&&!anc._mrc){anc._mrc="rgn-"+(++_rcc)}' +
+            'break' +
+          '}' +
+          'anc=anc.parentElement' +
+        '}' +
+      '});' +
+      'window.__milgBboxRefs.forEach(function(ref){' +
+        'if(!ref.el||!ref.obj||ref.key!=="bbox")return;' +
+        'var anc=ref.el;' +
+        'while(anc){' +
+          'if(anc._mrc){ref.obj._regionContainerId=anc._mrc;break}' +
+          'anc=anc.parentElement' +
+        '}' +
+      '})' +
+    '}';
+  }
+
+  // --- Serializable region screenshot function ---
+  // This function is serialized via .toString() and injected into the analysis iframe.
+  // It MUST be self-contained — no references to outer scope variables.
+  // Parameters are bound at serialization time by the caller.
+  function _regionScreenshotFn(_sc, _quality, _prog, _cp2) {
+    return function _buildRegionScreenshots(rgnCb) {
+      // Detect clipping containers from tracked bbox refs
+      var _rgnCounter = 0, _clipContainerList = [], _clipContainers = {};
+      if (window.__milgBboxRefs) {
+        window.__milgBboxRefs.forEach(function(ref) {
+          if (!ref.el || !ref.obj || ref.key !== 'bbox' || !ref.obj._isClipped) return;
+          var clipAnc = null, anc = ref.el.parentElement;
+          while (anc && anc !== document.documentElement) {
+            var as = getComputedStyle(anc);
+            var aov = as.overflow || '', aovx = as.overflowX || '', aovy = as.overflowY || '';
+            if (aov === 'hidden' || aov === 'clip' || aovx === 'hidden' || aovx === 'clip' || aovy === 'hidden' || aovy === 'clip') {
+              var ar = anc.getBoundingClientRect();
+              if (ar.width >= 100 && ar.height >= 30) clipAnc = anc;
+            }
+            anc = anc.parentElement;
+          }
+          if (!clipAnc) return;
+          var cid = clipAnc._milgRegionId;
+          if (!cid) {
+            cid = 'rgn-' + (++_rgnCounter); clipAnc._milgRegionId = cid;
+            _clipContainerList.push({ el: clipAnc, id: cid, pairIndices: [] });
+            _clipContainers[cid] = _clipContainerList[_clipContainerList.length - 1];
+          }
+          var pi = _cp2.indexOf(ref.obj);
+          if (pi >= 0 && _clipContainers[cid].pairIndices.indexOf(pi) < 0)
+            _clipContainers[cid].pairIndices.push(pi);
+        });
+      }
+      _clipContainerList.sort(function(a, b) {
+        var ar = a.el.getBoundingClientRect(), br = b.el.getBoundingClientRect();
+        return (br.width * br.height) - (ar.width * ar.height);
+      });
+      _clipContainerList = _clipContainerList.slice(0, 5);
+      console.log('[milg-region] Found ' + _clipContainerList.length + ' clipping regions');
+      if (_clipContainerList.length === 0) { rgnCb([]); return; }
+
+      var _rgnResults = [], _rgnDone = 0, _rgnTotal = _clipContainerList.length;
+      var _rgnOverall = setTimeout(function() {
+        console.warn('[milg-region] Overall timeout (90s)');
+        rgnCb(_rgnResults);
+      }, 90000);
+
+      // Collect styles for mini-pages
+      var allStyles = ''; document.querySelectorAll('style').forEach(function(s) { allStyles += s.outerHTML; });
+      var allLinks = ''; document.querySelectorAll('link[rel=stylesheet]').forEach(function(l) { allLinks += l.outerHTML; });
+      var baseHref = (document.querySelector('base') || {}).href || '';
+
+      // Force-reveal CSS (inlined — can't reference MilgRegion from inside serialized fn)
+      var _revealCss =
+        '*,*::before,*::after{transition:none !important;animation:none !important;}' +
+        'body *{visibility:visible !important;opacity:1 !important;transform:none !important;overflow:visible !important;clip-path:none !important;max-height:none !important;}' +
+        '[aria-hidden="true"],[hidden],.hidden,.d-none,.hide,.carousel-item,.swiper-slide,.slick-slide,' +
+        '[class*="slide"],[class*="panel"],[class*="tab-pane"]{display:block !important;visibility:visible !important;opacity:1 !important;position:relative !important;transform:none !important;left:auto !important;right:auto !important;}';
+
+      var _revealScript =
+        '<script>document.addEventListener("DOMContentLoaded",function(){' +
+        'document.querySelectorAll("*").forEach(function(el){var cs=getComputedStyle(el);' +
+        'if(cs.display==="none")el.style.setProperty("display","block","important");' +
+        'if(cs.visibility==="hidden")el.style.setProperty("visibility","visible","important");' +
+        'if(parseFloat(cs.opacity)<0.1)el.style.setProperty("opacity","1","important");' +
+        'if(cs.position==="absolute"||cs.position==="fixed")el.style.setProperty("position","relative","important");' +
+        '});});</' + 'script>';
+
+      // Optional extraction: inject MilgExtract if available
+      var _extractScript = '';
+      if (typeof window.MilgExtract === 'function') {
+        _extractScript = '<script>setTimeout(function(){try{(' + window.MilgExtract.toString() + ')()}catch(e){console.warn("[milg-region] Extraction failed:",e)}},100);</' + 'script>';
+      }
+
+      _prog('Capturing ' + _rgnTotal + ' region screenshots...');
+
+      _clipContainerList.forEach(function(rgn, rIdx) {
+        var container = rgn.el, cr = container.getBoundingClientRect();
+        var clone = container.cloneNode(true);
+        clone.style.cssText += ';overflow:visible !important;max-height:none !important;height:auto !important;clip-path:none !important;width:' + Math.round(cr.width) + 'px !important;';
+
+        var miniHtml = '<!DOCTYPE html><html><head><meta charset=UTF-8>' +
+          (baseHref ? '<base href="' + baseHref.replace(/"/g, '&quot;') + '">' : '') +
+          allLinks + allStyles +
+          '<style>' + _revealCss + '</style>' + _revealScript + _extractScript +
+          '</head><body style="margin:0;padding:0;overflow:visible">' + clone.outerHTML + '</body></html>';
+
+        var iframeW = Math.max(Math.round(cr.width), 320);
+        var mf = document.createElement('iframe');
+        mf.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + iframeW + 'px;height:3000px;border:none;visibility:hidden;';
+        mf.setAttribute('sandbox', 'allow-same-origin allow-scripts');
+        document.body.appendChild(mf);
+
+        var rgnTimer = setTimeout(function() {
+          console.warn('[milg-region] Region ' + rIdx + ' timed out');
+          _rgnFinish(rIdx, mf, null);
+        }, 45000);
+
+        mf.srcdoc = miniHtml;
+        mf.addEventListener('load', function() {
+          setTimeout(function() {
+            try {
+              var mDoc = mf.contentDocument;
+              if (!mDoc) { _rgnFinish(rIdx, mf, null); return; }
+
+              // DOM cleanup: force-reveal + targeted height reset on container/children only
+              try {
+                var dv = mDoc.defaultView;
+                mDoc.querySelectorAll('*').forEach(function(el) {
+                  var cs = dv.getComputedStyle(el);
+                  if (cs.display === 'none') el.style.setProperty('display', 'block', 'important');
+                  if (cs.visibility === 'hidden') el.style.setProperty('visibility', 'visible', 'important');
+                  if (parseFloat(cs.opacity) < 0.1) el.style.setProperty('opacity', '1', 'important');
+                  if (cs.position === 'absolute' || cs.position === 'fixed') el.style.setProperty('position', 'relative', 'important');
+                });
+                var _cont = mDoc.body.firstElementChild;
+                if (_cont) {
+                  _cont.style.setProperty('height', 'auto', 'important');
+                  _cont.style.setProperty('max-height', 'none', 'important');
+                  _cont.style.setProperty('overflow', 'visible', 'important');
+                  for (var _ci = 0; _ci < _cont.children.length; _ci++) {
+                    var _ch = _cont.children[_ci];
+                    _ch.style.setProperty('height', 'auto', 'important');
+                    _ch.style.setProperty('max-height', 'none', 'important');
+                    _ch.style.setProperty('position', 'relative', 'important');
+                  }
+                }
+              } catch (_e) {}
+
+              void mDoc.body.offsetHeight; // reflow
+
+              // Harvest extraction data if available
+              var extractedData = null;
+              try { extractedData = mf.contentWindow.__milgData || null; } catch (_e) {}
+
+              // Size iframe to full document first so getBoundingClientRect gives correct coords
+              var cW = Math.max(mDoc.body.scrollWidth, mDoc.documentElement.scrollWidth);
+              var cH = Math.max(mDoc.body.scrollHeight, mDoc.documentElement.scrollHeight);
+              mf.style.width = Math.max(cW, iframeW) + 'px'; mf.style.height = cH + 'px';
+              void mDoc.body.offsetHeight;
+
+              // Compute content bounds from text nodes + replaced elements.
+              // Spacer divs from the absolute→relative conversion have no visual content
+              // and are excluded, so the bounds cover only actual carousel slides.
+              var _cTop = 1e9, _cBot = 0, _cLeft = 1e9, _cRight = 0;
+              var _cropOX = 0, _cropOY = 0;
+              try {
+                mDoc.body.querySelectorAll('*').forEach(function(el) {
+                  var r = el.getBoundingClientRect();
+                  if (r.height <= 0 || r.width <= 0) return;
+                  if (el.tagName === 'IMG' || el.tagName === 'SVG' || el.tagName === 'VIDEO' || el.tagName === 'CANVAS') {
+                    // replaced element — always counts
+                  } else {
+                    var ht = false;
+                    for (var _n = el.firstChild; _n; _n = _n.nextSibling) {
+                      if (_n.nodeType === 3 && _n.textContent.trim()) { ht = true; break; }
+                    }
+                    if (!ht) return;
+                  }
+                  if (r.top < _cTop) _cTop = r.top;
+                  if (r.bottom > _cBot) _cBot = r.bottom;
+                  if (r.left < _cLeft) _cLeft = r.left;
+                  if (r.right > _cRight) _cRight = r.right;
+                });
+              } catch (_e2) {}
+              var _cPad = 20;
+              var _doCrop = _cTop < 1e9 && _cBot > _cTop + 10 && (_cBot - _cTop + _cPad * 2) < cH * 0.8;
+              // Compute crop offset from EXTRACTION bboxes, not DOM content bounds.
+              // The extraction runs before the iframe resize, so its bbox coordinates
+              // differ from post-resize DOM positions. The viewer maps extraction bboxes
+              // via (bbox * scale - cropOffset), so cropOffset must match extraction coords.
+              var _exTop = 1e9, _exLeft = 1e9;
+              if (_doCrop && extractedData && extractedData.colors) {
+                (extractedData.colors.contrastPairs || []).forEach(function(cp) {
+                  if (cp.bbox) {
+                    if (cp.bbox.top < _exTop) _exTop = cp.bbox.top;
+                    if (cp.bbox.left < _exLeft) _exLeft = cp.bbox.left;
+                  }
+                });
+              }
+              if (_doCrop) {
+                console.log('[milg-region] Content bounds: ' + Math.round(_cLeft) + ',' + Math.round(_cTop) + ' → ' + Math.round(_cRight) + ',' + Math.round(_cBot) + ' (doc: ' + cW + 'x' + cH + ')');
+                // Use extraction bbox origin for crop offset (aligns with viewer coordinate mapping)
+                var _exPadX = _exLeft < 1e9 ? Math.max(0, _exLeft - _cPad) : Math.max(0, _cLeft - _cPad);
+                var _exPadY = _exTop < 1e9 ? Math.max(0, _exTop - _cPad) : Math.max(0, _cTop - _cPad);
+                _cropOX = Math.round(_exPadX * _sc);
+                _cropOY = Math.round(_exPadY * _sc);
+              }
+
+              var pms = window.modernScreenshot;
+              if (!pms || !pms.domToCanvas) { _rgnFinish(rIdx, mf, null); return; }
+              pms.domToCanvas(mDoc.documentElement, { scale: _sc, timeout: 12000 }).then(function(rc) {
+                // Crop canvas to DOM-computed content bounds (avoids pixel scanning)
+                var finalCanvas = rc;
+                if (_doCrop) {
+                  try {
+                    var _cx = Math.round(Math.max(0, _cLeft - _cPad) * _sc);
+                    var _cy = Math.round(Math.max(0, _cTop - _cPad) * _sc);
+                    var _cw = Math.min(Math.round((_cRight - _cLeft + _cPad * 2) * _sc), rc.width - _cx);
+                    var _ch3 = Math.min(Math.round((_cBot - _cTop + _cPad * 2) * _sc), rc.height - _cy);
+                    if (_cw > 10 && _ch3 > 10) {
+                      finalCanvas = document.createElement('canvas');
+                      finalCanvas.width = _cw; finalCanvas.height = _ch3;
+                      finalCanvas.getContext('2d').drawImage(rc, _cx, _cy, _cw, _ch3, 0, 0, _cw, _ch3);
+                      console.log('[milg-region] Cropped ' + rc.width + 'x' + rc.height + ' → ' + _cw + 'x' + _ch3);
+                    }
+                  } catch (_ce) { console.warn('[milg-region] Crop failed:', _ce.message); finalCanvas = rc; }
+                }
+                var rUri; try { rUri = finalCanvas.toDataURL('image/webp', _quality); } catch (e) { rUri = ''; }
+                var _mMaskResults = {}; // pair index → {bmp, packed, w, h, layer, dark}
+                var _rgnResult = {
+                  screenshot: rUri,
+                  screenshotMeta: { scale: _sc, canvasWidth: finalCanvas.width, canvasHeight: finalCanvas.height, cropOffsetX: _cropOX, cropOffsetY: _cropOY },
+                  pairIndices: rgn.pairIndices,
+                  containerRect: { left: Math.round(cr.left), top: Math.round(cr.top), width: Math.round(cr.width), height: Math.round(cr.height) },
+                  extractedData: extractedData,
+                  maskResults: _mMaskResults
+                };
+
+                // --- Mask capture pipeline (same as main page Phase A-D) ---
+                var _mRefs; try { _mRefs = mf.contentWindow.__milgBboxRefs || []; } catch (_e) { _mRefs = []; }
+                var _mPairs = extractedData && extractedData.colors ? extractedData.colors.contrastPairs || [] : [];
+
+                // Build pair-element list (contrast pairs with DOM elements)
+                var _mPairEls = [];
+                _mRefs.forEach(function(ref) {
+                  if (!ref.el || !ref.obj || ref.obj.ratio === undefined) return;
+                  var idx = _mPairs.indexOf(ref.obj);
+                  if (idx >= 0) _mPairEls.push({ el: ref.el, pair: ref.obj, idx: idx });
+                });
+                console.log('[milg-region] Mask: ' + _mPairEls.length + '/' + _mRefs.length + ' pair elements');
+
+                if (_mPairEls.length === 0) {
+                  clearTimeout(rgnTimer);
+                  _rgnFinish(rIdx, mf, _rgnResult);
+                  return;
+                }
+
+                // Phase A: Kill ALL transitions before color changes
+                var _mDv = mDoc.defaultView;
+                mDoc.querySelectorAll('*').forEach(function(el) {
+                  el.style.setProperty('transition-duration', '0s', 'important');
+                  el.style.setProperty('transition', 'none', 'important');
+                });
+                void mDoc.body.offsetHeight;
+
+                // Neutralize absolute/fixed overlays (same logic as main pipeline)
+                var _mNeutralized = 0;
+                mDoc.querySelectorAll('*').forEach(function(el) {
+                  var cs = _mDv.getComputedStyle(el);
+                  if (cs.position === 'absolute' || cs.position === 'fixed') {
+                    if (!el.textContent.trim()) {
+                      el.style.setProperty('display', 'none', 'important'); _mNeutralized++;
+                    } else if (cs.pointerEvents === 'none') {
+                      el.style.setProperty('background', 'transparent', 'important');
+                      el.style.setProperty('background-image', 'none', 'important'); _mNeutralized++;
+                    }
+                  }
+                });
+                if (_mNeutralized) console.log('[milg-region] Neutralized ' + _mNeutralized + ' overlays');
+                void mDoc.body.offsetHeight;
+
+                // Re-read bboxes after neutralization (hiding overlays can shift layout)
+                if (typeof mf.contentWindow.__milgReReadBboxes === 'function') {
+                  try { mf.contentWindow.__milgReReadBboxes(); } catch (_e) {}
+                }
+
+                // Phase B: Global mask style — white bg, white text, hide media
+                var _mMask = mDoc.createElement('style');
+                _mMask.setAttribute('data-milg-mask', '1');
+                _mMask.textContent = '*,*::before,*::after{color:#fff !important;background-color:transparent !important;background-image:none !important;background:transparent !important;border-color:transparent !important;box-shadow:none !important;text-shadow:none !important;outline-color:transparent !important;-webkit-text-fill-color:#fff !important;opacity:1 !important;transition:none !important;animation:none !important;}html{background:#fff !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}';
+                mDoc.head.appendChild(_mMask);
+                void mDoc.body.offsetHeight;
+
+                // Re-read bboxes after mask style (layout may shift)
+                if (typeof mf.contentWindow.__milgReReadBboxes === 'function') {
+                  try { mf.contentWindow.__milgReReadBboxes(); } catch (_e) {}
+                }
+
+                // Build overlap layers (use pair.bbox which __milgReReadBboxes keeps current)
+                function _mOverlaps(a, b) {
+                  var ab = a.pair.bbox, bb = b.pair.bbox;
+                  if (!ab || !bb) return false;
+                  return ab.left < bb.left + bb.width && ab.left + ab.width > bb.left &&
+                    ab.top < bb.top + bb.height && ab.top + ab.height > bb.top;
+                }
+                var _mLayers = [], _mRemaining = _mPairEls.slice();
+                while (_mRemaining.length > 0) {
+                  var _mLayer = [], _mNext = [];
+                  _mRemaining.forEach(function(pe) {
+                    if (_mLayer.some(function(l) { return _mOverlaps(pe, l); })) _mNext.push(pe);
+                    else _mLayer.push(pe);
+                  });
+                  _mLayers.push(_mLayer); _mRemaining = _mNext;
+                }
+                console.log('[milg-region] ' + _mPairEls.length + ' elements in ' + _mLayers.length + ' mask layers');
+
+                // Bake text-transform into actual text (domToCanvas doesn't always preserve it)
+                var _mTtFixed = 0;
+                mDoc.querySelectorAll('*').forEach(function(el) {
+                  var tt = _mDv.getComputedStyle(el).textTransform;
+                  if (tt === 'uppercase' || tt === 'lowercase' || tt === 'capitalize') {
+                    var walker = mDoc.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
+                    var tn; while (tn = walker.nextNode()) {
+                      var orig = tn.textContent; if (!orig.trim()) continue;
+                      if (tt === 'uppercase') tn.textContent = orig.toUpperCase();
+                      else if (tt === 'lowercase') tn.textContent = orig.toLowerCase();
+                      else if (tt === 'capitalize') tn.textContent = orig.replace(/\b\w/g, function(c) { return c.toUpperCase(); });
+                      _mTtFixed++;
+                    }
+                  }
+                });
+                if (_mTtFixed) console.log('[milg-region] Baked text-transform for ' + _mTtFixed + ' text nodes');
+
+                // Phase D: Capture one mask per layer
+                var _mLi = 0;
+                function _mNextLayer() {
+                  if (_mLi >= _mLayers.length) {
+                    var _maskCount = Object.keys(_mMaskResults).length;
+                    console.log('[milg-region] All ' + _mLayers.length + ' mask layers done, maskResults=' + _maskCount + '/' + _mPairs.length);
+                    clearTimeout(rgnTimer);
+                    _rgnFinish(rIdx, mf, _rgnResult);
+                    return;
+                  }
+                  var layer = _mLayers[_mLi]; _mLi++;
+                  _prog('Region ' + (rIdx + 1) + ': mask layer ' + _mLi + '/' + _mLayers.length + '...');
+
+                  // Set layer elements to black via inline style
+                  layer.forEach(function(pe) {
+                    pe.el.style.setProperty('color', '#000', 'important');
+                    pe.el.style.setProperty('-webkit-text-fill-color', '#000', 'important');
+                    pe.el.querySelectorAll('*').forEach(function(ch) {
+                      ch.style.setProperty('color', '#000', 'important');
+                      ch.style.setProperty('-webkit-text-fill-color', '#000', 'important');
+                    });
+                  });
+                  void mDoc.body.offsetHeight;
+
+                  var _mLayerDone = false;
+                  var _mLayerTimer = setTimeout(function() {
+                    if (!_mLayerDone) { _mLayerDone = true; console.warn('[milg-region] Mask layer ' + _mLi + ' timed out'); setTimeout(_mNextLayer, 0); }
+                  }, 15000);
+
+                  pms.domToCanvas(mDoc.documentElement, { scale: _sc, timeout: 12000 }).then(function(mc) {
+                    if (_mLayerDone) return; _mLayerDone = true; clearTimeout(_mLayerTimer);
+                    var mCtx = mc.getContext('2d', { willReadFrequently: true });
+                    var _fillFallbacks = 0;
+                    layer.forEach(function(pe) {
+                      var bbox = pe.pair.bbox;
+                      if (!bbox) return;
+                      var bx = Math.max(0, Math.round(bbox.left * _sc));
+                      var by = Math.max(0, Math.round(bbox.top * _sc));
+                      var bw = Math.min(Math.round(bbox.width * _sc), mc.width - bx);
+                      var bh = Math.min(Math.round(bbox.height * _sc), mc.height - by);
+                      if (bw < 2 || bh < 2) return;
+                      try {
+                        var px = mCtx.getImageData(bx, by, bw, bh).data;
+                        var bmp = new Uint8Array(bw * bh);
+                        for (var y = 0; y < bh; y++) for (var x = 0; x < bw; x++) {
+                          var i = (y * bw + x) * 4;
+                          if ((px[i] + px[i + 1] + px[i + 2]) / 3 < 240) bmp[y * bw + x] = 1;
+                        }
+                        var _dk = 0; for (var _b = 0; _b < bmp.length; _b++) if (bmp[_b]) _dk++;
+
+                        // fillText fallback when domToCanvas didn't render text
+                        if (_dk === 0 && bw > 3 && pe.pair.text) {
+                          try {
+                            var cs = _mDv.getComputedStyle(pe.el);
+                            var _fc = document.createElement('canvas'); _fc.width = bw; _fc.height = bh;
+                            var _fx = _fc.getContext('2d'); _fx.fillStyle = '#fff'; _fx.fillRect(0, 0, bw, bh);
+                            var _fs = parseFloat(cs.fontSize) * _sc;
+                            _fx.fillStyle = '#000';
+                            _fx.font = cs.fontStyle + ' ' + cs.fontWeight + ' ' + _fs + 'px ' + cs.fontFamily;
+                            _fx.textBaseline = 'top';
+                            var _pl = (parseFloat(cs.paddingLeft) || 0) * _sc;
+                            var _pt2 = (parseFloat(cs.paddingTop) || 0) * _sc;
+                            var _pr = (parseFloat(cs.paddingRight) || 0) * _sc;
+                            var _ta = cs.textAlign;
+                            var _txt = pe.pair.text.replace(/\[placeholder\] /, '');
+                            var _lh = parseFloat(cs.lineHeight) * _sc || _fs * 1.2;
+                            var _contentW = bw - _pl - _pr;
+                            var _words = _txt.split(/\s+/); var _lines = []; var _line = '';
+                            for (var _w = 0; _w < _words.length; _w++) {
+                              var _test = _line ? _line + ' ' + _words[_w] : _words[_w];
+                              if (_fx.measureText(_test).width > _contentW && _line) { _lines.push(_line); _line = _words[_w]; }
+                              else _line = _test;
+                            }
+                            _lines.push(_line);
+                            var _totalH = _lines.length * _lh;
+                            var _tyStart = _pt2;
+                            var _par = pe.el.parentElement; var _pcs = _par ? _mDv.getComputedStyle(_par) : null;
+                            if (_pcs) {
+                              if (_pcs.display.indexOf('flex') >= 0 && _pcs.alignItems === 'center') _tyStart = Math.max(0, (bh - _totalH) / 2);
+                              else if (bh > _totalH + _pt2 * 2) _tyStart = _pt2;
+                            }
+                            for (var _li2 = 0; _li2 < _lines.length; _li2++) {
+                              var _lw = _fx.measureText(_lines[_li2]).width;
+                              var _tx = _pl;
+                              if (_ta === 'center') _tx = (_contentW - _lw) / 2 + _pl;
+                              else if (_ta === 'right' || _ta === 'end') _tx = _contentW - _lw + _pl;
+                              _fx.fillText(_lines[_li2], _tx, _tyStart + _li2 * _lh);
+                            }
+                            var _fpx = _fx.getImageData(0, 0, bw, bh).data;
+                            bmp = new Uint8Array(bw * bh);
+                            for (var _fy = 0; _fy < bh; _fy++) for (var _fxx = 0; _fxx < bw; _fxx++) {
+                              var _fi = (_fy * bw + _fxx) * 4;
+                              if ((_fpx[_fi] + _fpx[_fi + 1] + _fpx[_fi + 2]) / 3 < 240) bmp[_fy * bw + _fxx] = 1;
+                            }
+                            _dk = 0; for (var _fb = 0; _fb < bmp.length; _fb++) if (bmp[_fb]) _dk++;
+                            _fillFallbacks++;
+                          } catch (_fe) {}
+                        }
+
+                        // Bit-pack bitmap: 8 pixels per byte, then base64 encode
+                        var _byteLen = Math.ceil(bmp.length / 8);
+                        var _packed = new Uint8Array(_byteLen);
+                        for (var _bi = 0; _bi < bmp.length; _bi++) if (bmp[_bi]) _packed[_bi >> 3] |= (1 << (_bi & 7));
+                        var _binStr = ''; for (var _bi2 = 0; _bi2 < _packed.length; _bi2++) _binStr += String.fromCharCode(_packed[_bi2]);
+                        var _b64 = btoa(_binStr);
+                        // Store on pair (cross-frame) AND in dict (same-frame, survives iframe removal)
+                        pe.pair._maskBmp = _b64;
+                        pe.pair._maskPacked = true;
+                        pe.pair._maskW = bw;
+                        pe.pair._maskH = bh;
+                        pe.pair._maskLayer = _mLi;
+                        pe.pair._maskDark = _dk;
+                        _mMaskResults[pe.idx] = { bmp: _b64, packed: true, w: bw, h: bh, layer: _mLi, dark: _dk };
+                      } catch (_me) {}
+                    });
+                    if (_fillFallbacks > 0) console.log('[milg-region] Mask layer ' + _mLi + ': ' + _fillFallbacks + ' fillText fallbacks');
+                    // Reset layer elements
+                    layer.forEach(function(pe) {
+                      pe.el.style.removeProperty('color');
+                      pe.el.style.removeProperty('-webkit-text-fill-color');
+                      pe.el.querySelectorAll('*').forEach(function(ch) {
+                        ch.style.removeProperty('color');
+                        ch.style.removeProperty('-webkit-text-fill-color');
+                      });
+                    });
+                    setTimeout(_mNextLayer, 0);
+                  }).catch(function(e) {
+                    if (_mLayerDone) return; _mLayerDone = true; clearTimeout(_mLayerTimer);
+                    console.warn('[milg-region] Mask layer ' + _mLi + ' failed:', e);
+                    setTimeout(_mNextLayer, 0);
+                  });
+                }
+                _mNextLayer();
+              }).catch(function(e) { clearTimeout(rgnTimer); _rgnFinish(rIdx, mf, null); });
+            } catch (e) { clearTimeout(rgnTimer); _rgnFinish(rIdx, mf, null); }
+          }, 800); // 800ms: allow DOMContentLoaded + extraction to complete
+        });
+      });
+
+      function _rgnFinish(idx, mf, result) {
+        if (result) _rgnResults.push(result);
+        try { if (mf && mf.parentNode) mf.parentNode.removeChild(mf); } catch (e) {}
+        _rgnDone++;
+        if (_rgnDone >= _rgnTotal) {
+          clearTimeout(_rgnOverall);
+          console.log('[milg-region] Region screenshots done: ' + _rgnResults.length + '/' + _rgnTotal);
+          rgnCb(_rgnResults);
+        }
+      }
+    };
+  }
+
+  return {
+    FORCE_REVEAL_CSS: FORCE_REVEAL_CSS,
+    FORCE_REVEAL_SCRIPT: FORCE_REVEAL_SCRIPT,
+    cleanupMiniPageDom: cleanupMiniPageDom,
+    buildMiniPageHtml: buildMiniPageHtml,
+    buildRegionClone: buildRegionClone,
+    getClipDetectionScript: getClipDetectionScript,
+    // The serializable function — use: MilgRegion.getRegionFn().toString()
+    getRegionFn: function() { return _regionScreenshotFn; }
   };
 })();
 </file>
@@ -40726,16 +40685,27 @@ window.MilgViewer = (function() {
           _regionalBboxKeys[Math.round(cp.bbox.left) + ',' + Math.round(cp.bbox.top) + ',' + Math.round(cp.bbox.width) + ',' + Math.round(cp.bbox.height)] = true;
         }
       });
-      // Also exclude non-contrast items inside region containers (headings, touch targets)
+      // Also exclude non-contrast items inside region containers (headings, touch targets, alignment, border-radius)
       function _addRegionalBbox(item) {
         if ((item._isClipped || item._regionContainerId) && item.bbox) {
           if (_regionalBboxes) _regionalBboxes.add(item.bbox);
           _regionalBboxKeys[Math.round(item.bbox.left) + ',' + Math.round(item.bbox.top) + ',' + Math.round(item.bbox.width) + ',' + Math.round(item.bbox.height)] = true;
         }
       }
+      // borderRadii entries have bboxes[] array instead of single bbox
+      function _addRegionalRadii(item) {
+        if (item.bboxes) item.bboxes.forEach(function(b) {
+          if (b && b._rcid) {
+            if (_regionalBboxes) _regionalBboxes.add(b);
+            _regionalBboxKeys[Math.round(b.left) + ',' + Math.round(b.top) + ',' + Math.round(b.width) + ',' + Math.round(b.height)] = true;
+          }
+        });
+      }
       var _raw = _reportData.raw || {};
       (_raw.typography && _raw.typography.headings || []).forEach(_addRegionalBbox);
       (_raw.interaction && _raw.interaction.touchTargets || []).forEach(_addRegionalBbox);
+      (_raw.layout && _raw.layout.alignmentElements || []).forEach(_addRegionalBbox);
+      (_raw.layout && _raw.layout.borderRadii || []).forEach(_addRegionalRadii);
       // Build bounding rect from ALL clipped/region bboxes — covers the full hidden area
       var _regionBounds = [];
       _contrastPairs.forEach(function(cp) {
@@ -43385,7 +43355,7 @@ window.MilgIframe = (function() {
                 'var _raw=window.__milgData||null;' +
                 // Build a lean updatedData with ONLY re-read bboxes (not full extraction + screenshots).
                 'var updatedData=null;' +
-                'if(_raw){updatedData={colors:{contrastPairs:_raw.colors?_raw.colors.contrastPairs:[]},typography:{fontSizes:_raw.typography?_raw.typography.fontSizes:[],headings:_raw.typography?_raw.typography.headings:[],maxLineLength:_raw.typography?_raw.typography.maxLineLength:null},interaction:{touchTargets:_raw.interaction?_raw.interaction.touchTargets:[]},layout:{offscreenElements:_raw.layout?_raw.layout.offscreenElements:[],hiddenPanelIssues:_raw.layout?_raw.layout.hiddenPanelIssues:[]}}}' +
+                'if(_raw){updatedData={colors:{contrastPairs:_raw.colors?_raw.colors.contrastPairs:[]},typography:{fontSizes:_raw.typography?_raw.typography.fontSizes:[],headings:_raw.typography?_raw.typography.headings:[],maxLineLength:_raw.typography?_raw.typography.maxLineLength:null},interaction:{touchTargets:_raw.interaction?_raw.interaction.touchTargets:[]},layout:{offscreenElements:_raw.layout?_raw.layout.offscreenElements:[],hiddenPanelIssues:_raw.layout?_raw.layout.hiddenPanelIssues:[],alignmentElements:_raw.layout?_raw.layout.alignmentElements:[],borderRadii:_raw.layout?_raw.layout.borderRadii:[]}}}' +
                 // Explicitly copy mask results onto updatedData pairs (don't rely on object identity)
                 'if(updatedData&&updatedData.colors&&updatedData.colors.contrastPairs&&typeof _maskResults!=="undefined"){' +
                   'Object.keys(_maskResults).forEach(function(idx){' +
@@ -43764,6 +43734,8 @@ window.MilgIframe = (function() {
           if (ud.layout) {
             if (ud.layout.offscreenElements) iframe._milgData.layout.offscreenElements = ud.layout.offscreenElements;
             if (ud.layout.hiddenPanelIssues) iframe._milgData.layout.hiddenPanelIssues = ud.layout.hiddenPanelIssues;
+            if (ud.layout.alignmentElements) iframe._milgData.layout.alignmentElements = ud.layout.alignmentElements;
+            if (ud.layout.borderRadii) iframe._milgData.layout.borderRadii = ud.layout.borderRadii;
           }
           var _dp = iframe._milgData.colors ? iframe._milgData.colors.contrastPairs : [];
           var _dRcid = _dp.filter(function(p) { return !!p._regionContainerId; }).length;
@@ -43902,7 +43874,7 @@ window.MilgIframe = (function() {
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.10.4 loaded');
+console.log('[milg] analyzer.js v3.11 loaded');
 
 (function() {
   "use strict";
@@ -44652,11 +44624,20 @@ console.log('[milg] analyzer.js v3.10.4 loaded');
       var _origPairs = data.colors ? data.colors.contrastPairs : null;
       var _origTouch = data.interaction ? data.interaction.touchTargets : null;
       var _origHeadings = data.typography ? data.typography.headings : null;
+      var _origAlign = data.layout ? data.layout.alignmentElements : null;
+      var _origRadii = data.layout ? data.layout.borderRadii : null;
       if (_origPairs) data.colors.contrastPairs = _origPairs.filter(function(cp) { return !cp._regionContainerId; });
       if (_origTouch) data.interaction.touchTargets = _origTouch.filter(function(t) { return !t._regionContainerId; });
       if (_origHeadings) data.typography.headings = _origHeadings.filter(function(h) { return !h._regionContainerId; });
+      if (_origAlign) data.layout.alignmentElements = _origAlign.filter(function(a) { return !a._regionContainerId; });
+      if (_origRadii) data.layout.borderRadii = _origRadii.filter(function(r) {
+        // borderRadii entries have bboxes[] array — exclude if ALL sample bboxes have _rcid
+        if (!r.bboxes || r.bboxes.length === 0) return true;
+        return r.bboxes.some(function(b) { return !b._rcid; });
+      });
       var _filteredCount = (_origPairs ? _origPairs.length - data.colors.contrastPairs.length : 0);
-      console.log('[D] scoring filter: ' + (_origPairs ? _origPairs.length : 0) + '→' + (data.colors ? data.colors.contrastPairs.length : 0) + ' pairs (removed ' + _filteredCount + ' rcid)');
+      var _filteredAlign = (_origAlign ? _origAlign.length - data.layout.alignmentElements.length : 0);
+      console.log('[D] scoring filter: ' + (_origPairs ? _origPairs.length : 0) + '→' + (data.colors ? data.colors.contrastPairs.length : 0) + ' pairs (removed ' + _filteredCount + ' rcid) align removed=' + _filteredAlign);
 
       reportData = MilgScoring.runScoring(data);
       if (_isTabSwitch) data._cachedReportData = reportData;
@@ -44665,6 +44646,8 @@ console.log('[milg] analyzer.js v3.10.4 loaded');
       if (_origPairs) data.colors.contrastPairs = _origPairs;
       if (_origTouch) data.interaction.touchTargets = _origTouch;
       if (_origHeadings) data.typography.headings = _origHeadings;
+      if (_origAlign) data.layout.alignmentElements = _origAlign;
+      if (_origRadii) data.layout.borderRadii = _origRadii;
     }
     // Score region sub-pages independently
     var _regionScreenshots = reportData.raw && reportData.raw.regionScreenshots || [];
@@ -45755,7 +45738,7 @@ console.log('[milg] analyzer.js v3.10.4 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.10.4</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.11</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -46192,32 +46175,32 @@ console.log('[milg] analyzer.js v3.10.4 loaded');
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=3.10.4"></script>
-  <script src="scoring/contrast.js?v=3.10.4"></script>
-  <script src="scoring/typography.js?v=3.10.4"></script>
-  <script src="scoring/spacing.js?v=3.10.4"></script>
-  <script src="scoring/touch.js?v=3.10.4"></script>
-  <script src="scoring/accessibility.js?v=3.10.4"></script>
-  <script src="scoring/responsive.js?v=3.10.4"></script>
-  <script src="scoring/consistency.js?v=3.10.4"></script>
-  <script src="scoring/cognitive.js?v=3.10.4"></script>
-  <script src="scoring/layout.js?v=3.10.4"></script>
-  <script src="scoring/performance.js?v=3.10.4"></script>
-  <script src="scoring/readability.js?v=3.10.4"></script>
-  <script src="scoring/filters.js?v=3.10.4"></script>
-  <script src="scoring/balance.js?v=3.10.4"></script>
+  <script src="scoring/registry.js?v=3.11"></script>
+  <script src="scoring/contrast.js?v=3.11"></script>
+  <script src="scoring/typography.js?v=3.11"></script>
+  <script src="scoring/spacing.js?v=3.11"></script>
+  <script src="scoring/touch.js?v=3.11"></script>
+  <script src="scoring/accessibility.js?v=3.11"></script>
+  <script src="scoring/responsive.js?v=3.11"></script>
+  <script src="scoring/consistency.js?v=3.11"></script>
+  <script src="scoring/cognitive.js?v=3.11"></script>
+  <script src="scoring/layout.js?v=3.11"></script>
+  <script src="scoring/performance.js?v=3.11"></script>
+  <script src="scoring/readability.js?v=3.11"></script>
+  <script src="scoring/filters.js?v=3.11"></script>
+  <script src="scoring/balance.js?v=3.11"></script>
   <!-- Queue + Report rendering + UI -->
-  <script src="analyzer-queue.js?v=3.10.4"></script>
-  <script src="analyzer-report.js?v=3.10.4"></script>
-  <script src="analyzer-crawl.js?v=3.10.4"></script>
-  <script src="analyzer-extract.js?v=3.10.4"></script>
-  <script src="analyzer-region.js?v=3.10.4"></script>
-  <script src="analyzer-iframe.js?v=3.10.4"></script>
-  <script src="analyzer-proxy.js?v=3.10.4"></script>
-  <script src="analyzer-crawl-ui.js?v=3.10.4"></script>
-  <script src="analyzer-contrast-verify.js?v=3.10.4"></script>
-  <script src="analyzer-viewer.js?v=3.10.4"></script>
-  <script src="analyzer.js?v=3.10.4"></script>
+  <script src="analyzer-queue.js?v=3.11"></script>
+  <script src="analyzer-report.js?v=3.11"></script>
+  <script src="analyzer-crawl.js?v=3.11"></script>
+  <script src="analyzer-extract.js?v=3.11"></script>
+  <script src="analyzer-region.js?v=3.11"></script>
+  <script src="analyzer-iframe.js?v=3.11"></script>
+  <script src="analyzer-proxy.js?v=3.11"></script>
+  <script src="analyzer-crawl-ui.js?v=3.11"></script>
+  <script src="analyzer-contrast-verify.js?v=3.11"></script>
+  <script src="analyzer-viewer.js?v=3.11"></script>
+  <script src="analyzer.js?v=3.11"></script>
 </body>
 </html>
 </file>

@@ -844,7 +844,7 @@ window.MilgIframe = (function() {
                 'var _raw=window.__milgData||null;' +
                 // Build a lean updatedData with ONLY re-read bboxes (not full extraction + screenshots).
                 'var updatedData=null;' +
-                'if(_raw){updatedData={colors:{contrastPairs:_raw.colors?_raw.colors.contrastPairs:[]},typography:{fontSizes:_raw.typography?_raw.typography.fontSizes:[],headings:_raw.typography?_raw.typography.headings:[],maxLineLength:_raw.typography?_raw.typography.maxLineLength:null},interaction:{touchTargets:_raw.interaction?_raw.interaction.touchTargets:[]},layout:{offscreenElements:_raw.layout?_raw.layout.offscreenElements:[],hiddenPanelIssues:_raw.layout?_raw.layout.hiddenPanelIssues:[]}}}' +
+                'if(_raw){updatedData={colors:{contrastPairs:_raw.colors?_raw.colors.contrastPairs:[]},typography:{fontSizes:_raw.typography?_raw.typography.fontSizes:[],headings:_raw.typography?_raw.typography.headings:[],maxLineLength:_raw.typography?_raw.typography.maxLineLength:null},interaction:{touchTargets:_raw.interaction?_raw.interaction.touchTargets:[]},layout:{offscreenElements:_raw.layout?_raw.layout.offscreenElements:[],hiddenPanelIssues:_raw.layout?_raw.layout.hiddenPanelIssues:[],alignmentElements:_raw.layout?_raw.layout.alignmentElements:[],borderRadii:_raw.layout?_raw.layout.borderRadii:[]}}}' +
                 // Explicitly copy mask results onto updatedData pairs (don't rely on object identity)
                 'if(updatedData&&updatedData.colors&&updatedData.colors.contrastPairs&&typeof _maskResults!=="undefined"){' +
                   'Object.keys(_maskResults).forEach(function(idx){' +
@@ -1223,6 +1223,8 @@ window.MilgIframe = (function() {
           if (ud.layout) {
             if (ud.layout.offscreenElements) iframe._milgData.layout.offscreenElements = ud.layout.offscreenElements;
             if (ud.layout.hiddenPanelIssues) iframe._milgData.layout.hiddenPanelIssues = ud.layout.hiddenPanelIssues;
+            if (ud.layout.alignmentElements) iframe._milgData.layout.alignmentElements = ud.layout.alignmentElements;
+            if (ud.layout.borderRadii) iframe._milgData.layout.borderRadii = ud.layout.borderRadii;
           }
           var _dp = iframe._milgData.colors ? iframe._milgData.colors.contrastPairs : [];
           var _dRcid = _dp.filter(function(p) { return !!p._regionContainerId; }).length;

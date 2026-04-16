@@ -1319,9 +1319,14 @@ window.MilgContrastVerify = (function() {
       function processBatch() {
         var end = Math.min(qi + BATCH_SIZE, pairs.length);
         for (var i = qi; i < end; i++) {
-          var result = verifyPair(pairs[i], sectionCanvases, meta, maskCanvasData);
-          if (result) { results.push(result); _vStats.verified++; }
-          else _vStats.noFgBg++;
+          try {
+            var result = verifyPair(pairs[i], sectionCanvases, meta, maskCanvasData);
+            if (result) { results.push(result); _vStats.verified++; }
+            else _vStats.noFgBg++;
+          } catch (_vpErr) {
+            console.warn('[milg-verify] verifyPair[' + i + '] error:', _vpErr.message || _vpErr);
+            _vStats.noFgBg++;
+          }
         }
         qi = end;
         if (qi < pairs.length) {
