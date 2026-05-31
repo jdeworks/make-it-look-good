@@ -410,22 +410,33 @@ window.MilgViewer = (function() {
         rgnHeader.appendChild(backLink);
         rgnSection.appendChild(rgnHeader);
 
-        // Region frame: screenshot with dynamic SVG overlay
+        // Region frame: a scroll container (max-height cap) wrapping an inline-block
+        // INNER box that shrink-wraps the image. The SVG overlay is sized to the INNER
+        // box (= the image's rendered box), NOT the scroll frame — otherwise when the
+        // image is smaller/larger than the frame (e.g. capped by max-height, or narrower
+        // than the viewer), the SVG's width:100%/height:100% would resolve against the
+        // frame and the overlay would scale differently from the image (proportional drift).
         var rgnFrame = document.createElement('div');
         rgnFrame.style.cssText = 'position:relative;overflow:auto;max-height:600px;';
+
+        var rgnInner = document.createElement('div');
+        rgnInner.style.cssText = 'position:relative;display:inline-block;line-height:0;';
+        rgnFrame.appendChild(rgnInner);
 
         var rgnImg = document.createElement('img');
         rgnImg.src = rgn.screenshot;
         rgnImg.alt = 'Hidden content region ' + (rIdx + 1);
         rgnImg.style.cssText = 'display:block;max-width:100%;height:auto;';
-        rgnFrame.appendChild(rgnImg);
+        rgnInner.appendChild(rgnImg);
 
-        // SVG overlay — rects are rendered dynamically by renderRegionOverlays()
+        // SVG overlay — rects are rendered dynamically by renderRegionOverlays().
+        // width/height:100% resolve against rgnInner, which shrink-wraps the image,
+        // so the SVG viewBox always maps onto the exact pixels the image occupies.
         var rgnSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         rgnSvg.setAttribute('viewBox', '0 0 ' + rgn.screenshotMeta.canvasWidth + ' ' + rgn.screenshotMeta.canvasHeight);
         rgnSvg.setAttribute('preserveAspectRatio', 'xMinYMin meet');
         rgnSvg.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
-        rgnFrame.appendChild(rgnSvg);
+        rgnInner.appendChild(rgnSvg);
 
         rgnSection.appendChild(rgnFrame);
 
@@ -528,10 +539,20 @@ window.MilgViewer = (function() {
     if (_zoomLevel === 1) {
       img.style.width = '';
       img.style.maxWidth = '95vw';
+      // Restore the frame's max-width clamp (CSS default) so it shrink-wraps at 1x.
+      frame.style.maxWidth = '';
       if (svg) { svg.style.width = ''; svg.style.height = ''; }
     } else {
-      var baseWidth = _meta ? _meta.canvasWidth : 640;
+      // Base the zoom on the ACTUALLY-DISPLAYED image's natural width (_stitchedCanvas,
+      // = the clean screenshot when that's what's shown), not _meta.canvasWidth (the
+      // expanded screenshot's dims). They're usually equal, but keying off the displayed
+      // image is the correct, drift-proof choice and matches the SVG height ratio below.
+      var baseWidth = (_stitchedCanvas && _stitchedCanvas.width) ? _stitchedCanvas.width : (_meta ? _meta.canvasWidth : 640);
       var zoomedWidth = Math.round(baseWidth * _zoomLevel);
+      // The frame is display:inline-block with max-width:95vw; without lifting that clamp
+      // the frame stays ~95vw while the image grows, so the image overflows the frame and
+      // the right side gets cut off / unreachable. Let the frame grow with the image.
+      frame.style.maxWidth = 'none';
       img.style.maxWidth = 'none';
       img.style.width = zoomedWidth + 'px';
       if (svg) {
