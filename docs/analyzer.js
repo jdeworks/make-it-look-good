@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.8 loaded');
+console.log('[milg] analyzer.js v3.11.9 loaded');
 
 (function() {
   "use strict";
@@ -208,35 +208,43 @@ console.log('[milg] analyzer.js v3.11.8 loaded');
   }
 
   // --- Snippet loading ---
+  // Manifest: the single place where snippet assembly order is declared.
+  // Each variant has a shell file and an ordered list of parts. Each part has a
+  // marker name and a source file. The assembler replaces the line-anchored
+  // marker `// @milg-insert: <marker>` in the shell with the part's source
+  // wrapped in an IIFE. To add a new part (e.g. region/capture) later, add one
+  // entry to the relevant `parts` array AND a matching marker line in the shell.
+  var SNIPPET_MANIFEST = {
+    screenshots: { shell: 'analyzer-snippet-screenshots.js', parts: [ { marker: 'extract', file: 'analyzer-extract.js' } ] },
+    plain:       { shell: 'analyzer-snippet.js',             parts: [ { marker: 'extract', file: 'analyzer-extract.js' } ] }
+  };
   var _snippetCache = {};
   function loadSnippet(codeEl, withScreenshots, callback) {
-    var file = withScreenshots ? 'analyzer-snippet-screenshots.js' : 'analyzer-snippet.js';
+    var entry = withScreenshots ? SNIPPET_MANIFEST.screenshots : SNIPPET_MANIFEST.plain;
+    var file = entry.shell;
     if (_snippetCache[file]) {
       codeEl.textContent = _snippetCache[file];
       if (callback) callback();
       return;
     }
-    // Fetch both the snippet shell AND the extraction engine, then inline the
-    // extraction into the snippet so it's fully self-contained (no CDN dependency).
+    // Fetch the shell + every part declared in the manifest, then inline each
+    // part by replacing its marker line. Keeps the per-fetch hourly cache-bust.
     var cacheBust = '?v=' + Math.floor(Date.now() / 3600000);
-    Promise.all([
-      fetch(file + cacheBust).then(function(r) { return r.text(); }),
-      fetch('analyzer-extract.js' + cacheBust).then(function(r) { return r.text(); })
-    ]).then(function(results) {
-      var snippetText = results[0];
-      var extractText = results[1];
-      // Replace the CDN fetch block with inlined extraction code.
-      // The snippet has a marker: the _extractUrls / _tryLoad / fetch block.
-      // Replace everything from "// --- Load extraction engine" to the closing
-      // of the else block with: eval the extraction inline + call _runExtraction.
-      var inlined = snippetText.replace(
-        /\/\/ --- Load extraction engine from CDN[\s\S]*?(?=\n  function _runExtraction)/,
-        '// --- Extraction engine (inlined by analyzer) ---\n' +
-        '  ;(function(){\n' + extractText + '\n  })();\n' +
-        '  _runExtraction();\n\n'
-      );
-      _snippetCache[file] = inlined;
-      codeEl.textContent = inlined;
+    var fetches = [ fetch(file + cacheBust).then(function(r) { return r.text(); }) ];
+    entry.parts.forEach(function(part) {
+      fetches.push(fetch(part.file + cacheBust).then(function(r) { return r.text(); }));
+    });
+    Promise.all(fetches).then(function(results) {
+      var assembled = results[0];
+      entry.parts.forEach(function(part, i) {
+        var partText = results[i + 1];
+        var marker = '// @milg-insert: ' + part.marker + '\n';
+        var replacement = ';(function(){\n' + partText + '\n})();\n';
+        // Use a replacer FUNCTION so $-sequences in part source aren't interpreted.
+        assembled = assembled.replace(marker, function() { return replacement; });
+      });
+      _snippetCache[file] = assembled;
+      codeEl.textContent = assembled;
       if (callback) callback();
     }).catch(function() {
       codeEl.textContent = '// Failed to load snippet — copy from ' + file;

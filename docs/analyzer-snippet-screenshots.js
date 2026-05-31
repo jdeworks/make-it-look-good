@@ -45,37 +45,9 @@
   // Cache-bust for CDN fetches (hourly bucket)
   var _cacheBust = 'v=' + Math.floor(Date.now() / 3600000);
 
-  // --- Load extraction engine from CDN (single source of truth) ---
-  console.log('%c[milg] Loading extraction engine...', 'color: #3b82f6;');
-  // Primary: jsDelivr (fast global CDN, mirrors GitHub). Fallback: GitHub Pages direct.
-  var _extractUrls = [
-    'https://cdn.jsdelivr.net/gh/jdeworks/make-it-look-good@dev/docs/analyzer-extract.js?' + _cacheBust,
-    'https://jdeworks.github.io/make-it-look-good/analyzer-extract.js?' + _cacheBust
-  ];
-
-  if (window.MilgExtract) {
-    _runExtraction();
-  } else {
-    (function _tryLoad(idx) {
-      if (idx >= _extractUrls.length) {
-        console.error('[milg] Cannot load extraction engine from any CDN.');
-        return;
-      }
-      var url = _extractUrls[idx];
-      console.log('[milg] Fetching:', url.split('?')[0]);
-      fetch(url).then(function(r) {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.text();
-      }).then(function(code) {
-        (new Function(code))();
-        if (!window.MilgExtract) throw new Error('MilgExtract not defined after eval');
-        _runExtraction();
-      }).catch(function(err) {
-        console.warn('[milg] CDN ' + (idx + 1) + ' failed:', err.message || err);
-        _tryLoad(idx + 1);
-      });
-    })(0);
-  }
+  // --- Extraction engine (inlined by analyzer assembler) ---
+  // @milg-insert: extract
+  _runExtraction();
 
   function _runExtraction() {
     window.__milgOnExtractComplete = function(data) {

@@ -31169,37 +31169,9 @@ window.MilgQueue = (function() {
     return; // Exit — re-run snippet after scroll completes
   }
 
-  // --- Load extraction engine from CDN (single source of truth) ---
-  console.log('%c[milg] Loading extraction engine...', 'color: #3b82f6;');
-  var _cacheBust = 'v=' + Math.floor(Date.now() / 3600000);
-  var _extractUrls = [
-    'https://cdn.jsdelivr.net/gh/jdeworks/make-it-look-good@dev/docs/analyzer-extract.js?' + _cacheBust,
-    'https://jdeworks.github.io/make-it-look-good/analyzer-extract.js?' + _cacheBust
-  ];
-
-  if (window.MilgExtract) {
-    _runExtraction();
-  } else {
-    (function _tryLoad(idx) {
-      if (idx >= _extractUrls.length) {
-        console.error('[milg] Cannot load extraction engine from any CDN.');
-        return;
-      }
-      var url = _extractUrls[idx];
-      console.log('[milg] Fetching:', url.split('?')[0]);
-      fetch(url).then(function(r) {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.text();
-      }).then(function(code) {
-        (new Function(code))();
-        if (!window.MilgExtract) throw new Error('MilgExtract not defined after eval');
-        _runExtraction();
-      }).catch(function(err) {
-        console.warn('[milg] CDN ' + (idx + 1) + ' failed:', err.message || err);
-        _tryLoad(idx + 1);
-      });
-    })(0);
-  }
+  // --- Extraction engine (inlined by analyzer assembler) ---
+  // @milg-insert: extract
+  _runExtraction();
 
   function _runExtraction() {
     window.__milgOnExtractComplete = function(data) {
@@ -33340,37 +33312,9 @@ test.describe('Region Screenshot Debug', () => {
   // Cache-bust for CDN fetches (hourly bucket)
   var _cacheBust = 'v=' + Math.floor(Date.now() / 3600000);
 
-  // --- Load extraction engine from CDN (single source of truth) ---
-  console.log('%c[milg] Loading extraction engine...', 'color: #3b82f6;');
-  // Primary: jsDelivr (fast global CDN, mirrors GitHub). Fallback: GitHub Pages direct.
-  var _extractUrls = [
-    'https://cdn.jsdelivr.net/gh/jdeworks/make-it-look-good@dev/docs/analyzer-extract.js?' + _cacheBust,
-    'https://jdeworks.github.io/make-it-look-good/analyzer-extract.js?' + _cacheBust
-  ];
-
-  if (window.MilgExtract) {
-    _runExtraction();
-  } else {
-    (function _tryLoad(idx) {
-      if (idx >= _extractUrls.length) {
-        console.error('[milg] Cannot load extraction engine from any CDN.');
-        return;
-      }
-      var url = _extractUrls[idx];
-      console.log('[milg] Fetching:', url.split('?')[0]);
-      fetch(url).then(function(r) {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.text();
-      }).then(function(code) {
-        (new Function(code))();
-        if (!window.MilgExtract) throw new Error('MilgExtract not defined after eval');
-        _runExtraction();
-      }).catch(function(err) {
-        console.warn('[milg] CDN ' + (idx + 1) + ' failed:', err.message || err);
-        _tryLoad(idx + 1);
-      });
-    })(0);
-  }
+  // --- Extraction engine (inlined by analyzer assembler) ---
+  // @milg-insert: extract
+  _runExtraction();
 
   function _runExtraction() {
     window.__milgOnExtractComplete = function(data) {
@@ -43058,7 +43002,7 @@ window.MilgIframe = (function() {
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.8 loaded');
+console.log('[milg] analyzer.js v3.11.9 loaded');
 
 (function() {
   "use strict";
@@ -43264,35 +43208,43 @@ console.log('[milg] analyzer.js v3.11.8 loaded');
   }
 
   // --- Snippet loading ---
+  // Manifest: the single place where snippet assembly order is declared.
+  // Each variant has a shell file and an ordered list of parts. Each part has a
+  // marker name and a source file. The assembler replaces the line-anchored
+  // marker `// @milg-insert: <marker>` in the shell with the part's source
+  // wrapped in an IIFE. To add a new part (e.g. region/capture) later, add one
+  // entry to the relevant `parts` array AND a matching marker line in the shell.
+  var SNIPPET_MANIFEST = {
+    screenshots: { shell: 'analyzer-snippet-screenshots.js', parts: [ { marker: 'extract', file: 'analyzer-extract.js' } ] },
+    plain:       { shell: 'analyzer-snippet.js',             parts: [ { marker: 'extract', file: 'analyzer-extract.js' } ] }
+  };
   var _snippetCache = {};
   function loadSnippet(codeEl, withScreenshots, callback) {
-    var file = withScreenshots ? 'analyzer-snippet-screenshots.js' : 'analyzer-snippet.js';
+    var entry = withScreenshots ? SNIPPET_MANIFEST.screenshots : SNIPPET_MANIFEST.plain;
+    var file = entry.shell;
     if (_snippetCache[file]) {
       codeEl.textContent = _snippetCache[file];
       if (callback) callback();
       return;
     }
-    // Fetch both the snippet shell AND the extraction engine, then inline the
-    // extraction into the snippet so it's fully self-contained (no CDN dependency).
+    // Fetch the shell + every part declared in the manifest, then inline each
+    // part by replacing its marker line. Keeps the per-fetch hourly cache-bust.
     var cacheBust = '?v=' + Math.floor(Date.now() / 3600000);
-    Promise.all([
-      fetch(file + cacheBust).then(function(r) { return r.text(); }),
-      fetch('analyzer-extract.js' + cacheBust).then(function(r) { return r.text(); })
-    ]).then(function(results) {
-      var snippetText = results[0];
-      var extractText = results[1];
-      // Replace the CDN fetch block with inlined extraction code.
-      // The snippet has a marker: the _extractUrls / _tryLoad / fetch block.
-      // Replace everything from "// --- Load extraction engine" to the closing
-      // of the else block with: eval the extraction inline + call _runExtraction.
-      var inlined = snippetText.replace(
-        /\/\/ --- Load extraction engine from CDN[\s\S]*?(?=\n  function _runExtraction)/,
-        '// --- Extraction engine (inlined by analyzer) ---\n' +
-        '  ;(function(){\n' + extractText + '\n  })();\n' +
-        '  _runExtraction();\n\n'
-      );
-      _snippetCache[file] = inlined;
-      codeEl.textContent = inlined;
+    var fetches = [ fetch(file + cacheBust).then(function(r) { return r.text(); }) ];
+    entry.parts.forEach(function(part) {
+      fetches.push(fetch(part.file + cacheBust).then(function(r) { return r.text(); }));
+    });
+    Promise.all(fetches).then(function(results) {
+      var assembled = results[0];
+      entry.parts.forEach(function(part, i) {
+        var partText = results[i + 1];
+        var marker = '// @milg-insert: ' + part.marker + '\n';
+        var replacement = ';(function(){\n' + partText + '\n})();\n';
+        // Use a replacer FUNCTION so $-sequences in part source aren't interpreted.
+        assembled = assembled.replace(marker, function() { return replacement; });
+      });
+      _snippetCache[file] = assembled;
+      codeEl.textContent = assembled;
       if (callback) callback();
     }).catch(function() {
       codeEl.textContent = '// Failed to load snippet — copy from ' + file;
@@ -44908,7 +44860,7 @@ console.log('[milg] analyzer.js v3.11.8 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.11.8</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.11.9</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -45318,32 +45270,32 @@ console.log('[milg] analyzer.js v3.11.8 loaded');
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=3.11.8"></script>
-  <script src="scoring/contrast.js?v=3.11.8"></script>
-  <script src="scoring/typography.js?v=3.11.8"></script>
-  <script src="scoring/spacing.js?v=3.11.8"></script>
-  <script src="scoring/touch.js?v=3.11.8"></script>
-  <script src="scoring/accessibility.js?v=3.11.8"></script>
-  <script src="scoring/responsive.js?v=3.11.8"></script>
-  <script src="scoring/consistency.js?v=3.11.8"></script>
-  <script src="scoring/cognitive.js?v=3.11.8"></script>
-  <script src="scoring/layout.js?v=3.11.8"></script>
-  <script src="scoring/performance.js?v=3.11.8"></script>
-  <script src="scoring/readability.js?v=3.11.8"></script>
-  <script src="scoring/filters.js?v=3.11.8"></script>
-  <script src="scoring/balance.js?v=3.11.8"></script>
+  <script src="scoring/registry.js?v=3.11.9"></script>
+  <script src="scoring/contrast.js?v=3.11.9"></script>
+  <script src="scoring/typography.js?v=3.11.9"></script>
+  <script src="scoring/spacing.js?v=3.11.9"></script>
+  <script src="scoring/touch.js?v=3.11.9"></script>
+  <script src="scoring/accessibility.js?v=3.11.9"></script>
+  <script src="scoring/responsive.js?v=3.11.9"></script>
+  <script src="scoring/consistency.js?v=3.11.9"></script>
+  <script src="scoring/cognitive.js?v=3.11.9"></script>
+  <script src="scoring/layout.js?v=3.11.9"></script>
+  <script src="scoring/performance.js?v=3.11.9"></script>
+  <script src="scoring/readability.js?v=3.11.9"></script>
+  <script src="scoring/filters.js?v=3.11.9"></script>
+  <script src="scoring/balance.js?v=3.11.9"></script>
   <!-- Queue + Report rendering + UI -->
-  <script src="analyzer-queue.js?v=3.11.8"></script>
-  <script src="analyzer-report.js?v=3.11.8"></script>
-  <script src="analyzer-crawl.js?v=3.11.8"></script>
-  <script src="analyzer-extract.js?v=3.11.8"></script>
-  <script src="analyzer-region.js?v=3.11.8"></script>
-  <script src="analyzer-iframe.js?v=3.11.8"></script>
-  <script src="analyzer-proxy.js?v=3.11.8"></script>
-  <script src="analyzer-crawl-ui.js?v=3.11.8"></script>
-  <script src="analyzer-contrast-verify.js?v=3.11.8"></script>
-  <script src="analyzer-viewer.js?v=3.11.8"></script>
-  <script src="analyzer.js?v=3.11.8"></script>
+  <script src="analyzer-queue.js?v=3.11.9"></script>
+  <script src="analyzer-report.js?v=3.11.9"></script>
+  <script src="analyzer-crawl.js?v=3.11.9"></script>
+  <script src="analyzer-extract.js?v=3.11.9"></script>
+  <script src="analyzer-region.js?v=3.11.9"></script>
+  <script src="analyzer-iframe.js?v=3.11.9"></script>
+  <script src="analyzer-proxy.js?v=3.11.9"></script>
+  <script src="analyzer-crawl-ui.js?v=3.11.9"></script>
+  <script src="analyzer-contrast-verify.js?v=3.11.9"></script>
+  <script src="analyzer-viewer.js?v=3.11.9"></script>
+  <script src="analyzer.js?v=3.11.9"></script>
 </body>
 </html>
 </file>
