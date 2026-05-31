@@ -58,8 +58,11 @@ On the carousel fixture, URL-mode and snippet-mode output is byte-identical.
 - `node tests/contrast-and-palette.test.mjs` → 8 pre-existing failures (focus-visible primary colors + accordion contrast), unrelated to this effort.
 - region-debug baseline anchor: region 1, score 84, crop (0,15627), container {744,3863,350,467}. Note: that test hits live fink-translate.com — compare structurally, not byte-exact.
 
-## Follow-ups (not done)
-1. `docs/tests/test-bbox-viewer.js` Test 1: 4 assertions read `sessionStorage['milg-last-extraction']` which the analyzer never writes (it exposes `window.__milgLastReport`). Pre-existing, not wired into CI — fix the test to read `window.__milgLastReport.raw`.
-2. `textMask` (full-page combined data URI) is now `null` in all modes — consumers use per-pair `_maskBmp`. If anything still expects the combined mask, it should be removed.
-3. Minor: an unused `var _cacheBust` remains in `analyzer-snippet-screenshots.js` (Stage 4 left it for parity).
-4. Viewport parity for real sites is inherent-limited: a live-page snippet reflects the user's real window width and can't be forced to URL mode's fixed viewport. Acceptable/desired (analyzes the page as the user sees it); only pathological for bare fragment presets, which should be analyzed via URL mode.
+## Follow-ups
+RESOLVED (v3.11.17):
+- ~~test-bbox-viewer.js stale sessionStorage reads~~ — fixed: repointed to `window.__milgLastReport.raw`, corrected hardcoded scale check, enabled pixel-verify checkbox. Now 54/0 (was 45/4).
+- ~~dead `textMask` load branch~~ — removed (per-pair `_maskBmp` is the live path; field kept as literal `null` for downstream consumers).
+- ~~unused `_cacheBust`~~ — deleted.
+
+Open (inherent, no action):
+- Viewport parity for real sites is inherent-limited: a live-page snippet reflects the user's real window width and can't be forced to URL mode's fixed viewport. Acceptable/desired (analyzes the page as the user sees it); only pathological for bare fragment presets, which should be analyzed via URL mode.
