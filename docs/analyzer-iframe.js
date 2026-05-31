@@ -571,60 +571,9 @@ window.MilgIframe = (function() {
               'var _cleanUri;try{_cleanUri=_cleanCanvas.toDataURL("image/webp",' + ss.quality + ')}catch(e){_cleanUri=""}' +
               'var _cleanW=_cleanCanvas.width,_cleanH=_cleanCanvas.height;' +
               'console.log("[iframe-ss] Clean screenshot: "+_cleanW+"x"+_cleanH);' +
-              // Mark contrast pairs as clipped if inside overflow:hidden ancestor
-              'if(window.__milgBboxRefs&&window.__milgData&&window.__milgData.colors){' +
-                'var _cp=window.__milgData.colors.contrastPairs||[];' +
-                'window.__milgBboxRefs.forEach(function(ref){' +
-                  'if(!ref.el||!ref.obj||ref.key!=="bbox")return;' +
-                  'var el=ref.el;var pair=ref.obj;' +
-                  'var er=el.getBoundingClientRect();' +
-                  'var anc=el.parentElement;' +
-                  'while(anc&&anc!==document.documentElement){' +
-                    'var as=getComputedStyle(anc);' +
-                    'var aov=as.overflow||"";var aovx=as.overflowX||"";var aovy=as.overflowY||"";' +
-                    'if(aov==="hidden"||aov==="clip"||aovx==="hidden"||aovx==="clip"||aovy==="hidden"||aovy==="clip"){' +
-                      'var ar=anc.getBoundingClientRect();' +
-                      // Check if element bbox is outside the clipping ancestor's visible rect
-                      'if(er.right<ar.left+1||er.left>ar.right-1||er.bottom<ar.top+1||er.top>ar.bottom-1){' +
-                        'pair._isClipped=true;break' +
-                      '}' +
-                    '}' +
-                    'anc=anc.parentElement' +
-                  '}' +
-                '})' +
-              '}' +
-              // Tag ALL contrast pairs inside clipping containers with _regionContainerId.
-              // This uses the DOM hierarchy (not coordinate heuristics) so the viewer can
-              // reliably exclude carousel/tab content from the main overlay.
-              'if(window.__milgBboxRefs){' +
-                // Pass 2: Identify clipping containers that have at least one _isClipped pair
-                'var _rcc=0;' +
-                'window.__milgBboxRefs.forEach(function(ref){' +
-                  'if(!ref.el||!ref.obj||ref.key!=="bbox"||!ref.obj._isClipped)return;' +
-                  'var anc=ref.el.parentElement;' +
-                  'while(anc&&anc!==document.documentElement){' +
-                    'var as=getComputedStyle(anc);' +
-                    'var aov=as.overflow||"";var aovx=as.overflowX||"";var aovy=as.overflowY||"";' +
-                    'if(aov==="hidden"||aov==="clip"||aovx==="hidden"||aovx==="clip"||aovy==="hidden"||aovy==="clip"){' +
-                      'var ar=anc.getBoundingClientRect();' +
-                      'if(ar.width>=100&&ar.height>=30&&!anc._mrc){anc._mrc="rgn-"+(++_rcc)}' +
-                      'break' +
-                    '}' +
-                    'anc=anc.parentElement' +
-                  '}' +
-                '});' +
-                // Pass 3: Tag ALL pairs whose element is a descendant of an identified container
-                'window.__milgBboxRefs.forEach(function(ref){' +
-                  'if(!ref.el||!ref.obj||ref.key!=="bbox")return;' +
-                  'var anc=ref.el;' +
-                  'while(anc){' +
-                    'if(anc._mrc){ref.obj._regionContainerId=anc._mrc;if(ref.obj[ref.key])ref.obj[ref.key]._rcid=anc._mrc;break}' +
-                    'anc=anc.parentElement' +
-                  '}' +
-                '});' +
-                'console.log("[D] tagged "+_rcc+" clip containers, clipped="+window.__milgBboxRefs.filter(function(r){return r.obj&&r.obj._isClipped}).length+"/"+window.__milgBboxRefs.length)' +
-              '}' +
-              // Inject and run region screenshot function (serialized to avoid escaping issues)
+              // Inject and run region screenshot function (serialized to avoid escaping issues).
+              // The marking pre-pass (pair._isClipped, container._mrc, _regionContainerId/_rcid)
+              // now lives inside MilgRegion.getRegionFn() and runs at its start — shared with snippet mode.
               'var _cp2=window.__milgData&&window.__milgData.colors?window.__milgData.colors.contrastPairs||[]:[];' +
               'var _buildRegionScreenshots=(' + _regionScreenshotFn.toString() + ')(_sc,' + ss.quality + ',_prog,_cp2);' +
               '_buildRegionScreenshots(function(_regionResults){' +

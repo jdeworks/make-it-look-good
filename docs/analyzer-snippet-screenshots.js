@@ -224,48 +224,8 @@
         (function captureRegions(regionCb) {
           if (!window.MilgRegion || !window.__milgBboxRefs || !data.colors || !data.colors.contrastPairs) { regionCb([]); return; }
           var _cp2 = data.colors.contrastPairs;
-          // Pre-pass: mark _isClipped pairs (mirrors iframe mode — the shared region
-          // fn consumes _isClipped but does not set it). Pass 1: detect clipped pairs.
-          window.__milgBboxRefs.forEach(function(ref) {
-            if (!ref.el || !ref.obj || ref.key !== 'bbox') return;
-            var el = ref.el, pair = ref.obj;
-            var er = el.getBoundingClientRect();
-            var anc = el.parentElement;
-            while (anc && anc !== document.documentElement) {
-              var as = getComputedStyle(anc);
-              var aov = as.overflow || '', aovx = as.overflowX || '', aovy = as.overflowY || '';
-              if (aov === 'hidden' || aov === 'clip' || aovx === 'hidden' || aovx === 'clip' || aovy === 'hidden' || aovy === 'clip') {
-                var ar = anc.getBoundingClientRect();
-                if (er.right < ar.left + 1 || er.left > ar.right - 1 || er.bottom < ar.top + 1 || er.top > ar.bottom - 1) { pair._isClipped = true; break; }
-              }
-              anc = anc.parentElement;
-            }
-          });
-          // Pass 2: tag clipping containers; Pass 3: tag descendant pairs with _regionContainerId
-          // (same as iframe mode — used by the viewer to exclude region content from the main overlay).
-          var _rcc = 0;
-          window.__milgBboxRefs.forEach(function(ref) {
-            if (!ref.el || !ref.obj || ref.key !== 'bbox' || !ref.obj._isClipped) return;
-            var anc = ref.el.parentElement;
-            while (anc && anc !== document.documentElement) {
-              var as = getComputedStyle(anc);
-              var aov = as.overflow || '', aovx = as.overflowX || '', aovy = as.overflowY || '';
-              if (aov === 'hidden' || aov === 'clip' || aovx === 'hidden' || aovx === 'clip' || aovy === 'hidden' || aovy === 'clip') {
-                var ar = anc.getBoundingClientRect();
-                if (ar.width >= 100 && ar.height >= 30 && !anc._mrc) { anc._mrc = 'rgn-' + (++_rcc); }
-                break;
-              }
-              anc = anc.parentElement;
-            }
-          });
-          window.__milgBboxRefs.forEach(function(ref) {
-            if (!ref.el || !ref.obj || ref.key !== 'bbox') return;
-            var anc = ref.el;
-            while (anc) {
-              if (anc._mrc) { ref.obj._regionContainerId = anc._mrc; if (ref.obj[ref.key]) ref.obj[ref.key]._rcid = anc._mrc; break; }
-              anc = anc.parentElement;
-            }
-          });
+          // The marking pre-pass (pair._isClipped, container._mrc, _regionContainerId/_rcid)
+          // now lives inside MilgRegion.getRegionFn() and runs at its start — shared with iframe mode.
           var _prog = function(msg) {
             var _se = document.getElementById('milg-ss-status');
             if (_se) _se.textContent = msg;

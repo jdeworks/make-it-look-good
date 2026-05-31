@@ -154,6 +154,56 @@ window.MilgRegion = (function() {
   // Parameters are bound at serialization time by the caller.
   function _regionScreenshotFn(_sc, _quality, _prog, _cp2) {
     return function _buildRegionScreenshots(rgnCb) {
+      // --- Marking pre-pass (shared by both URL/iframe mode and snippet mode) ---
+      // The clip-container detection below consumes pair._isClipped, and the viewer
+      // consumes container._mrc / pair._regionContainerId / bbox._rcid to exclude
+      // region content from the main overlay. Set all of those here so callers don't
+      // have to duplicate it. Operates on window.__milgBboxRefs + the live DOM.
+      if (window.__milgBboxRefs) {
+        // Pass 1: Mark _isClipped pairs (element bbox completely outside an overflow:hidden ancestor)
+        window.__milgBboxRefs.forEach(function(ref) {
+          if (!ref.el || !ref.obj || ref.key !== 'bbox') return;
+          var el = ref.el, pair = ref.obj;
+          var er = el.getBoundingClientRect();
+          var anc = el.parentElement;
+          while (anc && anc !== document.documentElement) {
+            var as = getComputedStyle(anc);
+            var aov = as.overflow || '', aovx = as.overflowX || '', aovy = as.overflowY || '';
+            if (aov === 'hidden' || aov === 'clip' || aovx === 'hidden' || aovx === 'clip' || aovy === 'hidden' || aovy === 'clip') {
+              var ar = anc.getBoundingClientRect();
+              if (er.right < ar.left + 1 || er.left > ar.right - 1 || er.bottom < ar.top + 1 || er.top > ar.bottom - 1) { pair._isClipped = true; break; }
+            }
+            anc = anc.parentElement;
+          }
+        });
+        // Pass 2: Identify clipping containers that have at least one _isClipped pair
+        var _rcc = 0;
+        window.__milgBboxRefs.forEach(function(ref) {
+          if (!ref.el || !ref.obj || ref.key !== 'bbox' || !ref.obj._isClipped) return;
+          var anc = ref.el.parentElement;
+          while (anc && anc !== document.documentElement) {
+            var as = getComputedStyle(anc);
+            var aov = as.overflow || '', aovx = as.overflowX || '', aovy = as.overflowY || '';
+            if (aov === 'hidden' || aov === 'clip' || aovx === 'hidden' || aovx === 'clip' || aovy === 'hidden' || aovy === 'clip') {
+              var ar = anc.getBoundingClientRect();
+              if (ar.width >= 100 && ar.height >= 30 && !anc._mrc) { anc._mrc = 'rgn-' + (++_rcc); }
+              break;
+            }
+            anc = anc.parentElement;
+          }
+        });
+        // Pass 3: Tag ALL pairs whose element descends from an identified container
+        window.__milgBboxRefs.forEach(function(ref) {
+          if (!ref.el || !ref.obj || ref.key !== 'bbox') return;
+          var anc = ref.el;
+          while (anc) {
+            if (anc._mrc) { ref.obj._regionContainerId = anc._mrc; if (ref.obj[ref.key]) ref.obj[ref.key]._rcid = anc._mrc; break; }
+            anc = anc.parentElement;
+          }
+        });
+        console.log('[milg-region] mark: tagged ' + _rcc + ' clip containers, clipped=' + window.__milgBboxRefs.filter(function(r) { return r.obj && r.obj._isClipped; }).length + '/' + window.__milgBboxRefs.length);
+      }
+
       // Detect clipping containers from tracked bbox refs
       var _rgnCounter = 0, _clipContainerList = [], _clipContainers = {};
       if (window.__milgBboxRefs) {
