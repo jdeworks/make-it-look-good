@@ -31687,7 +31687,7 @@ window.MilgCapture = (function() {
                   _savedBboxes.forEach(function(s2) { var nb = { left: s2.left, top: s2.top, width: s2.width, height: s2.height }; if (s2._rcid) nb._rcid = s2._rcid; s2.obj[s2.key] = nb; });
 
                   var _maskResults = {}; // Defined HERE so _sendFinal can access it (same scope)
-                  function _sendFinal(maskUri) {
+                  function _sendFinal() {
                     var _raw = window.__milgData || null;
                     // Build a lean updatedData with ONLY re-read bboxes (not full extraction + screenshots).
                     var updatedData = null;
@@ -31718,7 +31718,7 @@ window.MilgCapture = (function() {
                       screenshots: fullUri ? [fullUri] : [],
                       screenshotFull: fullUri || null,
                       screenshotClean: _cleanUri || null,
-                      textMask: maskUri || null,
+                      textMask: null, // legacy combined-mask field; per-pair _maskBmp is the live mask source
                       screenshotMeta: {
                         scale: _sc, viewportHeight: vh, sectionCount: 1,
                         canvasWidth: _cw, canvasHeight: _ch,
@@ -31819,7 +31819,7 @@ window.MilgCapture = (function() {
                     // Phase D: Capture one mask per layer — set layer elements to black via inline style
                     var _li = 0;
                     function _nextLayer() {
-                      if (_li >= _layers.length) { console.log("[iframe-ss] All " + _layers.length + " mask layers done"); _sendFinal(null); return; }
+                      if (_li >= _layers.length) { console.log("[iframe-ss] All " + _layers.length + " mask layers done"); _sendFinal(); return; }
                       var layer = _layers[_li]; _li++;
                       _prog("Text mask layer " + _li + "/" + _layers.length + "...");
                       console.log("[iframe-ss] Layer " + _li + ": " + layer.length + " elements");
@@ -31925,8 +31925,8 @@ window.MilgCapture = (function() {
                     }
                     var _maskDone = false;
                     var _origSendFinal = _sendFinal;
-                    var _maskTimer = setTimeout(function() { if (!_maskDone) { _maskDone = true; console.warn("[iframe-ss] Masks timed out (360s)"); _origSendFinal(null); } }, 360000);
-                    _sendFinal = function(m) { if (_maskDone) return; _maskDone = true; clearTimeout(_maskTimer); console.log("[iframe-ss] Sending results (maskResults: " + Object.keys(_maskResults).length + " pairs)"); _origSendFinal(m); };
+                    var _maskTimer = setTimeout(function() { if (!_maskDone) { _maskDone = true; console.warn("[iframe-ss] Masks timed out (360s)"); _origSendFinal(); } }, 360000);
+                    _sendFinal = function() { if (_maskDone) return; _maskDone = true; clearTimeout(_maskTimer); console.log("[iframe-ss] Sending results (maskResults: " + Object.keys(_maskResults).length + " pairs)"); _origSendFinal(); };
                     _nextLayer();
                   }); // end document.fonts.ready.then
                 }).catch(function(e) { console.warn("[iframe-ss] expanded capture failed:", e); _sendFn({ type: _msgType, screenshots: [], _iframeId: _mid }, true); });
@@ -35420,74 +35420,6 @@ test.describe('Preset Scoring', () => {
 });
 </file>
 
-<file path="NEXT-SESSION-PROMPT.md">
-# Analyzer state — capture/mask/region unified (v3.11.15)
-
-## What was done (v3.11.6 → v3.11.15)
-
-Goal: make extraction + region/mask + full-page capture **single-source** across all
-input modes so a change in one place applies everywhere — killing the recurring
-"fixed it for URL mode but missed snippet mode" bug class.
-
-### Architecture now
-```
-<mode PRE>  →  [shared core: MilgExtract + MilgRegion + MilgCapture]  →  <mode POST>
-URL/iframe : proxy-fetch → build hidden srcdoc iframe, inject core via .toString() → postMessage → runAnalysis
-Snippet    : live page    → core inlined into paste block via manifest               → data obj → paste/import → runAnalysis
-Crawl      : per-page same-origin iframe → core injected into each crawl iframe       → aggregate per page
-Load saved : —            → replay only                                              → runAnalysis
-```
-Shared modules expose serializable `getXxxFn()` returning **context-free** functions.
-Mode differences (PRE prep, image preload, result-send, region fn) are passed as
-`opts` (`preHookSrc` / `preloadSrc` / `sendFn` / `regionFnSrc`) — never branched inside
-the core. The snippet paste block is assembled by `SNIPPET_MANIFEST` + literal
-`// @milg-insert: <part>` markers in `analyzer.js` `loadSnippet()`.
-
-### Stages shipped
-| Stage | Version | What |
-|------|---------|------|
-| 1 | — | Migrated Playwright tests off the paste-HTML harness onto real URL mode |
-| 2 | 3.11.7 | Removed the Paste-HTML input mode entirely |
-| 3 | 3.11.8 | Deleted dead `_regionScreenshotFnFallback` (~160 lines) in analyzer-iframe.js |
-| 4 | 3.11.9 | Robust marker/manifest snippet assembly (replaced fragile regex) |
-| 5 | 3.11.10 | Snippet uses shared `MilgRegion` (deleted its localBboxes region copy) |
-| 5b | 3.11.11 | Moved region marking pre-pass into MilgRegion (was duplicated) |
-| 6a | 3.11.12 | Unified full-page mask dark-pixel threshold to 240 (snippet/crawl were 180) |
-| 6b | 3.11.13 | Extracted iframe capture into new `analyzer-capture.js` (`MilgCapture`) |
-| 6c | 3.11.14 | Snippet adopts `MilgCapture` (multi-layer upgrade); regions via core |
-| 6d | 3.11.15 | Crawl adopts `MilgCapture`; third capture copy retired |
-
-The full-page capture+mask core is now single-source in `docs/analyzer-capture.js`.
-On the carousel fixture, URL-mode and snippet-mode output is byte-identical.
-
-## Key files
-| File | Module / role |
-|------|---------------|
-| `docs/analyzer-extract.js` | `MilgExtract` — DOM/style/token extraction (shared) |
-| `docs/analyzer-region.js` | `MilgRegion` — region/carousel detect + per-region screenshot + mask + crop + marking |
-| `docs/analyzer-capture.js` | `MilgCapture` — full-page screenshot + multi-layer mask (shared; NEW) |
-| `docs/analyzer-iframe.js` | URL-mode shell — proxy/iframe/inject + postMessage |
-| `docs/analyzer-snippet-screenshots.js` | Snippet + crawl shells — live-page PRE + clipboard/download POST |
-| `docs/analyzer.js` | Orchestrator — `runAnalysis`, `SNIPPET_MANIFEST` / `loadSnippet`, region scoring + verify |
-
-## Cross-mode alignment (v3.11.16)
-- **Crawl upgraded to full parity:** crawled pages now use `expand:true` + real region screenshots (region fn serialized in the parent realm, injected per crawl iframe with a no-op fallback). Poll cap 80→160 (80s), hard timeout 45s→90s.
-- **Parity proven + guarded:** `tests/cross-mode-parity.spec.js` analyzes a self-contained fixture (`docs/tests/fixtures/parity-page.html`) in BOTH URL and snippet mode at width 1280 and asserts results match — measured identical (score 93=93, contrast pairs 20=20, region 1=1, findings 25=25). Carousel capture/mask was already byte-identical across modes (Stage 6c).
-- **The earlier "iframe under-renders responsive pages" follow-up was a MISDIAGNOSIS.** The pricing preset is a bare HTML *fragment* with no CSS of its own: URL mode wraps fragments and injects the Tailwind CDN → styled 1212px (correct); a snippet run on the bare fragment sees no CSS → unstyled 30656px. For real sites (which ship their own CSS) both modes load it and agree; the only inherent residual is viewport width (URL default 1280 vs snippet = live window width — desktop widths 1280–1920 give identical layout height).
-
-## Tests
-- `npx playwright test tests/html-analysis.spec.js tests/region-debug.spec.js tests/cross-mode-parity.spec.js --reporter=list` → all green (URL mode; serves docs/ on :8384).
-- `node tests/crawl-flow.test.mjs` → 22/0 (URL discovery/normalization only — does NOT cover capture).
-- `node tests/contrast-and-palette.test.mjs` → 8 pre-existing failures (focus-visible primary colors + accordion contrast), unrelated to this effort.
-- region-debug baseline anchor: region 1, score 84, crop (0,15627), container {744,3863,350,467}. Note: that test hits live fink-translate.com — compare structurally, not byte-exact.
-
-## Follow-ups (not done)
-1. `docs/tests/test-bbox-viewer.js` Test 1: 4 assertions read `sessionStorage['milg-last-extraction']` which the analyzer never writes (it exposes `window.__milgLastReport`). Pre-existing, not wired into CI — fix the test to read `window.__milgLastReport.raw`.
-2. `textMask` (full-page combined data URI) is now `null` in all modes — consumers use per-pair `_maskBmp`. If anything still expects the combined mask, it should be removed.
-3. Minor: an unused `var _cacheBust` remains in `analyzer-snippet-screenshots.js` (Stage 4 left it for parity).
-4. Viewport parity for real sites is inherent-limited: a live-page snippet reflects the user's real window width and can't be forced to URL mode's fixed viewport. Acceptable/desired (analyzes the page as the user sees it); only pathological for bare fragment presets, which should be analyzed via URL mode.
-</file>
-
 <file path="docs/analyzer-contrast-verify.js">
 // make-it-look-good — Pixel-Sampled Contrast Verification
 // Samples actual pixel colors from screenshots at text element locations,
@@ -36794,11 +36726,12 @@ window.MilgContrastVerify = (function() {
     if (!raw.screenshots || !raw.screenshotMeta) { callback([]); return; }
     var meta = raw.screenshotMeta;
 
-    // Load screenshot + optional text mask in parallel
+    // Load screenshots. Per-pair _maskBmp bitmaps (built in capture) are the
+    // verification mask source; the legacy combined textMask is no longer produced.
     var sectionCanvases = new Array(raw.screenshots.length);
     var maskCanvasData = null;
     var loaded = 0;
-    var toLoad = raw.screenshots.length + (raw.textMask ? 1 : 0);
+    var toLoad = raw.screenshots.length;
 
     function onAllLoaded() {
       var results = [];
@@ -36860,14 +36793,6 @@ window.MilgContrastVerify = (function() {
         if (loaded === toLoad) onAllLoaded();
       });
     });
-
-    if (raw.textMask) {
-      loadScreenshotToCanvas(raw.textMask, function(mc) {
-        maskCanvasData = mc;
-        loaded++;
-        if (loaded === toLoad) onAllLoaded();
-      });
-    }
   }
 
   // Format a single verification result as HTML for display in findings
@@ -37753,6 +37678,74 @@ window.MilgCrawl = (function() {
     renderCrawlJSON: renderCrawlJSON
   };
 })();
+</file>
+
+<file path="NEXT-SESSION-PROMPT.md">
+# Analyzer state — capture/mask/region unified (v3.11.15)
+
+## What was done (v3.11.6 → v3.11.15)
+
+Goal: make extraction + region/mask + full-page capture **single-source** across all
+input modes so a change in one place applies everywhere — killing the recurring
+"fixed it for URL mode but missed snippet mode" bug class.
+
+### Architecture now
+```
+<mode PRE>  →  [shared core: MilgExtract + MilgRegion + MilgCapture]  →  <mode POST>
+URL/iframe : proxy-fetch → build hidden srcdoc iframe, inject core via .toString() → postMessage → runAnalysis
+Snippet    : live page    → core inlined into paste block via manifest               → data obj → paste/import → runAnalysis
+Crawl      : per-page same-origin iframe → core injected into each crawl iframe       → aggregate per page
+Load saved : —            → replay only                                              → runAnalysis
+```
+Shared modules expose serializable `getXxxFn()` returning **context-free** functions.
+Mode differences (PRE prep, image preload, result-send, region fn) are passed as
+`opts` (`preHookSrc` / `preloadSrc` / `sendFn` / `regionFnSrc`) — never branched inside
+the core. The snippet paste block is assembled by `SNIPPET_MANIFEST` + literal
+`// @milg-insert: <part>` markers in `analyzer.js` `loadSnippet()`.
+
+### Stages shipped
+| Stage | Version | What |
+|------|---------|------|
+| 1 | — | Migrated Playwright tests off the paste-HTML harness onto real URL mode |
+| 2 | 3.11.7 | Removed the Paste-HTML input mode entirely |
+| 3 | 3.11.8 | Deleted dead `_regionScreenshotFnFallback` (~160 lines) in analyzer-iframe.js |
+| 4 | 3.11.9 | Robust marker/manifest snippet assembly (replaced fragile regex) |
+| 5 | 3.11.10 | Snippet uses shared `MilgRegion` (deleted its localBboxes region copy) |
+| 5b | 3.11.11 | Moved region marking pre-pass into MilgRegion (was duplicated) |
+| 6a | 3.11.12 | Unified full-page mask dark-pixel threshold to 240 (snippet/crawl were 180) |
+| 6b | 3.11.13 | Extracted iframe capture into new `analyzer-capture.js` (`MilgCapture`) |
+| 6c | 3.11.14 | Snippet adopts `MilgCapture` (multi-layer upgrade); regions via core |
+| 6d | 3.11.15 | Crawl adopts `MilgCapture`; third capture copy retired |
+
+The full-page capture+mask core is now single-source in `docs/analyzer-capture.js`.
+On the carousel fixture, URL-mode and snippet-mode output is byte-identical.
+
+## Key files
+| File | Module / role |
+|------|---------------|
+| `docs/analyzer-extract.js` | `MilgExtract` — DOM/style/token extraction (shared) |
+| `docs/analyzer-region.js` | `MilgRegion` — region/carousel detect + per-region screenshot + mask + crop + marking |
+| `docs/analyzer-capture.js` | `MilgCapture` — full-page screenshot + multi-layer mask (shared; NEW) |
+| `docs/analyzer-iframe.js` | URL-mode shell — proxy/iframe/inject + postMessage |
+| `docs/analyzer-snippet-screenshots.js` | Snippet + crawl shells — live-page PRE + clipboard/download POST |
+| `docs/analyzer.js` | Orchestrator — `runAnalysis`, `SNIPPET_MANIFEST` / `loadSnippet`, region scoring + verify |
+
+## Cross-mode alignment (v3.11.16)
+- **Crawl upgraded to full parity:** crawled pages now use `expand:true` + real region screenshots (region fn serialized in the parent realm, injected per crawl iframe with a no-op fallback). Poll cap 80→160 (80s), hard timeout 45s→90s.
+- **Parity proven + guarded:** `tests/cross-mode-parity.spec.js` analyzes a self-contained fixture (`docs/tests/fixtures/parity-page.html`) in BOTH URL and snippet mode at width 1280 and asserts results match — measured identical (score 93=93, contrast pairs 20=20, region 1=1, findings 25=25). Carousel capture/mask was already byte-identical across modes (Stage 6c).
+- **The earlier "iframe under-renders responsive pages" follow-up was a MISDIAGNOSIS.** The pricing preset is a bare HTML *fragment* with no CSS of its own: URL mode wraps fragments and injects the Tailwind CDN → styled 1212px (correct); a snippet run on the bare fragment sees no CSS → unstyled 30656px. For real sites (which ship their own CSS) both modes load it and agree; the only inherent residual is viewport width (URL default 1280 vs snippet = live window width — desktop widths 1280–1920 give identical layout height).
+
+## Tests
+- `npx playwright test tests/html-analysis.spec.js tests/region-debug.spec.js tests/cross-mode-parity.spec.js --reporter=list` → all green (URL mode; serves docs/ on :8384).
+- `node tests/crawl-flow.test.mjs` → 22/0 (URL discovery/normalization only — does NOT cover capture).
+- `node tests/contrast-and-palette.test.mjs` → 8 pre-existing failures (focus-visible primary colors + accordion contrast), unrelated to this effort.
+- region-debug baseline anchor: region 1, score 84, crop (0,15627), container {744,3863,350,467}. Note: that test hits live fink-translate.com — compare structurally, not byte-exact.
+
+## Follow-ups (not done)
+1. `docs/tests/test-bbox-viewer.js` Test 1: 4 assertions read `sessionStorage['milg-last-extraction']` which the analyzer never writes (it exposes `window.__milgLastReport`). Pre-existing, not wired into CI — fix the test to read `window.__milgLastReport.raw`.
+2. `textMask` (full-page combined data URI) is now `null` in all modes — consumers use per-pair `_maskBmp`. If anything still expects the combined mask, it should be removed.
+3. Minor: an unused `var _cacheBust` remains in `analyzer-snippet-screenshots.js` (Stage 4 left it for parity).
+4. Viewport parity for real sites is inherent-limited: a live-page snippet reflects the user's real window width and can't be forced to URL mode's fixed viewport. Acceptable/desired (analyzes the page as the user sees it); only pathological for bare fragment presets, which should be analyzed via URL mode.
 </file>
 
 <file path="docs/analyzer-region.js">
@@ -39142,9 +39135,6 @@ window.MilgCrawlUI = (function() {
     }, 150);
     return; // Exit — re-run snippet after scroll completes
   }
-
-  // Cache-bust for CDN fetches (hourly bucket)
-  var _cacheBust = 'v=' + Math.floor(Date.now() / 3600000);
 
   // --- Extraction engine (inlined by analyzer assembler) ---
   // @milg-insert: extract
@@ -43029,7 +43019,7 @@ window.MilgViewer = (function() {
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.16 loaded');
+console.log('[milg] analyzer.js v3.11.17 loaded');
 
 (function() {
   "use strict";
@@ -44887,7 +44877,7 @@ console.log('[milg] analyzer.js v3.11.16 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.11.16</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.11.17</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -45297,33 +45287,33 @@ console.log('[milg] analyzer.js v3.11.16 loaded');
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=3.11.16"></script>
-  <script src="scoring/contrast.js?v=3.11.16"></script>
-  <script src="scoring/typography.js?v=3.11.16"></script>
-  <script src="scoring/spacing.js?v=3.11.16"></script>
-  <script src="scoring/touch.js?v=3.11.16"></script>
-  <script src="scoring/accessibility.js?v=3.11.16"></script>
-  <script src="scoring/responsive.js?v=3.11.16"></script>
-  <script src="scoring/consistency.js?v=3.11.16"></script>
-  <script src="scoring/cognitive.js?v=3.11.16"></script>
-  <script src="scoring/layout.js?v=3.11.16"></script>
-  <script src="scoring/performance.js?v=3.11.16"></script>
-  <script src="scoring/readability.js?v=3.11.16"></script>
-  <script src="scoring/filters.js?v=3.11.16"></script>
-  <script src="scoring/balance.js?v=3.11.16"></script>
+  <script src="scoring/registry.js?v=3.11.17"></script>
+  <script src="scoring/contrast.js?v=3.11.17"></script>
+  <script src="scoring/typography.js?v=3.11.17"></script>
+  <script src="scoring/spacing.js?v=3.11.17"></script>
+  <script src="scoring/touch.js?v=3.11.17"></script>
+  <script src="scoring/accessibility.js?v=3.11.17"></script>
+  <script src="scoring/responsive.js?v=3.11.17"></script>
+  <script src="scoring/consistency.js?v=3.11.17"></script>
+  <script src="scoring/cognitive.js?v=3.11.17"></script>
+  <script src="scoring/layout.js?v=3.11.17"></script>
+  <script src="scoring/performance.js?v=3.11.17"></script>
+  <script src="scoring/readability.js?v=3.11.17"></script>
+  <script src="scoring/filters.js?v=3.11.17"></script>
+  <script src="scoring/balance.js?v=3.11.17"></script>
   <!-- Queue + Report rendering + UI -->
-  <script src="analyzer-queue.js?v=3.11.16"></script>
-  <script src="analyzer-report.js?v=3.11.16"></script>
-  <script src="analyzer-crawl.js?v=3.11.16"></script>
-  <script src="analyzer-extract.js?v=3.11.16"></script>
-  <script src="analyzer-region.js?v=3.11.16"></script>
-  <script src="analyzer-capture.js?v=3.11.16"></script>
-  <script src="analyzer-iframe.js?v=3.11.16"></script>
-  <script src="analyzer-proxy.js?v=3.11.16"></script>
-  <script src="analyzer-crawl-ui.js?v=3.11.16"></script>
-  <script src="analyzer-contrast-verify.js?v=3.11.16"></script>
-  <script src="analyzer-viewer.js?v=3.11.16"></script>
-  <script src="analyzer.js?v=3.11.16"></script>
+  <script src="analyzer-queue.js?v=3.11.17"></script>
+  <script src="analyzer-report.js?v=3.11.17"></script>
+  <script src="analyzer-crawl.js?v=3.11.17"></script>
+  <script src="analyzer-extract.js?v=3.11.17"></script>
+  <script src="analyzer-region.js?v=3.11.17"></script>
+  <script src="analyzer-capture.js?v=3.11.17"></script>
+  <script src="analyzer-iframe.js?v=3.11.17"></script>
+  <script src="analyzer-proxy.js?v=3.11.17"></script>
+  <script src="analyzer-crawl-ui.js?v=3.11.17"></script>
+  <script src="analyzer-contrast-verify.js?v=3.11.17"></script>
+  <script src="analyzer-viewer.js?v=3.11.17"></script>
+  <script src="analyzer.js?v=3.11.17"></script>
 </body>
 </html>
 </file>

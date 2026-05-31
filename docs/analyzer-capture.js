@@ -329,7 +329,7 @@ window.MilgCapture = (function() {
                   _savedBboxes.forEach(function(s2) { var nb = { left: s2.left, top: s2.top, width: s2.width, height: s2.height }; if (s2._rcid) nb._rcid = s2._rcid; s2.obj[s2.key] = nb; });
 
                   var _maskResults = {}; // Defined HERE so _sendFinal can access it (same scope)
-                  function _sendFinal(maskUri) {
+                  function _sendFinal() {
                     var _raw = window.__milgData || null;
                     // Build a lean updatedData with ONLY re-read bboxes (not full extraction + screenshots).
                     var updatedData = null;
@@ -360,7 +360,7 @@ window.MilgCapture = (function() {
                       screenshots: fullUri ? [fullUri] : [],
                       screenshotFull: fullUri || null,
                       screenshotClean: _cleanUri || null,
-                      textMask: maskUri || null,
+                      textMask: null, // legacy combined-mask field; per-pair _maskBmp is the live mask source
                       screenshotMeta: {
                         scale: _sc, viewportHeight: vh, sectionCount: 1,
                         canvasWidth: _cw, canvasHeight: _ch,
@@ -461,7 +461,7 @@ window.MilgCapture = (function() {
                     // Phase D: Capture one mask per layer — set layer elements to black via inline style
                     var _li = 0;
                     function _nextLayer() {
-                      if (_li >= _layers.length) { console.log("[iframe-ss] All " + _layers.length + " mask layers done"); _sendFinal(null); return; }
+                      if (_li >= _layers.length) { console.log("[iframe-ss] All " + _layers.length + " mask layers done"); _sendFinal(); return; }
                       var layer = _layers[_li]; _li++;
                       _prog("Text mask layer " + _li + "/" + _layers.length + "...");
                       console.log("[iframe-ss] Layer " + _li + ": " + layer.length + " elements");
@@ -567,8 +567,8 @@ window.MilgCapture = (function() {
                     }
                     var _maskDone = false;
                     var _origSendFinal = _sendFinal;
-                    var _maskTimer = setTimeout(function() { if (!_maskDone) { _maskDone = true; console.warn("[iframe-ss] Masks timed out (360s)"); _origSendFinal(null); } }, 360000);
-                    _sendFinal = function(m) { if (_maskDone) return; _maskDone = true; clearTimeout(_maskTimer); console.log("[iframe-ss] Sending results (maskResults: " + Object.keys(_maskResults).length + " pairs)"); _origSendFinal(m); };
+                    var _maskTimer = setTimeout(function() { if (!_maskDone) { _maskDone = true; console.warn("[iframe-ss] Masks timed out (360s)"); _origSendFinal(); } }, 360000);
+                    _sendFinal = function() { if (_maskDone) return; _maskDone = true; clearTimeout(_maskTimer); console.log("[iframe-ss] Sending results (maskResults: " + Object.keys(_maskResults).length + " pairs)"); _origSendFinal(); };
                     _nextLayer();
                   }); // end document.fonts.ready.then
                 }).catch(function(e) { console.warn("[iframe-ss] expanded capture failed:", e); _sendFn({ type: _msgType, screenshots: [], _iframeId: _mid }, true); });

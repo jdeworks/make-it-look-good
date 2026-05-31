@@ -1303,11 +1303,12 @@ window.MilgContrastVerify = (function() {
     if (!raw.screenshots || !raw.screenshotMeta) { callback([]); return; }
     var meta = raw.screenshotMeta;
 
-    // Load screenshot + optional text mask in parallel
+    // Load screenshots. Per-pair _maskBmp bitmaps (built in capture) are the
+    // verification mask source; the legacy combined textMask is no longer produced.
     var sectionCanvases = new Array(raw.screenshots.length);
     var maskCanvasData = null;
     var loaded = 0;
-    var toLoad = raw.screenshots.length + (raw.textMask ? 1 : 0);
+    var toLoad = raw.screenshots.length;
 
     function onAllLoaded() {
       var results = [];
@@ -1369,14 +1370,6 @@ window.MilgContrastVerify = (function() {
         if (loaded === toLoad) onAllLoaded();
       });
     });
-
-    if (raw.textMask) {
-      loadScreenshotToCanvas(raw.textMask, function(mc) {
-        maskCanvasData = mc;
-        loaded++;
-        if (loaded === toLoad) onAllLoaded();
-      });
-    }
   }
 
   // Format a single verification result as HTML for display in findings

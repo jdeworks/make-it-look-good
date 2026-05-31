@@ -42,9 +42,6 @@
     return; // Exit — re-run snippet after scroll completes
   }
 
-  // Cache-bust for CDN fetches (hourly bucket)
-  var _cacheBust = 'v=' + Math.floor(Date.now() / 3600000);
-
   // --- Extraction engine (inlined by analyzer assembler) ---
   // @milg-insert: extract
   // --- Region screenshot module (inlined by analyzer assembler) ---
