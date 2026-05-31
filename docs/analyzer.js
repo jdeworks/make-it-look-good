@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.17 loaded');
+console.log('[milg] analyzer.js v3.11.18 loaded');
 
 (function() {
   "use strict";
@@ -1649,7 +1649,16 @@ console.log('[milg] analyzer.js v3.11.17 loaded');
       var pvCheck = document.getElementById('pixelVerifyCheck');
       var dsCheck = document.getElementById('deepScanCheck');
       if (ssCheck) ssCheck.checked = !!(data.screenshots && data.screenshots.length);
-      if (pvCheck) pvCheck.checked = !!data._contrastVerifyResults;
+      // Enable pixel verify on import when EITHER precomputed verify results exist
+      // (URL/export round-trip) OR the import carries the inputs post-hoc verify needs:
+      // screenshots + meta + per-pair mask bitmaps (a snippet/console capture). Without
+      // this, snippet imports never run verify, so no verify boxes (and thus no _debug
+      // right-click cycle) ever appear. runAnalysis() runs the edge verification that
+      // produces the per-pair _debug overlays.
+      var _impPairs = (data.colors && data.colors.contrastPairs) || [];
+      var _impHasMaskData = !!(data.screenshots && data.screenshots.length && data.screenshotMeta &&
+        _impPairs.some(function(p) { return p._maskBmp && p._maskDark > 0; }));
+      if (pvCheck) pvCheck.checked = !!data._contrastVerifyResults || _impHasMaskData;
       if (dsCheck) dsCheck.checked = !!(data.deepScan && data.deepScan.viewportData);
       runAnalysis(data);
       showToast('Analysis imported: ' + (data.meta.url || 'unknown'));
