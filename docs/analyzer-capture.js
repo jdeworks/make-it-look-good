@@ -192,6 +192,16 @@ window.MilgCapture = (function() {
   //   preHookSrc:  source string of preHook(prog, done) — mode-specific PRE prep
   //   preloadSrc:  source string of preloadFn(prog, proxyUrl, done) — image preload
   //   regionFnSrc: source string of MilgRegion.getRegionFn() — region screenshots
+  //   sendFn:      OPTIONAL live function sendFn(payload, isFinal) — pluggable output
+  //                sink. Used when the core runs in the SAME realm as the caller
+  //                (snippet mode: getCaptureFn() is called directly, not serialized),
+  //                so the sink may close over caller locals (its `data` object etc.).
+  //   sendFnSrc:   OPTIONAL source string of sendFn(payload, isFinal) — same contract,
+  //                for callers that serialize the whole core (none today). If neither
+  //                sendFn nor sendFnSrc is given the default is parent.postMessage —
+  //                i.e. the original iframe behavior.
+  //                `payload` always carries `.type` (msgType) so a postMessage sink
+  //                is a pass-through; `isFinal` marks the terminal full-result message.
   // }
   function _captureFn(scale, quality, prog, opts) {
     return function(callback) {
@@ -211,6 +221,29 @@ window.MilgCapture = (function() {
       var _preloadFn = (0, eval)("(" + opts.preloadSrc + ")");
       var _regionFn = (0, eval)("(" + opts.regionFnSrc + ")");
 
+      // Pluggable output sink. Default = original iframe behavior (postMessage to
+      // parent). The snippet supplies opts.sendFnSrc to route results into its
+      // `data` object + finalize, since it has no parent window to message.
+      var _sendFn = (typeof opts.sendFn === "function")
+        ? opts.sendFn
+        : opts.sendFnSrc
+        ? (0, eval)("(" + opts.sendFnSrc + ")")
+        : function(payload, isFinal) {
+            // Default sink = postMessage to parent (iframe/URL mode). For the final
+            // full-result message, keep the 3-tier size-limit retry (drop updatedData,
+            // then drop screenshots) that the iframe path has always relied on.
+            try { parent.postMessage(payload, "*"); } catch (e) {
+              if (!isFinal) return;
+              console.warn("[milg-warn] postMessage failed (" + e.message + "), retrying without updatedData");
+              payload.updatedData = null;
+              try { parent.postMessage(payload, "*"); } catch (e2) {
+                console.warn("[milg-warn] Retry failed, dropping screenshots");
+                payload.screenshots = []; payload.screenshotFull = null;
+                try { parent.postMessage(payload, "*"); } catch (e3) {}
+              }
+            }
+          };
+
       // PRE: mode-specific prep (height-unlock/pre-scroll/force-reveal/anim/overflow).
       _preHook(_prog, function() {
         fullH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
@@ -219,25 +252,7 @@ window.MilgCapture = (function() {
         s.src = _cdn;
         s.onload = function() {
           var ms = window.modernScreenshot;
-          if (!ms || !ms.domToCanvas) { parent.postMessage({ type: _msgType, screenshots: [], _iframeId: _mid }, "*"); return; }
-
-          // Helper: send results to parent (early/no-mask path)
-          function _send(fullUri, maskUri) {
-            var updatedData = window.__milgData || null;
-            parent.postMessage({
-              type: _msgType, _iframeId: _mid,
-              screenshots: fullUri ? [fullUri] : [],
-              screenshotFull: fullUri || null,
-              textMask: maskUri || null,
-              screenshotMeta: {
-                scale: _sc, viewportHeight: vh, sectionCount: 1,
-                canvasWidth: 0, canvasHeight: 0,
-                docHeightAtCapture: fullH,
-                calibrationOffsetY: 0, calibrationSamples: []
-              },
-              updatedData: updatedData
-            }, "*");
-          }
+          if (!ms || !ms.domToCanvas) { _sendFn({ type: _msgType, screenshots: [], _iframeId: _mid }, true); return; }
 
           // Preload images via proxy → data URI, then capture
           _preloadFn(_prog, _proxyUrl, function() {
@@ -361,15 +376,7 @@ window.MilgCapture = (function() {
                     var _rcidCount = _udPairs.filter(function(p) { return !!p._regionContainerId; }).length;
                     var _clipCount = _udPairs.filter(function(p) { return !!p._isClipped; }).length;
                     console.log("[D] iframe→parent pairs=" + _udPairs.length + " rcid=" + _rcidCount + " clipped=" + _clipCount + " masks=" + _maskCount);
-                    try { parent.postMessage(msg, "*"); } catch (e) {
-                      console.warn("[milg-warn] postMessage failed (" + e.message + "), retrying without updatedData");
-                      msg.updatedData = null;
-                      try { parent.postMessage(msg, "*"); } catch (e2) {
-                        console.warn("[milg-warn] Retry failed, dropping screenshots");
-                        msg.screenshots = []; msg.screenshotFull = null;
-                        try { parent.postMessage(msg, "*"); } catch (e3) {}
-                      }
-                    }
+                    _sendFn(msg, true);
                   }
 
                   // Wait for fonts, then inline them as @font-face data URIs before mask capture.
@@ -564,12 +571,12 @@ window.MilgCapture = (function() {
                     _sendFinal = function(m) { if (_maskDone) return; _maskDone = true; clearTimeout(_maskTimer); console.log("[iframe-ss] Sending results (maskResults: " + Object.keys(_maskResults).length + " pairs)"); _origSendFinal(m); };
                     _nextLayer();
                   }); // end document.fonts.ready.then
-                }).catch(function(e) { console.warn("[iframe-ss] expanded capture failed:", e); parent.postMessage({ type: _msgType, screenshots: [], _iframeId: _mid }, "*"); });
+                }).catch(function(e) { console.warn("[iframe-ss] expanded capture failed:", e); _sendFn({ type: _msgType, screenshots: [], _iframeId: _mid }, true); });
               }); // close _buildRegionScreenshots callback
-            }).catch(function(e) { console.warn("[iframe-ss] clean capture failed:", e); parent.postMessage({ type: _msgType, screenshots: [], _iframeId: _mid }, "*"); });
+            }).catch(function(e) { console.warn("[iframe-ss] clean capture failed:", e); _sendFn({ type: _msgType, screenshots: [], _iframeId: _mid }, true); });
           }); // close _preloadFn callback
         };
-        s.onerror = function() { parent.postMessage({ type: _msgType, screenshots: [], _iframeId: _mid }, "*"); };
+        s.onerror = function() { _sendFn({ type: _msgType, screenshots: [], _iframeId: _mid }, true); };
         document.head.appendChild(s);
       });
     };

@@ -51,6 +51,10 @@
   // Defines window.MilgRegion (shared with URL/iframe mode). Must come AFTER
   // MilgExtract is defined so MilgRegion can self-inject it into mini-pages.
   // @milg-insert: region
+  // --- Full-page capture + multi-layer mask core (inlined by analyzer assembler) ---
+  // Defines window.MilgCapture (shared with URL/iframe mode). Must come BEFORE
+  // capture runs so the snippet can call MilgCapture.getCaptureFn().
+  // @milg-insert: capture
   _runExtraction();
 
   function _runExtraction() {
@@ -97,16 +101,8 @@
       return;
     }
 
-    var totalH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-    var vh = window.innerHeight || 900;
-    var captureH = Math.min(totalH, 32000);
-
     var _ssStart = Date.now();
     function _t() { return '[' + ((Date.now() - _ssStart) / 1000).toFixed(1) + 's] '; }
-    // Cap at 10 viewports for the full capture (avoid huge canvases on very long pages)
-    captureH = Math.min(captureH, vh * 10);
-    var numSections = Math.ceil(captureH / vh);
-    console.log('[ss] ' + _t() + 'totalH=' + totalH + ' vh=' + vh + ' captureH=' + captureH + ' sections=' + numSections);
 
     // Show overlay so users aren't confused during capture
     var _overlay = document.createElement('div');
@@ -117,258 +113,144 @@
       '<div style="color:rgba(255,255,255,0.6);margin-top:6px;font-size:12px">Scrolling page to load all content, then capturing</div>' +
       '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style>';
     document.body.appendChild(_overlay);
-    var _ssFilter = function(el) { return !el.getAttribute || !el.getAttribute('data-milg-overlay'); };
     var _origScrollY = window.scrollY;
 
-    // Phase 1: Pre-scroll the entire page to trigger ALL lazy content, IntersectionObservers, etc.
-    console.log('[ss] ' + _t() + 'Phase 1: Pre-scrolling page to trigger lazy content...');
-    var _preScrollPositions = [];
-    for (var _ps = 0; _ps < captureH; _ps += vh) _preScrollPositions.push(_ps);
-    var _psIdx = 0;
-    function _preScrollNext() {
-      if (_psIdx >= _preScrollPositions.length) {
-        // All positions scrolled — wait for content to finish loading
-        console.log('[ss] ' + _t() + 'Phase 1 complete. Waiting for lazy content to finish loading...');
-        var statusEl = document.getElementById('milg-ss-status');
-        if (statusEl) statusEl.textContent = 'Waiting for images to load...';
-        setTimeout(function() { _startCapture(); }, 500);
-        return;
-      }
-      var scrollY = _preScrollPositions[_psIdx];
-      window.scrollTo(0, scrollY);
-      try { window.dispatchEvent(new Event('scroll')); } catch(e) {}
-      var statusEl = document.getElementById('milg-ss-status');
-      if (statusEl) statusEl.textContent = 'Loading content... (section ' + (_psIdx + 1) + '/' + _preScrollPositions.length + ')';
-      _psIdx++;
-      setTimeout(_preScrollNext, 200); // 200ms per scroll position
+    // --- Unified capture via window.MilgCapture (shared with URL/iframe mode) ---
+    // The full-page screenshot + multi-layer text mask + carousel-expanded screenshot
+    // + region screenshots all run inside the SAME serializable core that iframe mode
+    // uses. We supply:
+    //   - a live-page PRE hook (pre-scroll -> reset scroll containers -> settle), which
+    //     replaces the snippet's old Phase 1 + _startCapture prep,
+    //   - a no-op preloadFn (live pages have no CORS proxy; images are already loaded),
+    //   - expand:true to get the carousel-expanded screenshot upgrade,
+    //   - regionFnSrc=MilgRegion so regions run THROUGH the core (no separate call),
+    //   - a sendFn that merges the unified result into `data` and calls outputData.
+    if (!window.MilgCapture || !window.MilgCapture.getCaptureFn) {
+      console.warn('[ss] MilgCapture not available - skipping screenshots');
+      if (_overlay.parentNode) _overlay.parentNode.removeChild(_overlay);
+      data.screenshots = [];
+      outputData(data);
+      return;
     }
-    _preScrollNext();
 
-    // Phase 2: Capture the full page as one big canvas, then split into sections
-    function _startCapture() {
-      // Force instant scroll to 0 on ALL scroll containers
-      // Some pages use a div with overflow:auto as the main scroll container,
-      // so window.scrollTo(0,0) alone doesn't reset scroll position.
-      var origScrollBehavior = document.documentElement.style.scrollBehavior;
-      document.documentElement.style.scrollBehavior = 'auto';
-      document.body.style.scrollBehavior = 'auto';
-      window.scrollTo(0, 0);
-      document.documentElement.scrollTop = 0;
-      document.body.scrollTop = 0;
-      // Reset any overflow scroll containers
-      document.querySelectorAll('*').forEach(function(el) {
-        if (el.scrollTop > 0) {
-          var s = getComputedStyle(el);
-          if (s.overflow === 'auto' || s.overflow === 'scroll' || s.overflowY === 'auto' || s.overflowY === 'scroll') {
-            el.style.scrollBehavior = 'auto';
-            el.scrollTop = 0;
+    // Progress reporter -> overlay status text + console.
+    function _prog(label) {
+      var se = document.getElementById('milg-ss-status');
+      if (se) se.textContent = label;
+      console.log('[ss] ' + _t() + label);
+    }
+
+    // Live-page PRE hook: pre-scroll to trigger lazy content + IntersectionObservers,
+    // then reset scroll on window + overflow scroll containers, re-read bboxes, settle.
+    // Self-contained (serialized via .toString()) -- only DOM/window globals + args.
+    // Hides the snippet's capture overlay just before done() so it isn't captured.
+    function _snippetPreHook(_p, done) {
+      var vh = window.innerHeight || 900;
+      var totalH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+      var captureH = Math.min(totalH, vh * 10);
+      _p('Pre-scrolling page to load content...');
+      var positions = []; for (var i = 0; i < captureH; i += vh) positions.push(i);
+      var pi = 0;
+      function scrollNext() {
+        if (pi >= positions.length) {
+          _p('Waiting for images to load...');
+          setTimeout(reset, 500);
+          return;
+        }
+        window.scrollTo(0, positions[pi]);
+        try { window.dispatchEvent(new Event('scroll')); } catch (e) {}
+        _p('Loading content... (section ' + (pi + 1) + '/' + positions.length + ')');
+        pi++; setTimeout(scrollNext, 200);
+      }
+      scrollNext();
+      function reset() {
+        document.documentElement.style.scrollBehavior = 'auto';
+        document.body.style.scrollBehavior = 'auto';
+        window.scrollTo(0, 0);
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
+        document.querySelectorAll('*').forEach(function(el) {
+          if (el.scrollTop > 0) {
+            var s = getComputedStyle(el);
+            if (s.overflow === 'auto' || s.overflow === 'scroll' || s.overflowY === 'auto' || s.overflowY === 'scroll') {
+              el.style.scrollBehavior = 'auto'; el.scrollTop = 0;
+            }
+          }
+        });
+        _p('Waiting for animations to settle...');
+        setTimeout(function() {
+          if (typeof window.__milgReReadBboxes === 'function') window.__milgReReadBboxes();
+          // Hide the snippet capture overlay so it isn't baked into screenshots.
+          var ov = document.querySelector('[data-milg-overlay]');
+          if (ov) ov.style.display = 'none';
+          done();
+        }, 1500);
+      }
+    }
+
+    // No-op preload: live pages render their own images; there's no CORS proxy here.
+    function _noopPreload(_p, _proxyUrl, done) { done(); }
+
+    // Output sink: merge the unified capture payload into `data`, restore the page,
+    // and finalize. The core calls this with (payload, isFinal). The terminal full
+    // result (isFinal) carries screenshots/clean/mask/maskResults/regionScreenshots
+    // + updatedData (re-read bboxes + per-pair mask fields). Non-final/failure
+    // payloads only carry `screenshots` (empty) -- we still finalize.
+    // Passed as a LIVE function (opts.sendFn): in snippet mode the capture core runs
+    // in this same realm (getCaptureFn() is called directly, not serialized), so this
+    // can legitimately close over `data`, `_overlay`, `_origScrollY`, `outputData`.
+    function _snippetSend(payload, isFinal) {
+      if (window.__milgSnippetSent) return;
+      window.__milgSnippetSent = true;
+      try {
+        data.screenshots = payload.screenshots || [];
+        data.screenshotFull = payload.screenshotFull || null;
+        data.screenshotClean = payload.screenshotClean || null;
+        data.screenshotCleanMeta = payload.screenshotCleanMeta || null;
+        data.textMask = payload.textMask || null;
+        data.screenshotMeta = payload.screenshotMeta || null;
+        data.regionScreenshots = payload.regionScreenshots || [];
+        // Merge re-read bboxes + per-pair mask fields back onto data (the core
+        // builds a lean updatedData with masks attached to contrastPairs).
+        var ud = payload.updatedData;
+        if (ud) {
+          if (ud.colors && ud.colors.contrastPairs && data.colors) data.colors.contrastPairs = ud.colors.contrastPairs;
+          if (ud.typography && data.typography) {
+            if (ud.typography.fontSizes) data.typography.fontSizes = ud.typography.fontSizes;
+            if (ud.typography.headings) data.typography.headings = ud.typography.headings;
+            if (ud.typography.maxLineLength) data.typography.maxLineLength = ud.typography.maxLineLength;
+          }
+          if (ud.interaction && ud.interaction.touchTargets && data.interaction) data.interaction.touchTargets = ud.interaction.touchTargets;
+          if (ud.layout && data.layout) {
+            if (ud.layout.offscreenElements) data.layout.offscreenElements = ud.layout.offscreenElements;
+            if (ud.layout.hiddenPanelIssues) data.layout.hiddenPanelIssues = ud.layout.hiddenPanelIssues;
+            if (ud.layout.alignmentElements) data.layout.alignmentElements = ud.layout.alignmentElements;
+            if (ud.layout.borderRadii) data.layout.borderRadii = ud.layout.borderRadii;
           }
         }
-      });
-      var actualScroll = Math.max(window.scrollY, document.documentElement.scrollTop, document.body.scrollTop);
-
-      var statusEl = document.getElementById('milg-ss-status');
-      if (statusEl) statusEl.textContent = 'Waiting for animations to settle...';
-      console.log('[ss] ' + _t() + 'Waiting 1.5s for animations to settle...');
-
-      setTimeout(function() {
-      // Re-read all bboxes using the extraction engine's exported function
-      // This compensates for CSS transforms and propagates to fontSizes entries
-      if (typeof window.__milgReReadBboxes === 'function') {
-        var bboxResult = window.__milgReReadBboxes();
-        console.log('[ss] ' + _t() + 'Updated bboxes after animations settled: ' + bboxResult);
-      }
-
-      console.log('[ss] ' + _t() + 'Phase 2: Capturing full page (' + captureH + 'px), scrollY=' + actualScroll + '...');
-      var statusEl = document.getElementById('milg-ss-status');
-      if (statusEl) statusEl.textContent = 'Rendering page to canvas...';
-
-      ms.domToCanvas(document.documentElement, {
-        scale: 1.5,
-        filter: _ssFilter,
-        timeout: 45000
-      }).then(function(fullCanvas) {
-        console.log('[ss] ' + _t() + 'Full canvas captured: ' + fullCanvas.width + 'x' + fullCanvas.height);
-
-        var secScale = 1.5;
-
-        // Log final scroll state for diagnostics
-        console.log('[ss] Scroll state at capture: window=' + window.scrollY + ', html=' + document.documentElement.scrollTop + ', body=' + document.body.scrollTop);
-
-        var calibOffset = 0;
-
-        // Store full-page canvas as single WebP — used by both report and viewer
-        var fullPageDataUri;
-        try {
-          fullPageDataUri = fullCanvas.toDataURL('image/webp', 0.8);
-          console.log('[ss] ' + _t() + 'Full-page WebP: ' + Math.round(fullPageDataUri.length / 1024) + 'KB');
-        } catch(e) {
-          console.warn('[ss] Full-page WebP failed:', e.message);
-          fullPageDataUri = '';
-        }
-
-        window.scrollTo(0, _origScrollY);
-        if (_overlay.parentNode) _overlay.parentNode.removeChild(_overlay);
-        data.screenshots = fullPageDataUri ? [fullPageDataUri] : [];
-        data.screenshotFull = fullPageDataUri || null;
-        // Also store as clean screenshot (snippet captures the page as-is)
-        data.screenshotClean = fullPageDataUri || null;
-        data.screenshotCleanMeta = fullPageDataUri ? { canvasWidth: fullCanvas.width, canvasHeight: fullCanvas.height } : null;
-
-        // --- Region screenshots for hidden overflow content ---
-        // Uses the SHARED region-capture module (window.MilgRegion, inlined above
-        // via @milg-insert: region) — the SAME path URL/iframe mode uses. This
-        // emits the canonical per-region shape (screenshotMeta.cropOffsetX/Y,
-        // extractedData, maskResults) so snippet-mode pixel-verify + region
-        // scoring work. MilgRegion self-injects MilgExtract into each mini-page.
-        (function captureRegions(regionCb) {
-          if (!window.MilgRegion || !window.__milgBboxRefs || !data.colors || !data.colors.contrastPairs) { regionCb([]); return; }
-          var _cp2 = data.colors.contrastPairs;
-          // The marking pre-pass (pair._isClipped, container._mrc, _regionContainerId/_rcid)
-          // now lives inside MilgRegion.getRegionFn() and runs at its start — shared with iframe mode.
-          var _prog = function(msg) {
-            var _se = document.getElementById('milg-ss-status');
-            if (_se) _se.textContent = msg;
-            console.log('[ss] ' + _t() + msg);
-          };
-          var _buildRegionScreenshots = window.MilgRegion.getRegionFn()(1.5, 0.8, _prog, _cp2);
-          _buildRegionScreenshots(regionCb);
-        })(function(regionResults) {
-          data.regionScreenshots = regionResults;
-
-        (function finalize() {
-            var captureDocH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-            document.documentElement.style.scrollBehavior = origScrollBehavior;
-            // (transitions restored naturally — no override injected)
-            data.screenshotMeta = {
-              scale: secScale,
-              viewportHeight: vh,
-              sectionCount: data.screenshots.length,
-              canvasWidth: fullCanvas.width,
-              canvasHeight: fullCanvas.height,
-              docHeightAtCapture: captureDocH,
-              docHeightAtExtraction: data.meta.docHeight || captureDocH,
-              captureScrollY: actualScroll,
-              calibrationOffsetY: calibOffset,
-              calibrationSamples: []
-            };
-            // --- Text mask capture (same technique as iframe buildScreenshotScript) ---
-            // Kill transitions, set all text to black + backgrounds to white, capture mask.
-            // This gives pixel verify the same accuracy as URL/iframe mode.
-            console.log('[ss] ' + _t() + 'Capturing text mask...');
-            var statusEl2 = document.getElementById('milg-ss-status');
-            if (statusEl2) statusEl2.textContent = 'Capturing text mask...';
-
-            // Phase A: Kill ALL transitions
-            document.querySelectorAll('*').forEach(function(el) {
-              el.style.setProperty('transition-duration', '0s', 'important');
-              el.style.setProperty('transition', 'none', 'important');
-            });
-            void document.body.offsetHeight;
-
-            // Phase B: Neutralize absolute/fixed overlays (same as iframe)
-            document.querySelectorAll('*').forEach(function(el) {
-              var cs = getComputedStyle(el);
-              if (cs.position === 'absolute' || cs.position === 'fixed') {
-                if (!el.textContent.trim()) {
-                  el.style.setProperty('display', 'none', 'important');
-                } else if (cs.pointerEvents === 'none') {
-                  el.style.setProperty('background', 'transparent', 'important');
-                  el.style.setProperty('background-image', 'none', 'important');
-                }
-              }
-            });
-            void document.body.offsetHeight;
-
-            // Phase C: Set all backgrounds white, all text black (layer 1 = all text)
-            var _savedStyles = [];
-            document.querySelectorAll('*').forEach(function(el) {
-              var saved = el.style.cssText;
-              _savedStyles.push({ el: el, css: saved });
-              el.style.setProperty('background', '#fff', 'important');
-              el.style.setProperty('background-image', 'none', 'important');
-              el.style.setProperty('color', '#000', 'important');
-              el.style.setProperty('text-shadow', 'none', 'important');
-              el.style.setProperty('box-shadow', 'none', 'important');
-              el.style.setProperty('border-color', 'transparent', 'important');
-            });
-            document.body.style.setProperty('background', '#fff', 'important');
-            document.documentElement.style.setProperty('background', '#fff', 'important');
-            void document.body.offsetHeight;
-
-            ms.domToCanvas(document.documentElement, {
-              scale: secScale,
-              filter: _ssFilter,
-              timeout: 30000
-            }).then(function(maskCanvas) {
-              console.log('[ss] ' + _t() + 'Text mask captured: ' + maskCanvas.width + 'x' + maskCanvas.height);
-
-              // Restore all styles
-              _savedStyles.forEach(function(s) { s.el.style.cssText = s.css; });
-              void document.body.offsetHeight;
-
-              // Store mask as data URI
-              var maskUri;
-              try { maskUri = maskCanvas.toDataURL('image/webp', 0.8); } catch(e) { maskUri = null; }
-              data.textMask = maskUri;
-
-              // Build per-pair mask bitmaps from the mask canvas
-              var maskCtx = maskCanvas.getContext('2d', { willReadFrequently: true });
-              var pairs = (data.colors && data.colors.contrastPairs) || [];
-              var maskResults = {};
-              pairs.forEach(function(pair, pi) {
-                if (!pair.bbox) return;
-                var bx = Math.round(pair.bbox.left * secScale);
-                var by = Math.round(pair.bbox.top * secScale);
-                var bw = Math.round(pair.bbox.width * secScale);
-                var bh = Math.round(pair.bbox.height * secScale);
-                if (bw < 2 || bh < 2 || bx + bw > maskCanvas.width || by + bh > maskCanvas.height) return;
-                var mData = maskCtx.getImageData(bx, by, bw, bh).data;
-                var bmp = new Uint8Array(bw * bh);
-                var darkCount = 0;
-                for (var j = 0; j < mData.length; j += 4) {
-                  var bright = (mData[j] + mData[j+1] + mData[j+2]) / 3;
-                  if (bright < 240) { bmp[j/4] = 1; darkCount++; }
-                }
-                if (darkCount > 0) {
-                  // Bit-pack bitmap: 8 pixels per byte, then base64 encode (~8x smaller than JSON array)
-                  var byteLen = Math.ceil(bmp.length / 8);
-                  var packed = new Uint8Array(byteLen);
-                  for (var bi = 0; bi < bmp.length; bi++) {
-                    if (bmp[bi]) packed[bi >> 3] |= (1 << (bi & 7));
-                  }
-                  var binStr = '';
-                  for (var bi2 = 0; bi2 < packed.length; bi2++) binStr += String.fromCharCode(packed[bi2]);
-                  pair._maskBmp = btoa(binStr);
-                  pair._maskPacked = true;
-                  pair._maskW = bw;
-                  pair._maskH = bh;
-                  pair._maskLayer = 1;
-                  pair._maskDark = darkCount;
-                }
-              });
-
-              console.log('[ss] ' + _t() + 'Mask bitmaps built for ' + Object.keys(maskResults).length + ' pairs');
-              console.log('%c\u2713 Screenshot + mask captured (' + _t().trim() + ')', 'color: #16a34a; font-weight: bold;');
-              outputData(data);
-            }).catch(function(err) {
-              console.warn('[ss] Text mask capture failed:', err);
-              // Continue without mask — pixel verify will use position heuristic
-              console.log('%c\u2713 Screenshot captured (no mask) (' + _t().trim() + ')', 'color: #16a34a; font-weight: bold;');
-              outputData(data);
-            });
-        })();
-        }); // close captureRegions callback
-
-      }).catch(function(err) {
-        console.log('[ss] ' + _t() + '\u2717 Full page capture failed: ' + (err && err.message || err));
-        window.scrollTo(0, _origScrollY);
-        if (_overlay.parentNode) _overlay.parentNode.removeChild(_overlay);
-        data.screenshots = [];
-        outputData(data);
-      });
-    }, 1500); // end setTimeout — wait for animations
+      } catch (e) { console.warn('[ss] Failed to merge capture payload:', e && e.message || e); }
+      // Restore scroll + remove overlay (mask/expand mutated the DOM -- the
+      // outputData copy/download handlers reload the page to fully restore styles).
+      try { window.scrollTo(0, _origScrollY); } catch (e) {}
+      if (_overlay.parentNode) _overlay.parentNode.removeChild(_overlay);
+      var _pairs = (data.colors && data.colors.contrastPairs) || [];
+      var _masks = _pairs.filter(function(p) { return !!p._maskBmp; }).length;
+      console.log('%c✓ Screenshot + mask captured (' + _t().trim() + ', ' + _masks + ' masks, ' + (data.regionScreenshots || []).length + ' regions)', 'color: #16a34a; font-weight: bold;');
+      outputData(data);
     }
+
+    var _captureOpts = {
+      msgType: 'milg-screenshots-result',
+      cdnUrl: 'https://cdn.jsdelivr.net/npm/modern-screenshot@4.6.8/dist/index.js',
+      proxyUrl: '',
+      expand: true,
+      preHookSrc: _snippetPreHook.toString(),
+      preloadSrc: _noopPreload.toString(),
+      regionFnSrc: window.MilgRegion.getRegionFn().toString(),
+      sendFn: _snippetSend
+    };
+    // Scale 1.5 / quality 0.8 -- same as the snippet has always used (and iframe mode).
+    window.MilgCapture.getCaptureFn()(1.5, 0.8, _prog, _captureOpts)(function() {});
   }).catch(function() {
     data.screenshots = [];
     outputData(data);
