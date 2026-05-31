@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.9 loaded');
+console.log('[milg] analyzer.js v3.11.10 loaded');
 
 (function() {
   "use strict";
@@ -215,7 +215,7 @@ console.log('[milg] analyzer.js v3.11.9 loaded');
   // wrapped in an IIFE. To add a new part (e.g. region/capture) later, add one
   // entry to the relevant `parts` array AND a matching marker line in the shell.
   var SNIPPET_MANIFEST = {
-    screenshots: { shell: 'analyzer-snippet-screenshots.js', parts: [ { marker: 'extract', file: 'analyzer-extract.js' } ] },
+    screenshots: { shell: 'analyzer-snippet-screenshots.js', parts: [ { marker: 'extract', file: 'analyzer-extract.js' }, { marker: 'region', file: 'analyzer-region.js' } ] },
     plain:       { shell: 'analyzer-snippet.js',             parts: [ { marker: 'extract', file: 'analyzer-extract.js' } ] }
   };
   var _snippetCache = {};

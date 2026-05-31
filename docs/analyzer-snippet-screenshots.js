@@ -47,6 +47,10 @@
 
   // --- Extraction engine (inlined by analyzer assembler) ---
   // @milg-insert: extract
+  // --- Region screenshot module (inlined by analyzer assembler) ---
+  // Defines window.MilgRegion (shared with URL/iframe mode). Must come AFTER
+  // MilgExtract is defined so MilgRegion can self-inject it into mini-pages.
+  // @milg-insert: region
   _runExtraction();
 
   function _runExtraction() {
@@ -212,111 +216,63 @@
         data.screenshotCleanMeta = fullPageDataUri ? { canvasWidth: fullCanvas.width, canvasHeight: fullCanvas.height } : null;
 
         // --- Region screenshots for hidden overflow content ---
+        // Uses the SHARED region-capture module (window.MilgRegion, inlined above
+        // via @milg-insert: region) — the SAME path URL/iframe mode uses. This
+        // emits the canonical per-region shape (screenshotMeta.cropOffsetX/Y,
+        // extractedData, maskResults) so snippet-mode pixel-verify + region
+        // scoring work. MilgRegion self-injects MilgExtract into each mini-page.
         (function captureRegions(regionCb) {
-          if (!window.__milgBboxRefs || !data.colors || !data.colors.contrastPairs) { regionCb([]); return; }
-          var _cp = data.colors.contrastPairs;
-          var _rgnCounter = 0, _clipContainers = {}, _clipList = [];
-          // Mark clipped pairs and detect outermost clipping containers
+          if (!window.MilgRegion || !window.__milgBboxRefs || !data.colors || !data.colors.contrastPairs) { regionCb([]); return; }
+          var _cp2 = data.colors.contrastPairs;
+          // Pre-pass: mark _isClipped pairs (mirrors iframe mode — the shared region
+          // fn consumes _isClipped but does not set it). Pass 1: detect clipped pairs.
           window.__milgBboxRefs.forEach(function(ref) {
             if (!ref.el || !ref.obj || ref.key !== 'bbox') return;
             var el = ref.el, pair = ref.obj;
             var er = el.getBoundingClientRect();
-            var clipAnc = null, anc = el.parentElement;
+            var anc = el.parentElement;
             while (anc && anc !== document.documentElement) {
               var as = getComputedStyle(anc);
               var aov = as.overflow || '', aovx = as.overflowX || '', aovy = as.overflowY || '';
               if (aov === 'hidden' || aov === 'clip' || aovx === 'hidden' || aovx === 'clip' || aovy === 'hidden' || aovy === 'clip') {
                 var ar = anc.getBoundingClientRect();
-                if (ar.width >= 100 && ar.height >= 30) {
-                  if (er.right < ar.left + 1 || er.left > ar.right - 1 || er.bottom < ar.top + 1 || er.top > ar.bottom - 1) {
-                    pair._isClipped = true;
-                    clipAnc = anc;
-                  }
-                }
+                if (er.right < ar.left + 1 || er.left > ar.right - 1 || er.bottom < ar.top + 1 || er.top > ar.bottom - 1) { pair._isClipped = true; break; }
               }
               anc = anc.parentElement;
             }
-            if (!clipAnc) return;
-            var cid = clipAnc._milgRegionId;
-            if (!cid) { cid = 'rgn-' + (++_rgnCounter); clipAnc._milgRegionId = cid; _clipList.push({ el: clipAnc, id: cid, pairIndices: [] }); _clipContainers[cid] = _clipList[_clipList.length - 1]; }
-            var pi = _cp.indexOf(pair);
-            if (pi >= 0 && _clipContainers[cid].pairIndices.indexOf(pi) < 0) _clipContainers[cid].pairIndices.push(pi);
           });
-          _clipList.sort(function(a, b) { var ar = a.el.getBoundingClientRect(), br = b.el.getBoundingClientRect(); return (br.width * br.height) - (ar.width * ar.height); });
-          _clipList = _clipList.slice(0, 5);
-          if (_clipList.length === 0) { regionCb([]); return; }
-          console.log('[ss] ' + _t() + 'Found ' + _clipList.length + ' clipping regions, capturing...');
-          var _rgnResults = [], _rgnDone = 0, _rgnTotal = _clipList.length;
-          var _rgnOverall = setTimeout(function() { console.warn('[ss] Region timeout (30s)'); regionCb(_rgnResults); }, 30000);
-          // Collect styles
-          var allStyles = ''; document.querySelectorAll('style').forEach(function(s) { allStyles += s.outerHTML; });
-          var allLinks = ''; document.querySelectorAll('link[rel="stylesheet"]').forEach(function(l) { allLinks += l.outerHTML; });
-          var baseHref = location.href;
-          _clipList.forEach(function(rgn, rIdx) {
-            var container = rgn.el, cr = container.getBoundingClientRect();
-            var clone = container.cloneNode(true);
-            clone.style.cssText += ';overflow:visible !important;max-height:none !important;height:auto !important;clip-path:none !important;width:' + Math.round(cr.width) + 'px !important;';
-            var _forceRevealCss =
-              '*,*::before,*::after{transition:none !important;animation:none !important;}' +
-              'body *{visibility:visible !important;opacity:1 !important;transform:none !important;overflow:visible !important;clip-path:none !important;max-height:none !important;}' +
-              '[aria-hidden="true"],[hidden],.hidden,.d-none,.hide,' +
-              '.carousel-item,.swiper-slide,.slick-slide,' +
-              '[class*="slide"],[class*="panel"],[class*="tab-pane"]{' +
-              'display:block !important;visibility:visible !important;opacity:1 !important;position:relative !important;transform:none !important;left:auto !important;right:auto !important;}';
-            var _forceRevealScript =
-              '<script>document.addEventListener("DOMContentLoaded",function(){' +
-              'document.querySelectorAll("*").forEach(function(el){var cs=getComputedStyle(el);' +
-              'if(cs.display==="none")el.style.setProperty("display","block","important");' +
-              'if(cs.visibility==="hidden")el.style.setProperty("visibility","visible","important");' +
-              'if(parseFloat(cs.opacity)<0.1)el.style.setProperty("opacity","1","important");' +
-              'if(cs.position==="absolute"||cs.position==="fixed")el.style.setProperty("position","relative","important");' +
-              '});' +
-              '});</' + 'script>';
-            var miniHtml = '<!DOCTYPE html><html><head><meta charset=UTF-8><base href="' + baseHref.replace(/"/g, '&quot;') + '">' + allLinks + allStyles +
-              '<style>' + _forceRevealCss + '</style>' + _forceRevealScript +
-              '</head><body style="margin:0;padding:0;overflow:visible">' + clone.outerHTML + '</body></html>';
-            var _iframeW = Math.max(Math.round(cr.width), 320);
-            var mf = document.createElement('iframe');
-            mf.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + _iframeW + 'px;height:3000px;border:none;visibility:hidden;';
-            document.body.appendChild(mf);
-            var rgnTimer = setTimeout(function() { rgnFinish(rIdx, mf, null); }, 15000);
-            mf.srcdoc = miniHtml;
-            mf.addEventListener('load', function() {
-              setTimeout(function() {
-                try {
-                  var mDoc = mf.contentDocument; if (!mDoc) { rgnFinish(rIdx, mf, null); return; }
-                  try {
-                    mDoc.querySelectorAll('*').forEach(function(el) {
-                      var cs = mDoc.defaultView.getComputedStyle(el);
-                      if (cs.display === 'none') el.style.setProperty('display', 'block', 'important');
-                      if (cs.visibility === 'hidden') el.style.setProperty('visibility', 'visible', 'important');
-                      if (parseFloat(cs.opacity) < 0.1) el.style.setProperty('opacity', '1', 'important');
-                    });
-                  } catch(_e) {}
-                  void mDoc.body.offsetHeight;
-                  var cW = Math.max(mDoc.body.scrollWidth, mDoc.documentElement.scrollWidth);
-                  var cH = Math.max(mDoc.body.scrollHeight, mDoc.documentElement.scrollHeight);
-                  mf.style.width = Math.max(cW, _iframeW) + 'px'; mf.style.height = cH + 'px';
-                  void mDoc.body.offsetHeight;
-                  ms.domToCanvas(mDoc.documentElement, { scale: 1.5, timeout: 12000 }).then(function(rc) {
-                    var rUri; try { rUri = rc.toDataURL('image/webp', 0.8); } catch(e) { rUri = ''; }
-                    var localBboxes = {};
-                    rgn.pairIndices.forEach(function(pi) {
-                      var pair = _cp[pi]; if (!pair || !pair.bbox) return;
-                      localBboxes[pi] = { left: pair.bbox.left - Math.round(cr.left), top: pair.bbox.top - Math.round(cr.top), width: pair.bbox.width, height: pair.bbox.height };
-                    });
-                    clearTimeout(rgnTimer);
-                    rgnFinish(rIdx, mf, { screenshot: rUri, screenshotMeta: { scale: 1.5, canvasWidth: rc.width, canvasHeight: rc.height }, pairIndices: rgn.pairIndices, localBboxes: localBboxes, containerRect: { left: Math.round(cr.left), top: Math.round(cr.top), width: Math.round(cr.width), height: Math.round(cr.height) } });
-                  }).catch(function(e) { clearTimeout(rgnTimer); rgnFinish(rIdx, mf, null); });
-                } catch(e) { clearTimeout(rgnTimer); rgnFinish(rIdx, mf, null); }
-              }, 600);
-            });
+          // Pass 2: tag clipping containers; Pass 3: tag descendant pairs with _regionContainerId
+          // (same as iframe mode — used by the viewer to exclude region content from the main overlay).
+          var _rcc = 0;
+          window.__milgBboxRefs.forEach(function(ref) {
+            if (!ref.el || !ref.obj || ref.key !== 'bbox' || !ref.obj._isClipped) return;
+            var anc = ref.el.parentElement;
+            while (anc && anc !== document.documentElement) {
+              var as = getComputedStyle(anc);
+              var aov = as.overflow || '', aovx = as.overflowX || '', aovy = as.overflowY || '';
+              if (aov === 'hidden' || aov === 'clip' || aovx === 'hidden' || aovx === 'clip' || aovy === 'hidden' || aovy === 'clip') {
+                var ar = anc.getBoundingClientRect();
+                if (ar.width >= 100 && ar.height >= 30 && !anc._mrc) { anc._mrc = 'rgn-' + (++_rcc); }
+                break;
+              }
+              anc = anc.parentElement;
+            }
           });
-          function rgnFinish(idx, mf, result) {
-            if (result) _rgnResults.push(result);
-            try { if (mf && mf.parentNode) mf.parentNode.removeChild(mf); } catch(e) {}
-            _rgnDone++; if (_rgnDone >= _rgnTotal) { clearTimeout(_rgnOverall); console.log('[ss] Regions done: ' + _rgnResults.length + '/' + _rgnTotal); regionCb(_rgnResults); }
-          }
+          window.__milgBboxRefs.forEach(function(ref) {
+            if (!ref.el || !ref.obj || ref.key !== 'bbox') return;
+            var anc = ref.el;
+            while (anc) {
+              if (anc._mrc) { ref.obj._regionContainerId = anc._mrc; if (ref.obj[ref.key]) ref.obj[ref.key]._rcid = anc._mrc; break; }
+              anc = anc.parentElement;
+            }
+          });
+          var _prog = function(msg) {
+            var _se = document.getElementById('milg-ss-status');
+            if (_se) _se.textContent = msg;
+            console.log('[ss] ' + _t() + msg);
+          };
+          var _buildRegionScreenshots = window.MilgRegion.getRegionFn()(1.5, 0.8, _prog, _cp2);
+          _buildRegionScreenshots(regionCb);
         })(function(regionResults) {
           data.regionScreenshots = regionResults;
 
