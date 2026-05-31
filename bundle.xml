@@ -42228,170 +42228,11 @@ window.MilgIframe = (function() {
     setTimeout(function() { if (fi < toFetch.length) { console.log('[milg] Font prefetch timeout, continuing'); fi = toFetch.length; cb(); } }, 15000);
   }
 
-  // Region screenshot function — sourced from MilgRegion shared module.
-  // Serialized via .toString() and injected into the analysis iframe.
-  // The inline fallback below is kept for safety but should not be reached.
-  var _regionScreenshotFn = (typeof window.MilgRegion !== 'undefined') ? window.MilgRegion.getRegionFn() : _regionScreenshotFnFallback;
-  function _regionScreenshotFnFallback(_sc, _quality, _prog, _cp2) {
-    return function _buildRegionScreenshots(rgnCb) {
-      // Detect clipping containers
-      var _rgnCounter = 0, _clipContainerList = [], _clipContainers = {};
-      if (window.__milgBboxRefs) {
-        window.__milgBboxRefs.forEach(function(ref) {
-          if (!ref.el || !ref.obj || ref.key !== 'bbox' || !ref.obj._isClipped) return;
-          var clipAnc = null, anc = ref.el.parentElement;
-          while (anc && anc !== document.documentElement) {
-            var as = getComputedStyle(anc);
-            var aov = as.overflow || '', aovx = as.overflowX || '', aovy = as.overflowY || '';
-            if (aov === 'hidden' || aov === 'clip' || aovx === 'hidden' || aovx === 'clip' || aovy === 'hidden' || aovy === 'clip') {
-              var ar = anc.getBoundingClientRect();
-              if (ar.width >= 100 && ar.height >= 30) clipAnc = anc;
-            }
-            anc = anc.parentElement;
-          }
-          if (!clipAnc) return;
-          var cid = clipAnc._milgRegionId;
-          if (!cid) {
-            cid = 'rgn-' + (++_rgnCounter); clipAnc._milgRegionId = cid;
-            _clipContainerList.push({ el: clipAnc, id: cid, pairIndices: [] });
-            _clipContainers[cid] = _clipContainerList[_clipContainerList.length - 1];
-          }
-          var pi = _cp2.indexOf(ref.obj);
-          if (pi >= 0 && _clipContainers[cid].pairIndices.indexOf(pi) < 0)
-            _clipContainers[cid].pairIndices.push(pi);
-        });
-      }
-      _clipContainerList.sort(function(a, b) {
-        var ar = a.el.getBoundingClientRect(), br = b.el.getBoundingClientRect();
-        return (br.width * br.height) - (ar.width * ar.height);
-      });
-      _clipContainerList = _clipContainerList.slice(0, 5);
-      console.log('[iframe-ss] Found ' + _clipContainerList.length + ' clipping regions with hidden content');
-      if (_clipContainerList.length === 0) { rgnCb([]); return; }
-
-      var _rgnResults = [], _rgnDone = 0, _rgnTotal = _clipContainerList.length;
-      var _rgnOverall = setTimeout(function() {
-        console.warn('[iframe-ss] Region screenshots overall timeout (30s)');
-        rgnCb(_rgnResults);
-      }, 30000);
-
-      // Collect styles from the current document for the mini-pages
-      var allStyles = '';
-      document.querySelectorAll('style').forEach(function(s) { allStyles += s.outerHTML; });
-      var allLinks = '';
-      document.querySelectorAll('link[rel=stylesheet]').forEach(function(l) { allLinks += l.outerHTML; });
-      var baseHref = (document.querySelector('base') || {}).href || '';
-      _prog('Capturing ' + _rgnTotal + ' region screenshots...');
-
-      _clipContainerList.forEach(function(rgn, rIdx) {
-        var container = rgn.el, cr = container.getBoundingClientRect();
-        var clone = container.cloneNode(true);
-        // Inline style overrides on the clone (before it enters the mini-page)
-        clone.style.cssText += ';overflow:visible !important;max-height:none !important;height:auto !important;clip-path:none !important;width:' + Math.round(cr.width) + 'px !important;';
-
-        // Build mini-page HTML with aggressive CSS overrides.
-        // The original stylesheets are included, so CSS class rules like
-        // .carousel-item:not(.active){display:none} still apply. We need
-        // a high-specificity override AND a post-load JS pass to catch everything.
-        var forceRevealCss =
-          '*,*::before,*::after{transition:none !important;animation:none !important;}' +
-          // Force-reveal: override computed display:none from CSS classes
-          'body *{visibility:visible !important;opacity:1 !important;' +
-          'transform:none !important;overflow:visible !important;' +
-          'clip-path:none !important;max-height:none !important;}' +
-          // Common carousel patterns: force-show inactive slides
-          '[aria-hidden="true"],[hidden],.hidden,.d-none,.hide,' +
-          '.carousel-item,.swiper-slide,.slick-slide,' +
-          '[class*="slide"],[class*="panel"],[class*="tab-pane"]{' +
-          'display:block !important;visibility:visible !important;' +
-          'opacity:1 !important;position:relative !important;' +
-          'transform:none !important;left:auto !important;right:auto !important;}';
-
-        // Post-load script: catch any remaining computed display:none elements
-        var forceRevealScript =
-          '<script>document.addEventListener("DOMContentLoaded",function(){' +
-          'document.querySelectorAll("*").forEach(function(el){' +
-          'var cs=getComputedStyle(el);' +
-          'if(cs.display==="none")el.style.setProperty("display","block","important");' +
-          'if(cs.visibility==="hidden")el.style.setProperty("visibility","visible","important");' +
-          'if(parseFloat(cs.opacity)<0.1)el.style.setProperty("opacity","1","important");' +
-          'if(cs.position==="absolute"||cs.position==="fixed")el.style.setProperty("position","relative","important");' +
-          '});' +
-          '});</' + 'script>';
-
-        var miniHtml = '<!DOCTYPE html><html><head><meta charset=UTF-8>' +
-          (baseHref ? '<base href="' + baseHref.replace(/"/g, '&quot;') + '">' : '') +
-          allLinks + allStyles +
-          '<style>' + forceRevealCss + '</style>' +
-          forceRevealScript +
-          '</head><body style="margin:0;padding:0;overflow:visible">' + clone.outerHTML + '</body></html>';
-
-        // Use container width (not 4x) — content flows vertically via force-reveal
-        var iframeW = Math.max(Math.round(cr.width), 320);
-        var mf = document.createElement('iframe');
-        mf.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + iframeW + 'px;height:3000px;border:none;visibility:hidden;';
-        mf.setAttribute('sandbox', 'allow-same-origin allow-scripts');
-        document.body.appendChild(mf);
-
-        var rgnTimer = setTimeout(function() {
-          console.warn('[iframe-ss] Region ' + rIdx + ' timed out');
-          _rgnFinish(rIdx, mf, null);
-        }, 15000);
-
-        mf.srcdoc = miniHtml;
-        mf.addEventListener('load', function() {
-          setTimeout(function() {
-            try {
-              var mDoc = mf.contentDocument;
-              if (!mDoc) { _rgnFinish(rIdx, mf, null); return; }
-              // Second pass: force-reveal from parent context (in case script didn't run)
-              try {
-                mDoc.querySelectorAll('*').forEach(function(el) {
-                  var cs = mDoc.defaultView.getComputedStyle(el);
-                  if (cs.display === 'none') el.style.setProperty('display', 'block', 'important');
-                  if (cs.visibility === 'hidden') el.style.setProperty('visibility', 'visible', 'important');
-                  if (parseFloat(cs.opacity) < 0.1) el.style.setProperty('opacity', '1', 'important');
-                });
-              } catch(_e) {}
-              void mDoc.body.offsetHeight; // reflow
-              var cW = Math.max(mDoc.body.scrollWidth, mDoc.documentElement.scrollWidth);
-              var cH = Math.max(mDoc.body.scrollHeight, mDoc.documentElement.scrollHeight);
-              mf.style.width = Math.max(cW, iframeW) + 'px'; mf.style.height = cH + 'px';
-              void mDoc.body.offsetHeight;
-              var pms = window.modernScreenshot;
-              if (!pms || !pms.domToCanvas) { _rgnFinish(rIdx, mf, null); return; }
-              pms.domToCanvas(mDoc.documentElement, { scale: _sc, timeout: 12000 }).then(function(rc) {
-                var rUri; try { rUri = rc.toDataURL('image/webp', _quality); } catch(e) { rUri = ''; }
-                var localBboxes = {};
-                rgn.pairIndices.forEach(function(pi) {
-                  var pair = _cp2[pi]; if (!pair || !pair.bbox) return;
-                  localBboxes[pi] = { left: pair.bbox.left - Math.round(cr.left), top: pair.bbox.top - Math.round(cr.top), width: pair.bbox.width, height: pair.bbox.height };
-                });
-                clearTimeout(rgnTimer);
-                _rgnFinish(rIdx, mf, {
-                  screenshot: rUri,
-                  screenshotMeta: { scale: _sc, canvasWidth: rc.width, canvasHeight: rc.height },
-                  pairIndices: rgn.pairIndices, localBboxes: localBboxes,
-                  containerRect: { left: Math.round(cr.left), top: Math.round(cr.top), width: Math.round(cr.width), height: Math.round(cr.height) }
-                });
-              }).catch(function(e) { clearTimeout(rgnTimer); _rgnFinish(rIdx, mf, null); });
-            } catch(e) { clearTimeout(rgnTimer); _rgnFinish(rIdx, mf, null); }
-          }, 600);
-        });
-      });
-
-      function _rgnFinish(idx, mf, result) {
-        if (result) _rgnResults.push(result);
-        try { if (mf && mf.parentNode) mf.parentNode.removeChild(mf); } catch(e) {}
-        _rgnDone++;
-        if (_rgnDone >= _rgnTotal) {
-          clearTimeout(_rgnOverall);
-          console.log('[iframe-ss] Region screenshots done: ' + _rgnResults.length + '/' + _rgnTotal);
-          rgnCb(_rgnResults);
-        }
-      }
-    };
-  }
+  // Region screenshot function — sourced from MilgRegion shared module
+  // (analyzer-region.js loads before this script in analyzer.html, so
+  // window.MilgRegion is always defined). Serialized via .toString() and
+  // injected into the analysis iframe at the _buildRegionScreenshots site below.
+  var _regionScreenshotFn = window.MilgRegion.getRegionFn();
 
   // --- Screenshot capture script (injected into iframes after extraction) ---
   // Called after extraction via __milgDoScreenshots (once-guard prevents double run).
@@ -43217,7 +43058,7 @@ window.MilgIframe = (function() {
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.7 loaded');
+console.log('[milg] analyzer.js v3.11.8 loaded');
 
 (function() {
   "use strict";
@@ -45067,7 +44908,7 @@ console.log('[milg] analyzer.js v3.11.7 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.11.7</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.11.8</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -45477,32 +45318,32 @@ console.log('[milg] analyzer.js v3.11.7 loaded');
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=3.11.7"></script>
-  <script src="scoring/contrast.js?v=3.11.7"></script>
-  <script src="scoring/typography.js?v=3.11.7"></script>
-  <script src="scoring/spacing.js?v=3.11.7"></script>
-  <script src="scoring/touch.js?v=3.11.7"></script>
-  <script src="scoring/accessibility.js?v=3.11.7"></script>
-  <script src="scoring/responsive.js?v=3.11.7"></script>
-  <script src="scoring/consistency.js?v=3.11.7"></script>
-  <script src="scoring/cognitive.js?v=3.11.7"></script>
-  <script src="scoring/layout.js?v=3.11.7"></script>
-  <script src="scoring/performance.js?v=3.11.7"></script>
-  <script src="scoring/readability.js?v=3.11.7"></script>
-  <script src="scoring/filters.js?v=3.11.7"></script>
-  <script src="scoring/balance.js?v=3.11.7"></script>
+  <script src="scoring/registry.js?v=3.11.8"></script>
+  <script src="scoring/contrast.js?v=3.11.8"></script>
+  <script src="scoring/typography.js?v=3.11.8"></script>
+  <script src="scoring/spacing.js?v=3.11.8"></script>
+  <script src="scoring/touch.js?v=3.11.8"></script>
+  <script src="scoring/accessibility.js?v=3.11.8"></script>
+  <script src="scoring/responsive.js?v=3.11.8"></script>
+  <script src="scoring/consistency.js?v=3.11.8"></script>
+  <script src="scoring/cognitive.js?v=3.11.8"></script>
+  <script src="scoring/layout.js?v=3.11.8"></script>
+  <script src="scoring/performance.js?v=3.11.8"></script>
+  <script src="scoring/readability.js?v=3.11.8"></script>
+  <script src="scoring/filters.js?v=3.11.8"></script>
+  <script src="scoring/balance.js?v=3.11.8"></script>
   <!-- Queue + Report rendering + UI -->
-  <script src="analyzer-queue.js?v=3.11.7"></script>
-  <script src="analyzer-report.js?v=3.11.7"></script>
-  <script src="analyzer-crawl.js?v=3.11.7"></script>
-  <script src="analyzer-extract.js?v=3.11.7"></script>
-  <script src="analyzer-region.js?v=3.11.7"></script>
-  <script src="analyzer-iframe.js?v=3.11.7"></script>
-  <script src="analyzer-proxy.js?v=3.11.7"></script>
-  <script src="analyzer-crawl-ui.js?v=3.11.7"></script>
-  <script src="analyzer-contrast-verify.js?v=3.11.7"></script>
-  <script src="analyzer-viewer.js?v=3.11.7"></script>
-  <script src="analyzer.js?v=3.11.7"></script>
+  <script src="analyzer-queue.js?v=3.11.8"></script>
+  <script src="analyzer-report.js?v=3.11.8"></script>
+  <script src="analyzer-crawl.js?v=3.11.8"></script>
+  <script src="analyzer-extract.js?v=3.11.8"></script>
+  <script src="analyzer-region.js?v=3.11.8"></script>
+  <script src="analyzer-iframe.js?v=3.11.8"></script>
+  <script src="analyzer-proxy.js?v=3.11.8"></script>
+  <script src="analyzer-crawl-ui.js?v=3.11.8"></script>
+  <script src="analyzer-contrast-verify.js?v=3.11.8"></script>
+  <script src="analyzer-viewer.js?v=3.11.8"></script>
+  <script src="analyzer.js?v=3.11.8"></script>
 </body>
 </html>
 </file>
