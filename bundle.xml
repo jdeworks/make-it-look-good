@@ -6800,67 +6800,6 @@ function scoreTypography(data) {
 })();
 </file>
 
-<file path="docs/tests/fixtures/bbox-test.html">
-<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<style>
-body { margin: 0; font-family: sans-serif; background: #fff; }
-.hero { background: linear-gradient(135deg, #1e3a5f 0%, #4a90d9 100%); padding: 60px 40px; }
-.hero h1 { color: #fff; font-size: 36px; margin: 0; }
-.hero p { color: #aab; font-size: 16px; margin: 8px 0 0; }
-section { padding: 40px; }
-.card { background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 16px 0; }
-.card h2 { color: #333; font-size: 24px; margin: 0 0 8px; }
-.card p { color: #666; font-size: 14px; line-height: 1.6; }
-.btn { display: inline-block; padding: 8px 16px; background: #2563eb; color: #fff; border: none; border-radius: 4px; font-size: 14px; cursor: pointer; }
-.btn-ghost { background: transparent; color: #999; border: 1px solid #ddd; padding: 4px 8px; font-size: 11px; }
-footer { background: #1e293b; color: #94a3b8; padding: 20px 40px; font-size: 12px; }
-footer a { color: #64748b; text-decoration: none; margin-right: 12px; }
-</style></head><body>
-<div class="hero"><h1>Test Page</h1><p>Subtitle with questionable contrast</p></div>
-<section>
-<div class="card"><h2>Card Title</h2><p>Some body text that should have good contrast and reasonable line length for readability scoring.</p></div>
-<button class="btn">Primary Action</button>
-<button class="btn-ghost">Tiny ghost</button>
-</section>
-<footer><a href="#">Privacy</a><a href="#">Terms</a><a href="#">Contact</a></footer>
-</body></html>
-</file>
-
-<file path="docs/tests/fixtures/carousel.html">
-<!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"><title>Carousel Test</title>
-<style>
-  body { font-family: sans-serif; margin: 0; padding: 20px; background: #fff; }
-  .carousel-container { overflow: hidden; width: 400px; position: relative; }
-  .carousel-inner { position: relative; }
-  .carousel-track-container { position: relative; }
-  .carousel-track { display: flex; transform: translateX(-400px); transition: transform 0.5s ease; }
-  .carousel-slide { min-width: 400px; padding: 20px; box-sizing: border-box; }
-  .slide-1 { background: #f0f0f0; }
-  .slide-2 { background: #e0e0ff; }
-  .slide-3 { background: #ffe0e0; }
-  h2 { color: #111; margin: 0 0 8px; }
-  p { color: #333; }
-</style></head><body>
-  <h1>Carousel Test Page</h1>
-  <a href="#n">Skip nav</a>
-  <div class="carousel-container">
-    <div class="carousel-inner">
-      <div class="carousel-track-container">
-        <div class="carousel-track">
-          <div class="carousel-slide slide-1"><h2>Slide One</h2><p>First slide content here.</p></div>
-          <div class="carousel-slide slide-2"><h2>Slide Two</h2><p>Second slide visible.</p></div>
-          <div class="carousel-slide slide-3"><h2>Slide Three</h2><p>Third slide content.</p></div>
-        </div>
-      </div>
-    </div>
-  </div>
-  <img src="#fragment" alt="fragment-only test">
-  <p>Below the carousel.</p>
-</body></html>
-</file>
-
 <file path="docs/tests/edge-a11y.html">
 <!-- Edge Case: Accessibility Checks -->
 <!-- Tests: semantic HTML, headings, alt text, labels, focus, lang, skip link, ARIA, link text, autocomplete, color-only -->
@@ -7845,441 +7784,6 @@ async function run() {
   console.log('Results: ' + passed + ' passed, ' + failed + ' failed');
   console.log('========================================');
   process.exit(failed > 0 ? 1 : 0);
-}
-
-run();
-</file>
-
-<file path="docs/tests/test-bbox-viewer.js">
-#!/usr/bin/env node
-// E2E test: bbox data, screenshot metadata, viewer, and contrast verification
-// Tests input paths: URL fetch (real user path) and console snippet output.
-// Requires: puppeteer, a local HTTP server on port 8787
-
-var http = require('http');
-var fs = require('fs');
-var path = require('path');
-var puppeteer = require('puppeteer');
-
-var DOCS_DIR = path.resolve(__dirname, '..');
-var PORT = 8787;
-var BASE = 'http://localhost:' + PORT;
-var passed = 0, failed = 0, errors = [];
-
-function log(ok, msg) {
-  if (ok) { passed++; console.log('  \x1b[32m✓\x1b[0m ' + msg); }
-  else { failed++; errors.push(msg); console.log('  \x1b[31m✗\x1b[0m ' + msg); }
-}
-
-function assert(cond, msg) { log(!!cond, msg); }
-
-// Simple static file server
-function startServer() {
-  var mimes = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json', '.webp': 'image/webp' };
-  var server = http.createServer(function(req, res) {
-    var url = req.url.split('?')[0];
-    if (url === '/') url = '/index.html';
-    var filePath = path.join(DOCS_DIR, url);
-    try {
-      var data = fs.readFileSync(filePath);
-      var ext = path.extname(filePath);
-      res.writeHead(200, { 'Content-Type': mimes[ext] || 'application/octet-stream' });
-      res.end(data);
-    } catch(e) {
-      res.writeHead(404);
-      res.end('Not found: ' + url);
-    }
-  });
-  server.listen(PORT);
-  return server;
-}
-
-// Test HTML to analyze — has known contrast issues and varied elements
-var TEST_HTML = [
-  '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">',
-  '<meta name="viewport" content="width=device-width, initial-scale=1.0">',
-  '<style>',
-  'body { margin: 0; font-family: sans-serif; background: #fff; }',
-  '.hero { background: linear-gradient(135deg, #1e3a5f 0%, #4a90d9 100%); padding: 60px 40px; }',
-  '.hero h1 { color: #fff; font-size: 36px; margin: 0; }',
-  '.hero p { color: #aab; font-size: 16px; margin: 8px 0 0; }',  // Low contrast on gradient
-  'section { padding: 40px; }',
-  '.card { background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 16px 0; }',
-  '.card h2 { color: #333; font-size: 24px; margin: 0 0 8px; }',
-  '.card p { color: #666; font-size: 14px; line-height: 1.6; }',
-  '.btn { display: inline-block; padding: 8px 16px; background: #2563eb; color: #fff; border: none; border-radius: 4px; font-size: 14px; cursor: pointer; }',
-  '.btn-ghost { background: transparent; color: #999; border: 1px solid #ddd; padding: 4px 8px; font-size: 11px; }',  // Small touch target
-  'footer { background: #1e293b; color: #94a3b8; padding: 20px 40px; font-size: 12px; }',
-  'footer a { color: #64748b; text-decoration: none; margin-right: 12px; }',  // Low contrast links
-  '</style></head><body>',
-  '<div class="hero"><h1>Test Page</h1><p>Subtitle with questionable contrast</p></div>',
-  '<section>',
-  '<div class="card"><h2>Card Title</h2><p>Some body text that should have good contrast and reasonable line length for readability scoring.</p></div>',
-  '<button class="btn">Primary Action</button>',
-  '<button class="btn-ghost">Tiny ghost</button>',
-  '</section>',
-  '<footer><a href="#">Privacy</a><a href="#">Terms</a><a href="#">Contact</a></footer>',
-  '</body></html>'
-].join('\n');
-
-async function run() {
-  var server = startServer();
-  console.log('Server running on port ' + PORT);
-
-  var browser = await puppeteer.launch({
-    headless: 'new',
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
-  });
-
-  try {
-    // ============================================================
-    console.log('\n--- Test 1: URL Analysis with Screenshots ---');
-    // ============================================================
-    await testUrlAnalysis(browser);
-
-    // ============================================================
-    console.log('\n--- Test 2: Console Snippet Output (JSON paste) ---');
-    // ============================================================
-    await testSnippetOutput(browser);
-
-    // ============================================================
-    console.log('\n--- Test 3: Module loading & viewer structure ---');
-    // ============================================================
-    await testModulesAndViewer(browser);
-
-    // ============================================================
-    console.log('\n--- Test 4: Extraction bbox data correctness ---');
-    // ============================================================
-    await testExtractionBbox(browser);
-
-  } catch(e) {
-    console.error('\n\x1b[31mFATAL:\x1b[0m', e.message);
-    failed++;
-    errors.push('Fatal: ' + e.message);
-  }
-
-  await browser.close();
-  server.close();
-
-  console.log('\n========================================');
-  console.log('Results: ' + passed + ' passed, ' + failed + ' failed');
-  if (errors.length > 0) {
-    console.log('\nFailures:');
-    errors.forEach(function(e) { console.log('  - ' + e); });
-  }
-  console.log('========================================');
-  process.exit(failed > 0 ? 1 : 0);
-}
-
-// Test 1: Analyze via URL mode (the real user path), enable screenshots,
-// verify report has bbox + meta + viewer. The test page is served as a
-// fixture file (docs/tests/fixtures/bbox-test.html) and fetched directly
-// (same-origin localhost → MilgProxy direct fetch, no external CORS proxy).
-async function testUrlAnalysis(browser) {
-  var page = await browser.newPage();
-  await page.setViewport({ width: 1280, height: 900 });
-  await page.goto(BASE + '/analyzer.html', { waitUntil: 'networkidle0', timeout: 15000 });
-
-  // Ensure screenshots checkbox is checked
-  var ssChecked = await page.$eval('#screenshotCheck', function(el) { return el.checked; });
-  assert(ssChecked, 'Screenshot checkbox is checked by default');
-
-  // Click URL tab and analyze the served fixture
-  await page.click('[data-tab="tabUrl"]');
-  await page.waitForSelector('#urlInput', { visible: true });
-  await page.evaluate(function(url) { document.getElementById('urlInput').value = url; }, BASE + '/tests/fixtures/bbox-test.html');
-  await page.click('#analyzeUrlBtn');
-
-  // Wait for report to appear (URL fetch + render + screenshots)
-  await page.waitForSelector('.report-container.visible', { timeout: 60000 });
-
-  // Check that report rendered
-  var hasReport = await page.$('.report-header');
-  assert(hasReport, 'Report rendered after URL analysis');
-
-  // Check for screenshot section
-  var hasScreenshots = await page.$('.report-screenshots');
-  assert(hasScreenshots, 'Screenshot section present in report');
-
-  // Check that screenshotMeta is available in reportData
-  var metaCheck = await page.evaluate(function() {
-    // Access the report data via the global (stored in sessionStorage by runAnalysis)
-    var raw = null;
-    try { raw = JSON.parse(sessionStorage.getItem('milg-last-extraction')); } catch(e) {}
-    if (!raw) return { hasMeta: false, error: 'no extraction data in sessionStorage' };
-    return {
-      hasMeta: !!raw.screenshotMeta,
-      scale: raw.screenshotMeta ? raw.screenshotMeta.scale : null,
-      viewportHeight: raw.screenshotMeta ? raw.screenshotMeta.viewportHeight : null,
-      sectionCount: raw.screenshotMeta ? raw.screenshotMeta.sectionCount : null,
-      canvasWidth: raw.screenshotMeta ? raw.screenshotMeta.canvasWidth : null
-    };
-  });
-  assert(metaCheck.hasMeta, 'screenshotMeta present in extraction data');
-  if (metaCheck.hasMeta) {
-    assert(metaCheck.scale === 0.5, 'screenshotMeta.scale is 0.5 (got ' + metaCheck.scale + ')');
-    assert(metaCheck.viewportHeight > 0, 'screenshotMeta.viewportHeight > 0 (got ' + metaCheck.viewportHeight + ')');
-    assert(metaCheck.sectionCount > 0, 'screenshotMeta.sectionCount > 0 (got ' + metaCheck.sectionCount + ')');
-    assert(metaCheck.canvasWidth > 0, 'screenshotMeta.canvasWidth > 0 (got ' + metaCheck.canvasWidth + ')');
-  }
-
-  // Check contrast pairs have bbox data
-  var bboxCheck = await page.evaluate(function() {
-    var raw = null;
-    try { raw = JSON.parse(sessionStorage.getItem('milg-last-extraction')); } catch(e) {}
-    if (!raw || !raw.colors || !raw.colors.contrastPairs) return { pairs: 0, withBbox: 0 };
-    var pairs = raw.colors.contrastPairs;
-    var withBbox = pairs.filter(function(p) { return p.bbox && p.bbox.left !== undefined && p.bbox.top !== undefined; }).length;
-    return { pairs: pairs.length, withBbox: withBbox };
-  });
-  assert(bboxCheck.pairs > 0, 'Has contrast pairs (' + bboxCheck.pairs + ')');
-  assert(bboxCheck.withBbox > 0, 'Contrast pairs have bbox data (' + bboxCheck.withBbox + '/' + bboxCheck.pairs + ')');
-  assert(bboxCheck.withBbox === bboxCheck.pairs, 'All contrast pairs have bbox (' + bboxCheck.withBbox + '/' + bboxCheck.pairs + ')');
-
-  // Check touch targets have bbox data
-  var touchBboxCheck = await page.evaluate(function() {
-    var raw = null;
-    try { raw = JSON.parse(sessionStorage.getItem('milg-last-extraction')); } catch(e) {}
-    if (!raw || !raw.interaction || !raw.interaction.touchTargets) return { targets: 0, withBbox: 0 };
-    var targets = raw.interaction.touchTargets;
-    var withBbox = targets.filter(function(t) { return t.bbox && t.bbox.left !== undefined; }).length;
-    return { targets: targets.length, withBbox: withBbox };
-  });
-  assert(touchBboxCheck.targets >= 0, 'Has touch targets (' + touchBboxCheck.targets + ')');
-  if (touchBboxCheck.targets > 0) {
-    assert(touchBboxCheck.withBbox === touchBboxCheck.targets, 'All touch targets have bbox (' + touchBboxCheck.withBbox + '/' + touchBboxCheck.targets + ')');
-  }
-
-  // Check that "Show on screenshot" links exist for findings with bboxes
-  var showLinks = await page.$$('.finding-show-on-screenshot');
-  assert(showLinks.length > 0, '"Show on screenshot" links present (' + showLinks.length + ')');
-
-  // Check that findings have data-finding-idx attributes
-  var findingsWithIdx = await page.$$('[data-finding-idx]');
-  assert(findingsWithIdx.length > 0, 'Findings have data-finding-idx attributes (' + findingsWithIdx.length + ')');
-
-  // Wait a moment for async contrast verification to complete
-  await new Promise(function(r) { setTimeout(r, 3000); });
-
-  // Check if contrast verification summary appeared
-  var hasVerifySummary = await page.$('.contrast-verify-summary');
-  assert(hasVerifySummary, 'Pixel contrast verification summary present');
-
-  await page.close();
-}
-
-// Test 2: Simulate snippet output (paste JSON with bbox data)
-async function testSnippetOutput(browser) {
-  var page = await browser.newPage();
-  await page.setViewport({ width: 1280, height: 900 });
-  await page.goto(BASE + '/analyzer.html', { waitUntil: 'networkidle0', timeout: 15000 });
-
-  // Run the snippet in a test iframe to get extraction data with bboxes
-  var extractionData = await page.evaluate(function(html) {
-    return new Promise(function(resolve) {
-      var iframe = document.createElement('iframe');
-      iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
-      iframe.sandbox = 'allow-scripts allow-same-origin';
-      document.body.appendChild(iframe);
-
-      window.addEventListener('message', function handler(e) {
-        if (e.data && e.data.type === 'milg-analyzer-result') {
-          window.removeEventListener('message', handler);
-          document.body.removeChild(iframe);
-          resolve(e.data.data);
-        }
-      });
-
-      var extractFn = window.MilgExtract;
-      var extractScript = '<script>window.addEventListener("load",function(){setTimeout(function(){(' + extractFn.toString() + ')()},500)});</' + 'script>';
-      iframe.srcdoc = html + extractScript;
-
-      setTimeout(function() { resolve(null); }, 10000);
-    });
-  }, TEST_HTML);
-
-  assert(extractionData !== null, 'Extraction completed in iframe');
-  if (!extractionData) { await page.close(); return; }
-
-  // Verify bbox on contrast pairs from extraction
-  var pairs = (extractionData.colors && extractionData.colors.contrastPairs) || [];
-  assert(pairs.length > 0, 'Extracted contrast pairs: ' + pairs.length);
-  var pairsWithBbox = pairs.filter(function(p) { return p.bbox && typeof p.bbox.left === 'number'; });
-  assert(pairsWithBbox.length === pairs.length, 'All extracted pairs have bbox (' + pairsWithBbox.length + '/' + pairs.length + ')');
-
-  // Verify bbox values are reasonable
-  if (pairsWithBbox.length > 0) {
-    var firstBbox = pairsWithBbox[0].bbox;
-    assert(firstBbox.left >= 0, 'bbox.left >= 0 (got ' + firstBbox.left + ')');
-    assert(firstBbox.top >= 0, 'bbox.top >= 0 (got ' + firstBbox.top + ')');
-    assert(firstBbox.width > 0, 'bbox.width > 0 (got ' + firstBbox.width + ')');
-    assert(firstBbox.height > 0, 'bbox.height > 0 (got ' + firstBbox.height + ')');
-  }
-
-  // Verify bbox on touch targets
-  var targets = (extractionData.interaction && extractionData.interaction.touchTargets) || [];
-  if (targets.length > 0) {
-    var targetsWithBbox = targets.filter(function(t) { return t.bbox && typeof t.bbox.left === 'number'; });
-    assert(targetsWithBbox.length === targets.length, 'All touch targets have bbox (' + targetsWithBbox.length + '/' + targets.length + ')');
-  }
-
-  // Paste JSON into the Snippet tab's paste area and analyze
-  var json = JSON.stringify(extractionData);
-  await page.evaluate(function(json) {
-    // Activate the Console Snippet tab (contains the JSON paste area)
-    document.querySelector('[data-tab="tabSnippet"]').click();
-    document.getElementById('pasteInput').value = json;
-    document.getElementById('analyzeBtn').click();
-  }, json);
-
-  await page.waitForSelector('.report-container.visible', { timeout: 10000 });
-
-  // Verify scoring passed bbox through to findings
-  var findingsBboxCheck = await page.evaluate(function() {
-    var findings = document.querySelectorAll('[data-finding-idx]');
-    return findings.length;
-  });
-  assert(findingsBboxCheck > 0, 'Scoring passed bbox to findings (data-finding-idx count: ' + findingsBboxCheck + ')');
-
-  await page.close();
-}
-
-// Test 3: Module loading and viewer structure
-async function testModulesAndViewer(browser) {
-  var page = await browser.newPage();
-  await page.setViewport({ width: 1280, height: 900 });
-  await page.goto(BASE + '/analyzer.html', { waitUntil: 'networkidle0', timeout: 15000 });
-
-  // Check all modules loaded
-  var modules = await page.evaluate(function() {
-    return {
-      MilgExtract: typeof window.MilgExtract,
-      MilgIframe: typeof window.MilgIframe,
-      MilgProxy: typeof window.MilgProxy,
-      MilgCrawlUI: typeof window.MilgCrawlUI,
-      MilgViewer: typeof window.MilgViewer,
-      MilgContrastVerify: typeof window.MilgContrastVerify,
-      MilgReport: typeof window.MilgReport,
-      MilgScoring: typeof window.MilgScoring,
-      MilgCrawl: typeof window.MilgCrawl
-    };
-  });
-
-  assert(modules.MilgExtract === 'function', 'MilgExtract loaded (type: ' + modules.MilgExtract + ')');
-  assert(modules.MilgIframe === 'object', 'MilgIframe loaded (type: ' + modules.MilgIframe + ')');
-  assert(modules.MilgProxy === 'object', 'MilgProxy loaded (type: ' + modules.MilgProxy + ')');
-  assert(modules.MilgCrawlUI === 'object', 'MilgCrawlUI loaded (type: ' + modules.MilgCrawlUI + ')');
-  assert(modules.MilgViewer === 'object', 'MilgViewer loaded (type: ' + modules.MilgViewer + ')');
-  assert(modules.MilgContrastVerify === 'object', 'MilgContrastVerify loaded (type: ' + modules.MilgContrastVerify + ')');
-  assert(modules.MilgReport === 'object', 'MilgReport loaded (type: ' + modules.MilgReport + ')');
-  assert(modules.MilgScoring === 'object', 'MilgScoring loaded (type: ' + modules.MilgScoring + ')');
-  assert(modules.MilgCrawl === 'object', 'MilgCrawl loaded (type: ' + modules.MilgCrawl + ')');
-
-  // Verify viewer API
-  var viewerApi = await page.evaluate(function() {
-    return {
-      hasOpen: typeof MilgViewer.open === 'function',
-      hasClose: typeof MilgViewer.close === 'function',
-      hasShowFinding: typeof MilgViewer.showFinding === 'function'
-    };
-  });
-  assert(viewerApi.hasOpen, 'MilgViewer.open is a function');
-  assert(viewerApi.hasClose, 'MilgViewer.close is a function');
-  assert(viewerApi.hasShowFinding, 'MilgViewer.showFinding is a function');
-
-  // Verify contrast verify API
-  var verifyApi = await page.evaluate(function() {
-    return {
-      hasVerify: typeof MilgContrastVerify.verify === 'function',
-      hasBuildSummary: typeof MilgContrastVerify.buildSummary === 'function',
-      hasFormatResult: typeof MilgContrastVerify.formatResult === 'function',
-      hasRenderSummaryHtml: typeof MilgContrastVerify.renderSummaryHtml === 'function'
-    };
-  });
-  assert(verifyApi.hasVerify, 'MilgContrastVerify.verify is a function');
-  assert(verifyApi.hasBuildSummary, 'MilgContrastVerify.buildSummary is a function');
-  assert(verifyApi.hasFormatResult, 'MilgContrastVerify.formatResult is a function');
-  assert(verifyApi.hasRenderSummaryHtml, 'MilgContrastVerify.renderSummaryHtml is a function');
-
-  // Test contrast ratio math
-  var mathCheck = await page.evaluate(function() {
-    var cr = MilgContrastVerify.contrastRatio;
-    var black = { r: 0, g: 0, b: 0 };
-    var white = { r: 255, g: 255, b: 255 };
-    var gray = { r: 128, g: 128, b: 128 };
-    return {
-      bw: cr(black, white),
-      ww: cr(white, white),
-      bg: cr(black, gray)
-    };
-  });
-  assert(mathCheck.bw === 21, 'Black/white contrast = 21:1 (got ' + mathCheck.bw + ')');
-  assert(mathCheck.ww === 1, 'White/white contrast = 1:1 (got ' + mathCheck.ww + ')');
-  assert(mathCheck.bg > 5 && mathCheck.bg < 6, 'Black/gray contrast ~5.3:1 (got ' + mathCheck.bg + ')');
-
-  await page.close();
-}
-
-// Test 4: Direct extraction bbox data correctness
-async function testExtractionBbox(browser) {
-  var page = await browser.newPage();
-  await page.setViewport({ width: 1280, height: 900 });
-
-  // Load test HTML directly to verify extraction produces correct bboxes
-  await page.setContent(TEST_HTML, { waitUntil: 'load' });
-  await new Promise(function(r) { setTimeout(r, 500); });
-
-  // Run extraction function directly
-  var extractResult = await page.evaluate(function() {
-    // Load the extraction function (it's not available in this context, inline a simplified check)
-    // Instead, manually check getBoundingClientRect on key elements
-    var hero = document.querySelector('.hero h1');
-    var btn = document.querySelector('.btn');
-    var btnGhost = document.querySelector('.btn-ghost');
-    var footerLink = document.querySelector('footer a');
-
-    function getRect(el) {
-      if (!el) return null;
-      var r = el.getBoundingClientRect();
-      return { left: Math.round(r.left), top: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) };
-    }
-
-    return {
-      heroH1: getRect(hero),
-      btn: getRect(btn),
-      btnGhost: getRect(btnGhost),
-      footerLink: getRect(footerLink)
-    };
-  });
-
-  assert(extractResult.heroH1 !== null, 'Hero h1 found');
-  if (extractResult.heroH1) {
-    assert(extractResult.heroH1.top >= 0 && extractResult.heroH1.top < 200, 'Hero h1 top is reasonable (got ' + extractResult.heroH1.top + ')');
-    assert(extractResult.heroH1.width > 50, 'Hero h1 width > 50 (got ' + extractResult.heroH1.width + ')');
-  }
-
-  assert(extractResult.btn !== null, 'Primary button found');
-  if (extractResult.btn) {
-    assert(extractResult.btn.height >= 20, 'Button height >= 20 (got ' + extractResult.btn.height + ')');
-  }
-
-  assert(extractResult.btnGhost !== null, 'Ghost button found');
-  if (extractResult.btnGhost) {
-    assert(extractResult.btnGhost.height < 44, 'Ghost button is small touch target (height ' + extractResult.btnGhost.height + ' < 44)');
-  }
-
-  // Test that bboxes map correctly to screenshot coordinates
-  // At 0.5x scale, canvas coords should be half the DOM coords
-  if (extractResult.heroH1) {
-    var canvasX = extractResult.heroH1.left * 0.5;
-    var canvasY = extractResult.heroH1.top * 0.5;
-    assert(canvasX >= 0, 'Canvas X mapping correct (DOM ' + extractResult.heroH1.left + ' → canvas ' + canvasX + ')');
-    assert(canvasY >= 0, 'Canvas Y mapping correct (DOM ' + extractResult.heroH1.top + ' → canvas ' + canvasY + ')');
-    var sectionIdx = Math.floor(canvasY / (900 * 0.5));
-    assert(sectionIdx === 0, 'Hero h1 maps to section 0 (got ' + sectionIdx + ')');
-  }
-
-  await page.close();
 }
 
 run();
@@ -28223,27 +27727,6 @@ Always generate Design Review Notes (Step 4 in CONSULT.md) as the primary delive
 PROXY_URL=https://milg-cors-proxy.YOUR-SUB.workers.dev
 </file>
 
-<file path=".gitignore">
-# Research directory (raw/intermediate data stays local)
-research/*
-!research/sources.md
-
-# Node (puppeteer used for screenshots only, not part of project)
-node_modules/
-package.json
-package-lock.json
-
-# Local environment (proxy URL etc.)
-.env
-
-# Playwright test output artifacts (regenerated)
-test-results/
-playwright-report/
-
-# Claude Code commands (local skills, not shared)
-.claude/
-</file>
-
 <file path="AGENTS.md">
 # AGENTS.md — make-it-look-good
 
@@ -29574,6 +29057,502 @@ Each file: 200–400 lines, concrete rules with numbers, CSS/Tailwind patterns, 
 If this helped you ship something that looks good, [give it a star](../../stargazers). Found an issue? [Open one](../../issues).
 
 Sources: [research/sources.md](research/sources.md)
+</file>
+
+<file path="docs/tests/fixtures/bbox-test.html">
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+body { margin: 0; font-family: sans-serif; background: #fff; }
+.hero { background: linear-gradient(135deg, #1e3a5f 0%, #4a90d9 100%); padding: 60px 40px; }
+.hero h1 { color: #fff; font-size: 36px; margin: 0; }
+.hero p { color: #aab; font-size: 16px; margin: 8px 0 0; }
+section { padding: 40px; }
+.card { background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 16px 0; }
+.card h2 { color: #333; font-size: 24px; margin: 0 0 8px; }
+.card p { color: #666; font-size: 14px; line-height: 1.6; }
+.btn { display: inline-block; padding: 8px 16px; background: #2563eb; color: #fff; border: none; border-radius: 4px; font-size: 14px; cursor: pointer; }
+.btn-ghost { background: transparent; color: #999; border: 1px solid #ddd; padding: 4px 8px; font-size: 11px; }
+footer { background: #1e293b; color: #94a3b8; padding: 20px 40px; font-size: 12px; }
+footer a { color: #64748b; text-decoration: none; margin-right: 12px; }
+</style></head><body>
+<div class="hero"><h1>Test Page</h1><p>Subtitle with questionable contrast</p></div>
+<section>
+<div class="card"><h2>Card Title</h2><p>Some body text that should have good contrast and reasonable line length for readability scoring.</p></div>
+<button class="btn">Primary Action</button>
+<button class="btn-ghost">Tiny ghost</button>
+</section>
+<footer><a href="#">Privacy</a><a href="#">Terms</a><a href="#">Contact</a></footer>
+</body></html>
+</file>
+
+<file path="docs/tests/fixtures/carousel.html">
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Carousel Test</title>
+<style>
+  body { font-family: sans-serif; margin: 0; padding: 20px; background: #fff; }
+  .carousel-container { overflow: hidden; width: 400px; position: relative; }
+  .carousel-inner { position: relative; }
+  .carousel-track-container { position: relative; }
+  .carousel-track { display: flex; transform: translateX(-400px); transition: transform 0.5s ease; }
+  .carousel-slide { min-width: 400px; padding: 20px; box-sizing: border-box; }
+  .slide-1 { background: #f0f0f0; }
+  .slide-2 { background: #e0e0ff; }
+  .slide-3 { background: #ffe0e0; }
+  h2 { color: #111; margin: 0 0 8px; }
+  p { color: #333; }
+</style></head><body>
+  <h1>Carousel Test Page</h1>
+  <a href="#n">Skip nav</a>
+  <div class="carousel-container">
+    <div class="carousel-inner">
+      <div class="carousel-track-container">
+        <div class="carousel-track">
+          <div class="carousel-slide slide-1"><h2>Slide One</h2><p>First slide content here.</p></div>
+          <div class="carousel-slide slide-2"><h2>Slide Two</h2><p>Second slide visible.</p></div>
+          <div class="carousel-slide slide-3"><h2>Slide Three</h2><p>Third slide content.</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <img src="#fragment" alt="fragment-only test">
+  <p>Below the carousel.</p>
+</body></html>
+</file>
+
+<file path="docs/tests/test-bbox-viewer.js">
+#!/usr/bin/env node
+// E2E test: bbox data, screenshot metadata, viewer, and contrast verification
+// Tests input paths: URL fetch (real user path) and console snippet output.
+// Requires: puppeteer, a local HTTP server on port 8787
+
+var http = require('http');
+var fs = require('fs');
+var path = require('path');
+var puppeteer = require('puppeteer');
+
+var DOCS_DIR = path.resolve(__dirname, '..');
+var PORT = 8787;
+var BASE = 'http://localhost:' + PORT;
+var passed = 0, failed = 0, errors = [];
+
+function log(ok, msg) {
+  if (ok) { passed++; console.log('  \x1b[32m✓\x1b[0m ' + msg); }
+  else { failed++; errors.push(msg); console.log('  \x1b[31m✗\x1b[0m ' + msg); }
+}
+
+function assert(cond, msg) { log(!!cond, msg); }
+
+// Simple static file server
+function startServer() {
+  var mimes = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json', '.webp': 'image/webp' };
+  var server = http.createServer(function(req, res) {
+    var url = req.url.split('?')[0];
+    if (url === '/') url = '/index.html';
+    var filePath = path.join(DOCS_DIR, url);
+    try {
+      var data = fs.readFileSync(filePath);
+      var ext = path.extname(filePath);
+      res.writeHead(200, { 'Content-Type': mimes[ext] || 'application/octet-stream' });
+      res.end(data);
+    } catch(e) {
+      res.writeHead(404);
+      res.end('Not found: ' + url);
+    }
+  });
+  server.listen(PORT);
+  return server;
+}
+
+// Test HTML to analyze — has known contrast issues and varied elements
+var TEST_HTML = [
+  '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">',
+  '<meta name="viewport" content="width=device-width, initial-scale=1.0">',
+  '<style>',
+  'body { margin: 0; font-family: sans-serif; background: #fff; }',
+  '.hero { background: linear-gradient(135deg, #1e3a5f 0%, #4a90d9 100%); padding: 60px 40px; }',
+  '.hero h1 { color: #fff; font-size: 36px; margin: 0; }',
+  '.hero p { color: #aab; font-size: 16px; margin: 8px 0 0; }',  // Low contrast on gradient
+  'section { padding: 40px; }',
+  '.card { background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 16px 0; }',
+  '.card h2 { color: #333; font-size: 24px; margin: 0 0 8px; }',
+  '.card p { color: #666; font-size: 14px; line-height: 1.6; }',
+  '.btn { display: inline-block; padding: 8px 16px; background: #2563eb; color: #fff; border: none; border-radius: 4px; font-size: 14px; cursor: pointer; }',
+  '.btn-ghost { background: transparent; color: #999; border: 1px solid #ddd; padding: 4px 8px; font-size: 11px; }',  // Small touch target
+  'footer { background: #1e293b; color: #94a3b8; padding: 20px 40px; font-size: 12px; }',
+  'footer a { color: #64748b; text-decoration: none; margin-right: 12px; }',  // Low contrast links
+  '</style></head><body>',
+  '<div class="hero"><h1>Test Page</h1><p>Subtitle with questionable contrast</p></div>',
+  '<section>',
+  '<div class="card"><h2>Card Title</h2><p>Some body text that should have good contrast and reasonable line length for readability scoring.</p></div>',
+  '<button class="btn">Primary Action</button>',
+  '<button class="btn-ghost">Tiny ghost</button>',
+  '</section>',
+  '<footer><a href="#">Privacy</a><a href="#">Terms</a><a href="#">Contact</a></footer>',
+  '</body></html>'
+].join('\n');
+
+async function run() {
+  var server = startServer();
+  console.log('Server running on port ' + PORT);
+
+  var browser = await puppeteer.launch({
+    headless: 'new',
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+  });
+
+  try {
+    // ============================================================
+    console.log('\n--- Test 1: URL Analysis with Screenshots ---');
+    // ============================================================
+    await testUrlAnalysis(browser);
+
+    // ============================================================
+    console.log('\n--- Test 2: Console Snippet Output (JSON paste) ---');
+    // ============================================================
+    await testSnippetOutput(browser);
+
+    // ============================================================
+    console.log('\n--- Test 3: Module loading & viewer structure ---');
+    // ============================================================
+    await testModulesAndViewer(browser);
+
+    // ============================================================
+    console.log('\n--- Test 4: Extraction bbox data correctness ---');
+    // ============================================================
+    await testExtractionBbox(browser);
+
+  } catch(e) {
+    console.error('\n\x1b[31mFATAL:\x1b[0m', e.message);
+    failed++;
+    errors.push('Fatal: ' + e.message);
+  }
+
+  await browser.close();
+  server.close();
+
+  console.log('\n========================================');
+  console.log('Results: ' + passed + ' passed, ' + failed + ' failed');
+  if (errors.length > 0) {
+    console.log('\nFailures:');
+    errors.forEach(function(e) { console.log('  - ' + e); });
+  }
+  console.log('========================================');
+  process.exit(failed > 0 ? 1 : 0);
+}
+
+// Test 1: Analyze via URL mode (the real user path), enable screenshots,
+// verify report has bbox + meta + viewer. The test page is served as a
+// fixture file (docs/tests/fixtures/bbox-test.html) and fetched directly
+// (same-origin localhost → MilgProxy direct fetch, no external CORS proxy).
+async function testUrlAnalysis(browser) {
+  var page = await browser.newPage();
+  await page.setViewport({ width: 1280, height: 900 });
+  await page.goto(BASE + '/analyzer.html', { waitUntil: 'networkidle0', timeout: 15000 });
+
+  // Ensure screenshots checkbox is checked
+  var ssChecked = await page.$eval('#screenshotCheck', function(el) { return el.checked; });
+  assert(ssChecked, 'Screenshot checkbox is checked by default');
+
+  // Click URL tab and analyze the served fixture
+  await page.click('[data-tab="tabUrl"]');
+  await page.waitForSelector('#urlInput', { visible: true });
+  await page.evaluate(function(url) { document.getElementById('urlInput').value = url; }, BASE + '/tests/fixtures/bbox-test.html');
+  await page.click('#analyzeUrlBtn');
+
+  // Wait for report to appear (URL fetch + render + screenshots)
+  await page.waitForSelector('.report-container.visible', { timeout: 60000 });
+
+  // Check that report rendered
+  var hasReport = await page.$('.report-header');
+  assert(hasReport, 'Report rendered after URL analysis');
+
+  // Check for screenshot section
+  var hasScreenshots = await page.$('.report-screenshots');
+  assert(hasScreenshots, 'Screenshot section present in report');
+
+  // Check that screenshotMeta is available in reportData
+  var metaCheck = await page.evaluate(function() {
+    // Access the report data via the global (stored in sessionStorage by runAnalysis)
+    var raw = null;
+    try { raw = JSON.parse(sessionStorage.getItem('milg-last-extraction')); } catch(e) {}
+    if (!raw) return { hasMeta: false, error: 'no extraction data in sessionStorage' };
+    return {
+      hasMeta: !!raw.screenshotMeta,
+      scale: raw.screenshotMeta ? raw.screenshotMeta.scale : null,
+      viewportHeight: raw.screenshotMeta ? raw.screenshotMeta.viewportHeight : null,
+      sectionCount: raw.screenshotMeta ? raw.screenshotMeta.sectionCount : null,
+      canvasWidth: raw.screenshotMeta ? raw.screenshotMeta.canvasWidth : null
+    };
+  });
+  assert(metaCheck.hasMeta, 'screenshotMeta present in extraction data');
+  if (metaCheck.hasMeta) {
+    assert(metaCheck.scale === 0.5, 'screenshotMeta.scale is 0.5 (got ' + metaCheck.scale + ')');
+    assert(metaCheck.viewportHeight > 0, 'screenshotMeta.viewportHeight > 0 (got ' + metaCheck.viewportHeight + ')');
+    assert(metaCheck.sectionCount > 0, 'screenshotMeta.sectionCount > 0 (got ' + metaCheck.sectionCount + ')');
+    assert(metaCheck.canvasWidth > 0, 'screenshotMeta.canvasWidth > 0 (got ' + metaCheck.canvasWidth + ')');
+  }
+
+  // Check contrast pairs have bbox data
+  var bboxCheck = await page.evaluate(function() {
+    var raw = null;
+    try { raw = JSON.parse(sessionStorage.getItem('milg-last-extraction')); } catch(e) {}
+    if (!raw || !raw.colors || !raw.colors.contrastPairs) return { pairs: 0, withBbox: 0 };
+    var pairs = raw.colors.contrastPairs;
+    var withBbox = pairs.filter(function(p) { return p.bbox && p.bbox.left !== undefined && p.bbox.top !== undefined; }).length;
+    return { pairs: pairs.length, withBbox: withBbox };
+  });
+  assert(bboxCheck.pairs > 0, 'Has contrast pairs (' + bboxCheck.pairs + ')');
+  assert(bboxCheck.withBbox > 0, 'Contrast pairs have bbox data (' + bboxCheck.withBbox + '/' + bboxCheck.pairs + ')');
+  assert(bboxCheck.withBbox === bboxCheck.pairs, 'All contrast pairs have bbox (' + bboxCheck.withBbox + '/' + bboxCheck.pairs + ')');
+
+  // Check touch targets have bbox data
+  var touchBboxCheck = await page.evaluate(function() {
+    var raw = null;
+    try { raw = JSON.parse(sessionStorage.getItem('milg-last-extraction')); } catch(e) {}
+    if (!raw || !raw.interaction || !raw.interaction.touchTargets) return { targets: 0, withBbox: 0 };
+    var targets = raw.interaction.touchTargets;
+    var withBbox = targets.filter(function(t) { return t.bbox && t.bbox.left !== undefined; }).length;
+    return { targets: targets.length, withBbox: withBbox };
+  });
+  assert(touchBboxCheck.targets >= 0, 'Has touch targets (' + touchBboxCheck.targets + ')');
+  if (touchBboxCheck.targets > 0) {
+    assert(touchBboxCheck.withBbox === touchBboxCheck.targets, 'All touch targets have bbox (' + touchBboxCheck.withBbox + '/' + touchBboxCheck.targets + ')');
+  }
+
+  // Check that "Show on screenshot" links exist for findings with bboxes
+  var showLinks = await page.$$('.finding-show-on-screenshot');
+  assert(showLinks.length > 0, '"Show on screenshot" links present (' + showLinks.length + ')');
+
+  // Check that findings have data-finding-idx attributes
+  var findingsWithIdx = await page.$$('[data-finding-idx]');
+  assert(findingsWithIdx.length > 0, 'Findings have data-finding-idx attributes (' + findingsWithIdx.length + ')');
+
+  // Wait a moment for async contrast verification to complete
+  await new Promise(function(r) { setTimeout(r, 3000); });
+
+  // Check if contrast verification summary appeared
+  var hasVerifySummary = await page.$('.contrast-verify-summary');
+  assert(hasVerifySummary, 'Pixel contrast verification summary present');
+
+  await page.close();
+}
+
+// Test 2: Simulate snippet output (paste JSON with bbox data)
+async function testSnippetOutput(browser) {
+  var page = await browser.newPage();
+  await page.setViewport({ width: 1280, height: 900 });
+  await page.goto(BASE + '/analyzer.html', { waitUntil: 'networkidle0', timeout: 15000 });
+
+  // Run the snippet in a test iframe to get extraction data with bboxes
+  var extractionData = await page.evaluate(function(html) {
+    return new Promise(function(resolve) {
+      var iframe = document.createElement('iframe');
+      iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
+      iframe.sandbox = 'allow-scripts allow-same-origin';
+      document.body.appendChild(iframe);
+
+      window.addEventListener('message', function handler(e) {
+        if (e.data && e.data.type === 'milg-analyzer-result') {
+          window.removeEventListener('message', handler);
+          document.body.removeChild(iframe);
+          resolve(e.data.data);
+        }
+      });
+
+      var extractFn = window.MilgExtract;
+      var extractScript = '<script>window.addEventListener("load",function(){setTimeout(function(){(' + extractFn.toString() + ')()},500)});</' + 'script>';
+      iframe.srcdoc = html + extractScript;
+
+      setTimeout(function() { resolve(null); }, 10000);
+    });
+  }, TEST_HTML);
+
+  assert(extractionData !== null, 'Extraction completed in iframe');
+  if (!extractionData) { await page.close(); return; }
+
+  // Verify bbox on contrast pairs from extraction
+  var pairs = (extractionData.colors && extractionData.colors.contrastPairs) || [];
+  assert(pairs.length > 0, 'Extracted contrast pairs: ' + pairs.length);
+  var pairsWithBbox = pairs.filter(function(p) { return p.bbox && typeof p.bbox.left === 'number'; });
+  assert(pairsWithBbox.length === pairs.length, 'All extracted pairs have bbox (' + pairsWithBbox.length + '/' + pairs.length + ')');
+
+  // Verify bbox values are reasonable
+  if (pairsWithBbox.length > 0) {
+    var firstBbox = pairsWithBbox[0].bbox;
+    assert(firstBbox.left >= 0, 'bbox.left >= 0 (got ' + firstBbox.left + ')');
+    assert(firstBbox.top >= 0, 'bbox.top >= 0 (got ' + firstBbox.top + ')');
+    assert(firstBbox.width > 0, 'bbox.width > 0 (got ' + firstBbox.width + ')');
+    assert(firstBbox.height > 0, 'bbox.height > 0 (got ' + firstBbox.height + ')');
+  }
+
+  // Verify bbox on touch targets
+  var targets = (extractionData.interaction && extractionData.interaction.touchTargets) || [];
+  if (targets.length > 0) {
+    var targetsWithBbox = targets.filter(function(t) { return t.bbox && typeof t.bbox.left === 'number'; });
+    assert(targetsWithBbox.length === targets.length, 'All touch targets have bbox (' + targetsWithBbox.length + '/' + targets.length + ')');
+  }
+
+  // Paste JSON into the Snippet tab's paste area and analyze
+  var json = JSON.stringify(extractionData);
+  await page.evaluate(function(json) {
+    // Activate the Console Snippet tab (contains the JSON paste area)
+    document.querySelector('[data-tab="tabSnippet"]').click();
+    document.getElementById('pasteInput').value = json;
+    document.getElementById('analyzeBtn').click();
+  }, json);
+
+  await page.waitForSelector('.report-container.visible', { timeout: 10000 });
+
+  // Verify scoring passed bbox through to findings
+  var findingsBboxCheck = await page.evaluate(function() {
+    var findings = document.querySelectorAll('[data-finding-idx]');
+    return findings.length;
+  });
+  assert(findingsBboxCheck > 0, 'Scoring passed bbox to findings (data-finding-idx count: ' + findingsBboxCheck + ')');
+
+  await page.close();
+}
+
+// Test 3: Module loading and viewer structure
+async function testModulesAndViewer(browser) {
+  var page = await browser.newPage();
+  await page.setViewport({ width: 1280, height: 900 });
+  await page.goto(BASE + '/analyzer.html', { waitUntil: 'networkidle0', timeout: 15000 });
+
+  // Check all modules loaded
+  var modules = await page.evaluate(function() {
+    return {
+      MilgExtract: typeof window.MilgExtract,
+      MilgIframe: typeof window.MilgIframe,
+      MilgProxy: typeof window.MilgProxy,
+      MilgCrawlUI: typeof window.MilgCrawlUI,
+      MilgViewer: typeof window.MilgViewer,
+      MilgContrastVerify: typeof window.MilgContrastVerify,
+      MilgReport: typeof window.MilgReport,
+      MilgScoring: typeof window.MilgScoring,
+      MilgCrawl: typeof window.MilgCrawl
+    };
+  });
+
+  assert(modules.MilgExtract === 'function', 'MilgExtract loaded (type: ' + modules.MilgExtract + ')');
+  assert(modules.MilgIframe === 'object', 'MilgIframe loaded (type: ' + modules.MilgIframe + ')');
+  assert(modules.MilgProxy === 'object', 'MilgProxy loaded (type: ' + modules.MilgProxy + ')');
+  assert(modules.MilgCrawlUI === 'object', 'MilgCrawlUI loaded (type: ' + modules.MilgCrawlUI + ')');
+  assert(modules.MilgViewer === 'object', 'MilgViewer loaded (type: ' + modules.MilgViewer + ')');
+  assert(modules.MilgContrastVerify === 'object', 'MilgContrastVerify loaded (type: ' + modules.MilgContrastVerify + ')');
+  assert(modules.MilgReport === 'object', 'MilgReport loaded (type: ' + modules.MilgReport + ')');
+  assert(modules.MilgScoring === 'object', 'MilgScoring loaded (type: ' + modules.MilgScoring + ')');
+  assert(modules.MilgCrawl === 'object', 'MilgCrawl loaded (type: ' + modules.MilgCrawl + ')');
+
+  // Verify viewer API
+  var viewerApi = await page.evaluate(function() {
+    return {
+      hasOpen: typeof MilgViewer.open === 'function',
+      hasClose: typeof MilgViewer.close === 'function',
+      hasShowFinding: typeof MilgViewer.showFinding === 'function'
+    };
+  });
+  assert(viewerApi.hasOpen, 'MilgViewer.open is a function');
+  assert(viewerApi.hasClose, 'MilgViewer.close is a function');
+  assert(viewerApi.hasShowFinding, 'MilgViewer.showFinding is a function');
+
+  // Verify contrast verify API
+  var verifyApi = await page.evaluate(function() {
+    return {
+      hasVerify: typeof MilgContrastVerify.verify === 'function',
+      hasBuildSummary: typeof MilgContrastVerify.buildSummary === 'function',
+      hasFormatResult: typeof MilgContrastVerify.formatResult === 'function',
+      hasRenderSummaryHtml: typeof MilgContrastVerify.renderSummaryHtml === 'function'
+    };
+  });
+  assert(verifyApi.hasVerify, 'MilgContrastVerify.verify is a function');
+  assert(verifyApi.hasBuildSummary, 'MilgContrastVerify.buildSummary is a function');
+  assert(verifyApi.hasFormatResult, 'MilgContrastVerify.formatResult is a function');
+  assert(verifyApi.hasRenderSummaryHtml, 'MilgContrastVerify.renderSummaryHtml is a function');
+
+  // Test contrast ratio math
+  var mathCheck = await page.evaluate(function() {
+    var cr = MilgContrastVerify.contrastRatio;
+    var black = { r: 0, g: 0, b: 0 };
+    var white = { r: 255, g: 255, b: 255 };
+    var gray = { r: 128, g: 128, b: 128 };
+    return {
+      bw: cr(black, white),
+      ww: cr(white, white),
+      bg: cr(black, gray)
+    };
+  });
+  assert(mathCheck.bw === 21, 'Black/white contrast = 21:1 (got ' + mathCheck.bw + ')');
+  assert(mathCheck.ww === 1, 'White/white contrast = 1:1 (got ' + mathCheck.ww + ')');
+  assert(mathCheck.bg > 5 && mathCheck.bg < 6, 'Black/gray contrast ~5.3:1 (got ' + mathCheck.bg + ')');
+
+  await page.close();
+}
+
+// Test 4: Direct extraction bbox data correctness
+async function testExtractionBbox(browser) {
+  var page = await browser.newPage();
+  await page.setViewport({ width: 1280, height: 900 });
+
+  // Load test HTML directly to verify extraction produces correct bboxes
+  await page.setContent(TEST_HTML, { waitUntil: 'load' });
+  await new Promise(function(r) { setTimeout(r, 500); });
+
+  // Run extraction function directly
+  var extractResult = await page.evaluate(function() {
+    // Load the extraction function (it's not available in this context, inline a simplified check)
+    // Instead, manually check getBoundingClientRect on key elements
+    var hero = document.querySelector('.hero h1');
+    var btn = document.querySelector('.btn');
+    var btnGhost = document.querySelector('.btn-ghost');
+    var footerLink = document.querySelector('footer a');
+
+    function getRect(el) {
+      if (!el) return null;
+      var r = el.getBoundingClientRect();
+      return { left: Math.round(r.left), top: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) };
+    }
+
+    return {
+      heroH1: getRect(hero),
+      btn: getRect(btn),
+      btnGhost: getRect(btnGhost),
+      footerLink: getRect(footerLink)
+    };
+  });
+
+  assert(extractResult.heroH1 !== null, 'Hero h1 found');
+  if (extractResult.heroH1) {
+    assert(extractResult.heroH1.top >= 0 && extractResult.heroH1.top < 200, 'Hero h1 top is reasonable (got ' + extractResult.heroH1.top + ')');
+    assert(extractResult.heroH1.width > 50, 'Hero h1 width > 50 (got ' + extractResult.heroH1.width + ')');
+  }
+
+  assert(extractResult.btn !== null, 'Primary button found');
+  if (extractResult.btn) {
+    assert(extractResult.btn.height >= 20, 'Button height >= 20 (got ' + extractResult.btn.height + ')');
+  }
+
+  assert(extractResult.btnGhost !== null, 'Ghost button found');
+  if (extractResult.btnGhost) {
+    assert(extractResult.btnGhost.height < 44, 'Ghost button is small touch target (height ' + extractResult.btnGhost.height + ' < 44)');
+  }
+
+  // Test that bboxes map correctly to screenshot coordinates
+  // At 0.5x scale, canvas coords should be half the DOM coords
+  if (extractResult.heroH1) {
+    var canvasX = extractResult.heroH1.left * 0.5;
+    var canvasY = extractResult.heroH1.top * 0.5;
+    assert(canvasX >= 0, 'Canvas X mapping correct (DOM ' + extractResult.heroH1.left + ' → canvas ' + canvasX + ')');
+    assert(canvasY >= 0, 'Canvas Y mapping correct (DOM ' + extractResult.heroH1.top + ' → canvas ' + canvasY + ')');
+    var sectionIdx = Math.floor(canvasY / (900 * 0.5));
+    assert(sectionIdx === 0, 'Hero h1 maps to section 0 (got ' + sectionIdx + ')');
+  }
+
+  await page.close();
+}
+
+run();
 </file>
 
 <file path="docs/analyzer-extract.js">
@@ -31534,6 +31513,27 @@ window.MilgQueue = (function() {
     window.MilgExtract();
   }
 })();
+</file>
+
+<file path=".gitignore">
+# Research directory (raw/intermediate data stays local)
+research/*
+!research/sources.md
+
+# Node (puppeteer used for screenshots only, not part of project)
+node_modules/
+package.json
+package-lock.json
+
+# Local environment (proxy URL etc.)
+.env
+
+# Playwright test output artifacts (regenerated)
+test-results/
+playwright-report/
+
+# Claude Code commands (local skills, not shared)
+.claude/
 </file>
 
 <file path="playwright.config.js">
@@ -35278,6 +35278,92 @@ window.MilgReport = (function() {
 })();
 </file>
 
+<file path="NEXT-SESSION-PROMPT.md">
+# Task: Region pipeline unification + verify v3.11.6
+
+## What was fixed in v3.11 → v3.11.6
+
+### v3.11: Verify callback crash + layout findings leak
+- Wrapped verifyPair() in try-catch inside processBatch (silent batch death)
+- Added alignmentElements + borderRadii to updatedData from iframe→parent
+- Filtered layout items by _regionContainerId before main scoring
+- Added layout items to _addRegionalBbox exclusion in viewer
+
+### v3.11.1: Region verify re-render + phantom error counts
+- Call MilgViewer.refreshRegionOverlays() after async region verify callback
+- Summary bar counts now filter by locator.bboxes presence
+
+### v3.11.3: Clean screenshot preview
+- Report preview now shows a single 240px thumbnail of the clean (as-rendered) screenshot
+- Previously showed expanded screenshot sections with carousel content overlaying the page
+
+### v3.11.4: Main verify excludes region rects + right-click fix
+- Added containerRect bounds check to renderVerifyOverlays — verify rects inside region containers excluded from main overlay
+- Right-click on verify rects cycles mask/zones debug layers (was showing generic debug menu)
+
+### v3.11.5: Region verify coordinate mismatch (ROOT CAUSE FIX)
+- **Root cause**: cropOffsetY was computed from extraction bboxes (pre-resize mini-page ~40002), but `__milgReReadBboxes()` mutated those same bbox objects during mask capture to post-resize coordinates (~9345). Verify results inherited the mutated bboxes → rects at y=-45945 (off-screen).
+- **Fix**: Compute cropOffset from DOM content bounds (same values used for actual canvas crop), not from extraction bboxes that get mutated. In `analyzer-region.js` lines 316-325.
+
+### v3.11.6: Full interaction parity for region verify rects
+- Right-click/double-click: cycle mask/zones debug layers
+- Click: cycle sample point dots (all/worst/P10/median/P90/best/off)
+- Hover: verify tooltip with nearest FG/BG sample colors and ratio
+- showVerifyTooltip accepts optional results array for region context
+
+## Testing v3.11.6
+1. Confirm header shows **v3.11.6**
+2. Run fink-translate.com → open viewer
+3. Select "Pixel Verified" or "Pixel Fails" filter:
+   - Main screenshot: NO verify rects in the carousel area (containerRect exclusion)
+   - Region section: verify overlay rects visible with correct positioning
+   - Right-click on region verify rect → cycles mask/zones
+   - Click on region verify rect → cycles sample dots
+   - Hover shows tooltip with FG/BG colors
+4. Select severity filter (e.g. "All"): region findings render correctly
+5. Preview thumbnail shows clean page (no carousel overlay)
+6. regionExcluded count in console log should be >0
+
+## Next: Region pipeline unification
+
+Deep analysis found these issues across the three analysis modes (URL, HTML paste, console snippet):
+
+### Issue 1: Console snippet missing cropOffset (HIGH)
+- **Location**: `docs/analyzer-snippet-screenshots.js` lines 331-335
+- Snippet region data uses `localBboxes` (relative coordinates) instead of `cropOffsetX/Y`
+- Pixel verify falls back to cropOffset=0, mapping to wrong canvas pixels
+- **Fix**: Apply the same content-bounds crop offset logic from `analyzer-region.js` lines 316-325
+
+### Issue 2: Inline fallback duplicates MilgRegion (MEDIUM)
+- **Location**: `docs/analyzer-iframe.js` lines 381-540
+- ~160 lines duplicate all of analyzer-region.js as a fallback
+- MilgRegion is always loaded (via script tag in analyzer.html), so fallback is dead code
+- **Fix**: Remove fallback, always use MilgRegion.getRegionFn()
+
+### Issue 3: Console snippet region data format mismatch (MEDIUM)
+- Snippet regions lack `extractedData` and `maskResults` fields
+- Viewer/verify code expects these → no regional findings or mask-based verify for snippet
+- **Fix**: Populate extractedData + maskResults in snippet region capture, matching iframe format
+
+### Priority order
+1. Add cropOffset to snippet regions (correctness)
+2. Remove inline fallback from analyzer-iframe.js (maintenance)
+3. Unify region data format across modes (completeness)
+
+## Key files
+| File | Role |
+|------|------|
+| `docs/analyzer-region.js` | Shared region detection module (MilgRegion) |
+| `docs/analyzer-iframe.js` | URL/HTML mode — uses MilgRegion + has inline fallback to remove |
+| `docs/analyzer-snippet-screenshots.js` | Console snippet — needs cropOffset + data format alignment |
+| `docs/analyzer-viewer.js` | Viewer overlays — region verify interactions added in v3.11.6 |
+| `docs/analyzer-contrast-verify.js` | Pixel verify — uses cropOffset for coordinate mapping |
+| `docs/analyzer.js` | Orchestrator — region scoring + verify kickoff |
+
+## Version
+Current: v3.11.6
+</file>
+
 <file path="tests/html-analysis.spec.js">
 // @ts-check
 const { test, expect } = require('@playwright/test');
@@ -35694,92 +35780,6 @@ test.describe('Preset Scoring', () => {
     });
   }
 });
-</file>
-
-<file path="NEXT-SESSION-PROMPT.md">
-# Task: Region pipeline unification + verify v3.11.6
-
-## What was fixed in v3.11 → v3.11.6
-
-### v3.11: Verify callback crash + layout findings leak
-- Wrapped verifyPair() in try-catch inside processBatch (silent batch death)
-- Added alignmentElements + borderRadii to updatedData from iframe→parent
-- Filtered layout items by _regionContainerId before main scoring
-- Added layout items to _addRegionalBbox exclusion in viewer
-
-### v3.11.1: Region verify re-render + phantom error counts
-- Call MilgViewer.refreshRegionOverlays() after async region verify callback
-- Summary bar counts now filter by locator.bboxes presence
-
-### v3.11.3: Clean screenshot preview
-- Report preview now shows a single 240px thumbnail of the clean (as-rendered) screenshot
-- Previously showed expanded screenshot sections with carousel content overlaying the page
-
-### v3.11.4: Main verify excludes region rects + right-click fix
-- Added containerRect bounds check to renderVerifyOverlays — verify rects inside region containers excluded from main overlay
-- Right-click on verify rects cycles mask/zones debug layers (was showing generic debug menu)
-
-### v3.11.5: Region verify coordinate mismatch (ROOT CAUSE FIX)
-- **Root cause**: cropOffsetY was computed from extraction bboxes (pre-resize mini-page ~40002), but `__milgReReadBboxes()` mutated those same bbox objects during mask capture to post-resize coordinates (~9345). Verify results inherited the mutated bboxes → rects at y=-45945 (off-screen).
-- **Fix**: Compute cropOffset from DOM content bounds (same values used for actual canvas crop), not from extraction bboxes that get mutated. In `analyzer-region.js` lines 316-325.
-
-### v3.11.6: Full interaction parity for region verify rects
-- Right-click/double-click: cycle mask/zones debug layers
-- Click: cycle sample point dots (all/worst/P10/median/P90/best/off)
-- Hover: verify tooltip with nearest FG/BG sample colors and ratio
-- showVerifyTooltip accepts optional results array for region context
-
-## Testing v3.11.6
-1. Confirm header shows **v3.11.6**
-2. Run fink-translate.com → open viewer
-3. Select "Pixel Verified" or "Pixel Fails" filter:
-   - Main screenshot: NO verify rects in the carousel area (containerRect exclusion)
-   - Region section: verify overlay rects visible with correct positioning
-   - Right-click on region verify rect → cycles mask/zones
-   - Click on region verify rect → cycles sample dots
-   - Hover shows tooltip with FG/BG colors
-4. Select severity filter (e.g. "All"): region findings render correctly
-5. Preview thumbnail shows clean page (no carousel overlay)
-6. regionExcluded count in console log should be >0
-
-## Next: Region pipeline unification
-
-Deep analysis found these issues across the three analysis modes (URL, HTML paste, console snippet):
-
-### Issue 1: Console snippet missing cropOffset (HIGH)
-- **Location**: `docs/analyzer-snippet-screenshots.js` lines 331-335
-- Snippet region data uses `localBboxes` (relative coordinates) instead of `cropOffsetX/Y`
-- Pixel verify falls back to cropOffset=0, mapping to wrong canvas pixels
-- **Fix**: Apply the same content-bounds crop offset logic from `analyzer-region.js` lines 316-325
-
-### Issue 2: Inline fallback duplicates MilgRegion (MEDIUM)
-- **Location**: `docs/analyzer-iframe.js` lines 381-540
-- ~160 lines duplicate all of analyzer-region.js as a fallback
-- MilgRegion is always loaded (via script tag in analyzer.html), so fallback is dead code
-- **Fix**: Remove fallback, always use MilgRegion.getRegionFn()
-
-### Issue 3: Console snippet region data format mismatch (MEDIUM)
-- Snippet regions lack `extractedData` and `maskResults` fields
-- Viewer/verify code expects these → no regional findings or mask-based verify for snippet
-- **Fix**: Populate extractedData + maskResults in snippet region capture, matching iframe format
-
-### Priority order
-1. Add cropOffset to snippet regions (correctness)
-2. Remove inline fallback from analyzer-iframe.js (maintenance)
-3. Unify region data format across modes (completeness)
-
-## Key files
-| File | Role |
-|------|------|
-| `docs/analyzer-region.js` | Shared region detection module (MilgRegion) |
-| `docs/analyzer-iframe.js` | URL/HTML mode — uses MilgRegion + has inline fallback to remove |
-| `docs/analyzer-snippet-screenshots.js` | Console snippet — needs cropOffset + data format alignment |
-| `docs/analyzer-viewer.js` | Viewer overlays — region verify interactions added in v3.11.6 |
-| `docs/analyzer-contrast-verify.js` | Pixel verify — uses cropOffset for coordinate mapping |
-| `docs/analyzer.js` | Orchestrator — region scoring + verify kickoff |
-
-## Version
-Current: v3.11.6
 </file>
 
 <file path="docs/analyzer-contrast-verify.js">
@@ -43217,7 +43217,7 @@ window.MilgIframe = (function() {
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.6 loaded');
+console.log('[milg] analyzer.js v3.11.7 loaded');
 
 (function() {
   "use strict";
@@ -44289,8 +44289,6 @@ console.log('[milg] analyzer.js v3.11.6 loaded');
 
     var pasteInput = document.getElementById('pasteInput');
     var analyzeBtn = document.getElementById('analyzeBtn');
-    var htmlInput = document.getElementById('htmlInput');
-    var analyzeHtmlBtn = document.getElementById('analyzeHtmlBtn');
     var reportContainer = document.getElementById('reportContainer');
     var inputSection = document.getElementById('inputSection');
     var snippetCode = document.getElementById('snippetCode');
@@ -44425,21 +44423,6 @@ console.log('[milg] analyzer.js v3.11.6 loaded');
         } catch(e) {
           showToast('Invalid JSON: ' + e.message);
         }
-      });
-    });
-
-    // Analyze pasted HTML
-    analyzeHtmlBtn.addEventListener('click', function() {
-      var html = htmlInput.value.trim();
-      if (!html) { showToast('Paste HTML source code first'); return; }
-      analyzeHtmlBtn.textContent = 'Analyzing...';
-      analyzeHtmlBtn.disabled = true;
-      var wantScreenshots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
-      MilgIframe.analyzeHtml(html, { screenshots: wantScreenshots }, function(data) {
-        analyzeHtmlBtn.textContent = 'Analyze HTML';
-        analyzeHtmlBtn.disabled = false;
-        data.meta._inputMethod = 'paste';
-        runAnalysis(data);
       });
     });
 
@@ -44710,7 +44693,6 @@ console.log('[milg] analyzer.js v3.11.6 loaded');
       }
       document.getElementById('reportActions').style.display = 'none'; document.getElementById('profileExplanation').style.display = 'none';
       var pi = document.getElementById('pasteInput'); if (pi) pi.value = '';
-      var hi = document.getElementById('htmlInput'); if (hi) hi.value = '';
       var ui = document.getElementById('urlInput'); if (ui) ui.value = '';
       var us = document.getElementById('urlStatus'); if (us) us.style.display = 'none';
       reportData = null;
@@ -45085,7 +45067,7 @@ console.log('[milg] analyzer.js v3.11.6 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.11.6</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.11.7</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -45093,7 +45075,6 @@ console.log('[milg] analyzer.js v3.11.6 loaded');
     <div class="input-tabs">
       <button class="tab-btn active" data-tab="tabUrl">Enter URL<br><span class="tab-sub">(mobile-friendly)</span></button>
       <button class="tab-btn" data-tab="tabSnippet">Console Snippet<br><span class="tab-sub">(most accurate)</span></button>
-      <button class="tab-btn" data-tab="tabHtml">Paste HTML<br><span class="tab-sub">(approximate)</span></button>
       <button class="tab-btn" data-tab="tabImport">Load Saved<br><span class="tab-sub">(re-open analysis)</span></button>
     </div>
 
@@ -45304,33 +45285,7 @@ console.log('[milg] analyzer.js v3.11.6 loaded');
       </div>
     </div>
 
-    <!-- Tab 2: Paste HTML -->
-    <div class="tab-content" id="tabHtml">
-      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;line-height:1.5;padding:10px 14px;background:var(--bg-alt);border:1px solid var(--border);border-radius:var(--radius);">
-        <strong style="color:var(--text)">Approximate mode.</strong>
-        This renders HTML in an iframe and reads computed styles. External fonts, images, and some CSS (relative URLs, @import chains) won't load — scores may differ from the live site.
-        Use the "Extract from Site" tab for accurate results.
-      </div>
-
-      <div class="console-tip" style="margin-bottom:16px;">
-        <strong>Grab page with CSS inlined:</strong> Open DevTools console (<code>F12</code>) and run:<br>
-        <code style="display:block;margin-top:6px;padding:6px 8px;word-break:break-all;white-space:pre-wrap">(async()=>{let c='';for(const s of document.styleSheets){try{c+=Array.from(s.cssRules).map(r=>r.cssText).join('\n')}catch(e){if(s.href){try{const r=await fetch(s.href);c+=await r.text()}catch(e2){}}}}const h=document.documentElement.cloneNode(true);h.querySelectorAll('script').forEach(s=>s.remove());h.querySelectorAll('link[rel=stylesheet]').forEach(l=>l.remove());const st=document.createElement('style');st.textContent=c;h.querySelector('head').appendChild(st);copy(h.outerHTML);console.log('%c✓ HTML + CSS copied!','color:#16a34a;font-weight:bold;font-size:14px')})()</code>
-        <span style="color:var(--text-secondary);font-size:12px;display:block;margin-top:4px">Inlines all external CSS into the HTML and strips scripts. Works behind logins, on SPAs, localhost.</span>
-      </div>
-
-      <div class="input-area">
-        <label for="htmlInput" class="sr-only">HTML source code</label>
-        <textarea id="htmlInput" placeholder='Paste HTML here...&#10;&#10;<div class="p-8 max-w-4xl mx-auto">&#10;  <h1 class="text-3xl font-bold">...</h1>&#10;</div>'></textarea>
-      </div>
-      <div class="input-actions">
-        <button class="btn btn-primary" id="analyzeHtmlBtn">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a8 8 0 0 0-8 8c0 3.4 2.1 6.3 5 7.5V20h6v-2.5c2.9-1.2 5-4.1 5-7.5a8 8 0 0 0-8-8z"/><line x1="10" y1="22" x2="14" y2="22"/></svg>
-          Analyze HTML
-        </button>
-      </div>
-    </div>
-
-    <!-- Tab 3: Load Saved Analysis -->
+    <!-- Tab 2: Load Saved Analysis -->
     <div class="tab-content" id="tabImport">
       <div class="import-dropzone" id="importDropzone">
         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--text-secondary);margin-bottom:12px">
@@ -45522,32 +45477,32 @@ console.log('[milg] analyzer.js v3.11.6 loaded');
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=3.11.6"></script>
-  <script src="scoring/contrast.js?v=3.11.6"></script>
-  <script src="scoring/typography.js?v=3.11.6"></script>
-  <script src="scoring/spacing.js?v=3.11.6"></script>
-  <script src="scoring/touch.js?v=3.11.6"></script>
-  <script src="scoring/accessibility.js?v=3.11.6"></script>
-  <script src="scoring/responsive.js?v=3.11.6"></script>
-  <script src="scoring/consistency.js?v=3.11.6"></script>
-  <script src="scoring/cognitive.js?v=3.11.6"></script>
-  <script src="scoring/layout.js?v=3.11.6"></script>
-  <script src="scoring/performance.js?v=3.11.6"></script>
-  <script src="scoring/readability.js?v=3.11.6"></script>
-  <script src="scoring/filters.js?v=3.11.6"></script>
-  <script src="scoring/balance.js?v=3.11.6"></script>
+  <script src="scoring/registry.js?v=3.11.7"></script>
+  <script src="scoring/contrast.js?v=3.11.7"></script>
+  <script src="scoring/typography.js?v=3.11.7"></script>
+  <script src="scoring/spacing.js?v=3.11.7"></script>
+  <script src="scoring/touch.js?v=3.11.7"></script>
+  <script src="scoring/accessibility.js?v=3.11.7"></script>
+  <script src="scoring/responsive.js?v=3.11.7"></script>
+  <script src="scoring/consistency.js?v=3.11.7"></script>
+  <script src="scoring/cognitive.js?v=3.11.7"></script>
+  <script src="scoring/layout.js?v=3.11.7"></script>
+  <script src="scoring/performance.js?v=3.11.7"></script>
+  <script src="scoring/readability.js?v=3.11.7"></script>
+  <script src="scoring/filters.js?v=3.11.7"></script>
+  <script src="scoring/balance.js?v=3.11.7"></script>
   <!-- Queue + Report rendering + UI -->
-  <script src="analyzer-queue.js?v=3.11.6"></script>
-  <script src="analyzer-report.js?v=3.11.6"></script>
-  <script src="analyzer-crawl.js?v=3.11.6"></script>
-  <script src="analyzer-extract.js?v=3.11.6"></script>
-  <script src="analyzer-region.js?v=3.11.6"></script>
-  <script src="analyzer-iframe.js?v=3.11.6"></script>
-  <script src="analyzer-proxy.js?v=3.11.6"></script>
-  <script src="analyzer-crawl-ui.js?v=3.11.6"></script>
-  <script src="analyzer-contrast-verify.js?v=3.11.6"></script>
-  <script src="analyzer-viewer.js?v=3.11.6"></script>
-  <script src="analyzer.js?v=3.11.6"></script>
+  <script src="analyzer-queue.js?v=3.11.7"></script>
+  <script src="analyzer-report.js?v=3.11.7"></script>
+  <script src="analyzer-crawl.js?v=3.11.7"></script>
+  <script src="analyzer-extract.js?v=3.11.7"></script>
+  <script src="analyzer-region.js?v=3.11.7"></script>
+  <script src="analyzer-iframe.js?v=3.11.7"></script>
+  <script src="analyzer-proxy.js?v=3.11.7"></script>
+  <script src="analyzer-crawl-ui.js?v=3.11.7"></script>
+  <script src="analyzer-contrast-verify.js?v=3.11.7"></script>
+  <script src="analyzer-viewer.js?v=3.11.7"></script>
+  <script src="analyzer.js?v=3.11.7"></script>
 </body>
 </html>
 </file>

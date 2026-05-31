@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.6 loaded');
+console.log('[milg] analyzer.js v3.11.7 loaded');
 
 (function() {
   "use strict";
@@ -1074,8 +1074,6 @@ console.log('[milg] analyzer.js v3.11.6 loaded');
 
     var pasteInput = document.getElementById('pasteInput');
     var analyzeBtn = document.getElementById('analyzeBtn');
-    var htmlInput = document.getElementById('htmlInput');
-    var analyzeHtmlBtn = document.getElementById('analyzeHtmlBtn');
     var reportContainer = document.getElementById('reportContainer');
     var inputSection = document.getElementById('inputSection');
     var snippetCode = document.getElementById('snippetCode');
@@ -1210,21 +1208,6 @@ console.log('[milg] analyzer.js v3.11.6 loaded');
         } catch(e) {
           showToast('Invalid JSON: ' + e.message);
         }
-      });
-    });
-
-    // Analyze pasted HTML
-    analyzeHtmlBtn.addEventListener('click', function() {
-      var html = htmlInput.value.trim();
-      if (!html) { showToast('Paste HTML source code first'); return; }
-      analyzeHtmlBtn.textContent = 'Analyzing...';
-      analyzeHtmlBtn.disabled = true;
-      var wantScreenshots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
-      MilgIframe.analyzeHtml(html, { screenshots: wantScreenshots }, function(data) {
-        analyzeHtmlBtn.textContent = 'Analyze HTML';
-        analyzeHtmlBtn.disabled = false;
-        data.meta._inputMethod = 'paste';
-        runAnalysis(data);
       });
     });
 
@@ -1495,7 +1478,6 @@ console.log('[milg] analyzer.js v3.11.6 loaded');
       }
       document.getElementById('reportActions').style.display = 'none'; document.getElementById('profileExplanation').style.display = 'none';
       var pi = document.getElementById('pasteInput'); if (pi) pi.value = '';
-      var hi = document.getElementById('htmlInput'); if (hi) hi.value = '';
       var ui = document.getElementById('urlInput'); if (ui) ui.value = '';
       var us = document.getElementById('urlStatus'); if (us) us.style.display = 'none';
       reportData = null;
