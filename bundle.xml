@@ -75,6 +75,9 @@ docs/
     touch.js
     typography.js
   tests/
+    fixtures/
+      bbox-test.html
+      carousel.html
     edge-a11y.html
     edge-contrast.html
     edge-gradients.html
@@ -166,17 +169,6 @@ systems/
   building-a-system.md
   design-tokens.md
   material-design-3.md
-test-results/
-  region-debug/
-    clean-screenshot.webp
-    console-logs.txt
-    region-0.webp
-    report-dump.json
-    svg-state.json
-    viewer-indicator-area.png
-    viewer-region-section.png
-    viewer-with-overlays.png
-  .last-run.json
 tests/
   contrast-and-palette.test.mjs
   crawl-flow.test.mjs
@@ -6808,6 +6800,67 @@ function scoreTypography(data) {
 })();
 </file>
 
+<file path="docs/tests/fixtures/bbox-test.html">
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+body { margin: 0; font-family: sans-serif; background: #fff; }
+.hero { background: linear-gradient(135deg, #1e3a5f 0%, #4a90d9 100%); padding: 60px 40px; }
+.hero h1 { color: #fff; font-size: 36px; margin: 0; }
+.hero p { color: #aab; font-size: 16px; margin: 8px 0 0; }
+section { padding: 40px; }
+.card { background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 16px 0; }
+.card h2 { color: #333; font-size: 24px; margin: 0 0 8px; }
+.card p { color: #666; font-size: 14px; line-height: 1.6; }
+.btn { display: inline-block; padding: 8px 16px; background: #2563eb; color: #fff; border: none; border-radius: 4px; font-size: 14px; cursor: pointer; }
+.btn-ghost { background: transparent; color: #999; border: 1px solid #ddd; padding: 4px 8px; font-size: 11px; }
+footer { background: #1e293b; color: #94a3b8; padding: 20px 40px; font-size: 12px; }
+footer a { color: #64748b; text-decoration: none; margin-right: 12px; }
+</style></head><body>
+<div class="hero"><h1>Test Page</h1><p>Subtitle with questionable contrast</p></div>
+<section>
+<div class="card"><h2>Card Title</h2><p>Some body text that should have good contrast and reasonable line length for readability scoring.</p></div>
+<button class="btn">Primary Action</button>
+<button class="btn-ghost">Tiny ghost</button>
+</section>
+<footer><a href="#">Privacy</a><a href="#">Terms</a><a href="#">Contact</a></footer>
+</body></html>
+</file>
+
+<file path="docs/tests/fixtures/carousel.html">
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Carousel Test</title>
+<style>
+  body { font-family: sans-serif; margin: 0; padding: 20px; background: #fff; }
+  .carousel-container { overflow: hidden; width: 400px; position: relative; }
+  .carousel-inner { position: relative; }
+  .carousel-track-container { position: relative; }
+  .carousel-track { display: flex; transform: translateX(-400px); transition: transform 0.5s ease; }
+  .carousel-slide { min-width: 400px; padding: 20px; box-sizing: border-box; }
+  .slide-1 { background: #f0f0f0; }
+  .slide-2 { background: #e0e0ff; }
+  .slide-3 { background: #ffe0e0; }
+  h2 { color: #111; margin: 0 0 8px; }
+  p { color: #333; }
+</style></head><body>
+  <h1>Carousel Test Page</h1>
+  <a href="#n">Skip nav</a>
+  <div class="carousel-container">
+    <div class="carousel-inner">
+      <div class="carousel-track-container">
+        <div class="carousel-track">
+          <div class="carousel-slide slide-1"><h2>Slide One</h2><p>First slide content here.</p></div>
+          <div class="carousel-slide slide-2"><h2>Slide Two</h2><p>Second slide visible.</p></div>
+          <div class="carousel-slide slide-3"><h2>Slide Three</h2><p>Third slide content.</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <img src="#fragment" alt="fragment-only test">
+  <p>Below the carousel.</p>
+</body></html>
+</file>
+
 <file path="docs/tests/edge-a11y.html">
 <!-- Edge Case: Accessibility Checks -->
 <!-- Tests: semantic HTML, headings, alt text, labels, focus, lang, skip link, ARIA, link text, autocomplete, color-only -->
@@ -7800,7 +7853,7 @@ run();
 <file path="docs/tests/test-bbox-viewer.js">
 #!/usr/bin/env node
 // E2E test: bbox data, screenshot metadata, viewer, and contrast verification
-// Tests all three input paths: HTML paste, URL fetch, and console snippet output
+// Tests input paths: URL fetch (real user path) and console snippet output.
 // Requires: puppeteer, a local HTTP server on port 8787
 
 var http = require('http');
@@ -7880,9 +7933,9 @@ async function run() {
 
   try {
     // ============================================================
-    console.log('\n--- Test 1: HTML Paste with Screenshots ---');
+    console.log('\n--- Test 1: URL Analysis with Screenshots ---');
     // ============================================================
-    await testHtmlPaste(browser);
+    await testUrlAnalysis(browser);
 
     // ============================================================
     console.log('\n--- Test 2: Console Snippet Output (JSON paste) ---');
@@ -7918,32 +7971,31 @@ async function run() {
   process.exit(failed > 0 ? 1 : 0);
 }
 
-// Test 1: Paste HTML, enable screenshots, verify report has bbox + meta + viewer
-async function testHtmlPaste(browser) {
+// Test 1: Analyze via URL mode (the real user path), enable screenshots,
+// verify report has bbox + meta + viewer. The test page is served as a
+// fixture file (docs/tests/fixtures/bbox-test.html) and fetched directly
+// (same-origin localhost → MilgProxy direct fetch, no external CORS proxy).
+async function testUrlAnalysis(browser) {
   var page = await browser.newPage();
   await page.setViewport({ width: 1280, height: 900 });
   await page.goto(BASE + '/analyzer.html', { waitUntil: 'networkidle0', timeout: 15000 });
-
-  // Click HTML tab
-  await page.click('[data-tab="tabHtml"]');
-  await page.waitForSelector('#htmlInput', { visible: true });
 
   // Ensure screenshots checkbox is checked
   var ssChecked = await page.$eval('#screenshotCheck', function(el) { return el.checked; });
   assert(ssChecked, 'Screenshot checkbox is checked by default');
 
-  // Paste test HTML
-  await page.evaluate(function(html) { document.getElementById('htmlInput').value = html; }, TEST_HTML);
+  // Click URL tab and analyze the served fixture
+  await page.click('[data-tab="tabUrl"]');
+  await page.waitForSelector('#urlInput', { visible: true });
+  await page.evaluate(function(url) { document.getElementById('urlInput').value = url; }, BASE + '/tests/fixtures/bbox-test.html');
+  await page.click('#analyzeUrlBtn');
 
-  // Click Analyze HTML
-  await page.click('#analyzeHtmlBtn');
-
-  // Wait for report to appear (up to 30s for screenshots)
-  await page.waitForSelector('.report-container.visible', { timeout: 30000 });
+  // Wait for report to appear (URL fetch + render + screenshots)
+  await page.waitForSelector('.report-container.visible', { timeout: 60000 });
 
   // Check that report rendered
   var hasReport = await page.$('.report-header');
-  assert(hasReport, 'Report rendered after HTML paste');
+  assert(hasReport, 'Report rendered after URL analysis');
 
   // Check for screenshot section
   var hasScreenshots = await page.$('.report-screenshots');
@@ -23896,779 +23948,6 @@ Are you building for Android/Google platforms?
 *Related: [Color Systems](../color/color-systems.md) | [Design Tokens](design-tokens.md) | [Animation Timing](../interaction/animation-timing.md)*
 </file>
 
-<file path="test-results/region-debug/console-logs.txt">
-[milg] analyzer.js v3.6 loaded
-Access to fetch at 'https://www.fink-translate.com/' from origin 'http://localhost:8384' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
-Failed to load resource: net::ERR_FAILED
-Failed to load resource: the server responded with a status of 403 ()
-Access to fetch at 'https://api.allorigins.win/raw?url=https%3A%2F%2Fwww.fink-translate.com%2F' from origin 'http://localhost:8384' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
-Failed to load resource: net::ERR_FAILED
-An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
-[milg-iframe] No fonts to inline (loaded: 0, cache: 0)
-[iframe-ss] Phase 1: Pre-scrolling 4458px (5 steps, vh=900) ...
-[iframe-ss] scroll to 0 → actual=0
-[iframe-ss] scroll to 900 → actual=900
-[iframe-ss] scroll to 1800 → actual=1800
-[iframe-ss] scroll to 2700 → actual=2700
-[iframe-ss] scroll to 3600 → actual=3558
-[iframe-ss] Phase 1 done (scrollY=3558). Waiting for content...
-[iframe-ss] Force-revealed 4 scroll-animated elements (IO disabled in offscreen iframes)
-[iframe-ss] Phase 2: Waiting for animations to finalize...
-[iframe-ss] Re-read bboxes: 595/595
-[iframe-ss] scrollHeight=4458 vh=900
-[iframe-ss] Preloading 6 cross-origin images via proxy
-Failed to load resource: the server responded with a status of 403 ()
-[iframe-ss] Image preload failed: https://www.fink-translate.com/assets/fink-logo.png 403
-Failed to load resource: the server responded with a status of 403 ()
-[iframe-ss] Image preload failed: https://www.fink-translate.com/assets/fink-canvas.png 403
-Failed to load resource: the server responded with a status of 403 ()
-[iframe-ss] Image preload failed: https://www.fink-translate.com/assets/fink-logo.webp 403
-Failed to load resource: the server responded with a status of 403 ()
-[iframe-ss] Image preload failed: https://www.fink-translate.com/assets/fink-back-translation.png 403
-Failed to load resource: the server responded with a status of 403 ()
-[iframe-ss] Image preload failed: https://www.fink-translate.com/assets/fink-canvas.webp 403
-Failed to load resource: the server responded with a status of 403 ()
-[iframe-ss] Image preload failed: https://www.fink-translate.com/assets/fink-back-translation.webp 403
-[iframe-ss] Capturing clean screenshot at 1.5x...
-Failed to load resource: the server responded with a status of 403 ()
-Failed to load resource: the server responded with a status of 403 ()
-Failed to load resource: the server responded with a status of 403 ()
-[iframe-ss] Clean screenshot: 1920x6687
-[iframe-ss] Tagged 6 clipping containers for region exclusion
-[milg-region] Found 1 clipping regions
-[milg-region] Content bounds: 14,9932 → 1036,10431 (doc: 1618x50934)
-[milg-region] Cropped 2427x15576 → 1593x708
-[milg-region] Region screenshots done: 1/1
-[iframe-ss] Expanded 1 overflow:hidden containers with transformed descendants
-[iframe-ss] Re-read bboxes after expansion: 587/587
-[iframe-ss] Capturing expanded screenshot at 1.5x...
-Failed to load resource: the server responded with a status of 403 ()
-Failed to load resource: the server responded with a status of 403 ()
-Failed to load resource: the server responded with a status of 403 ()
-[iframe-ss] Expanded screenshot: 1920x6687
-[iframe-ss] Font prep: 0 API fonts, 0 CSS @font-face rules
-[iframe-ss] Step 2: Layered masks (fonts: 0 loaded)...
-[iframe-ss] Neutralized 2 overlays
-[iframe-ss] Re-read bboxes post-neutralize: 587/587
-[iframe-ss] Re-read bboxes post-mask-style: 587/587
-[iframe-ss] 116 elements in 2 layers
-[iframe-ss] Baked text-transform for 10 text nodes
-[iframe-ss] Layer 1: 111 elements
-[iframe-ss] Layer 1: starting domToCanvas...
-Failed to load resource: the server responded with a status of 403 ()
-Failed to load resource: the server responded with a status of 403 ()
-Failed to load resource: the server responded with a status of 403 ()
-[iframe-ss] Layer 1 captured: 1920x6687
-Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently
-[iframe-ss] Layer 1: 2 elements used fillText fallback mask
-[iframe-ss] Layer 2: 5 elements
-[iframe-ss] Layer 2: starting domToCanvas...
-Failed to load resource: the server responded with a status of 403 ()
-Failed to load resource: the server responded with a status of 403 ()
-Failed to load resource: the server responded with a status of 403 ()
-[iframe-ss] Layer 2 captured: 1920x6687
-Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently
-[iframe-ss] Layer 2: 1 elements used fillText fallback mask
-[iframe-ss] All 2 mask layers done
-[iframe-ss] Sending results (maskResults: 88 pairs)
-[iframe-ss] postMessage: ss=558KB ud=632KB masks=88/116
-Failed to load resource: the server responded with a status of 403 ()
-Failed to load resource: the server responded with a status of 403 ()
-Failed to load resource: the server responded with a status of 403 ()
-[milg-viewer] Region 0 overlays: 35 findings, 160 rects, filter=severity:all, scale=1.5, crop=0,75573, viewBox=0 0 1593 708
-</file>
-
-<file path="test-results/region-debug/report-dump.json">
-{
-  "regionCount": 1,
-  "regions": [
-    {
-      "index": 0,
-      "hasScreenshot": true,
-      "screenshotLen": 73103,
-      "screenshotMeta": {
-        "scale": 1.5,
-        "canvasWidth": 1593,
-        "canvasHeight": 708,
-        "cropOffsetX": 0,
-        "cropOffsetY": 75573
-      },
-      "pairIndices": [
-        65,
-        60,
-        104,
-        33,
-        1,
-        61,
-        2,
-        101,
-        9,
-        30,
-        66,
-        10,
-        7,
-        103,
-        105,
-        47,
-        8,
-        106,
-        37,
-        107,
-        14,
-        108,
-        45,
-        109,
-        110,
-        38,
-        71,
-        39,
-        72,
-        40,
-        73,
-        41,
-        74,
-        111,
-        42,
-        112,
-        43,
-        113,
-        44,
-        114
-      ],
-      "localBboxes": {},
-      "containerRect": {
-        "left": 744,
-        "top": 2154,
-        "width": 350,
-        "height": 467
-      },
-      "hasExtractedData": true,
-      "extractedPairCount": 60,
-      "hasRegionReport": true,
-      "regionScore": 82
-    }
-  ],
-  "clippedPairCount": 40,
-  "clippedPairs": [
-    {
-      "index": 1,
-      "isClipped": true,
-      "bbox": {
-        "left": 781,
-        "top": 2309,
-        "width": 276,
-        "height": 16
-      },
-      "selector": "span.mock-label",
-      "text": "Current:",
-      "ratio": 2.43,
-      "passes": false
-    },
-    {
-      "index": 2,
-      "isClipped": true,
-      "bbox": {
-        "left": 781,
-        "top": 2358,
-        "width": 276,
-        "height": 16
-      },
-      "selector": "span.mock-label",
-      "text": "Suggested:",
-      "ratio": 2.43,
-      "passes": false
-    },
-    {
-      "index": 7,
-      "isClipped": true,
-      "bbox": {
-        "left": 1159,
-        "top": 2631,
-        "width": 250,
-        "height": 16
-      },
-      "selector": "span.mock-label",
-      "text": "Changed to:",
-      "ratio": 2.43,
-      "passes": false
-    },
-    {
-      "index": 8,
-      "isClipped": true,
-      "bbox": {
-        "left": 1565,
-        "top": 2259,
-        "width": 108,
-        "height": 17
-      },
-      "selector": "span.mock-status-sub:nth-of-type(2)",
-      "text": "Issues detected (10)",
-      "ratio": 2.45,
-      "passes": false
-    },
-    {
-      "index": 9,
-      "isClipped": true,
-      "bbox": {
-        "left": 771,
-        "top": 2409,
-        "width": 296,
-        "height": 34
-      },
-      "selector": "p.mock-explanation",
-      "text": "Native English omits the noun form; a si",
-      "ratio": 2.54,
-      "passes": false
-    },
-    {
-      "index": 10,
-      "isClipped": true,
-      "bbox": {
-        "left": 758,
-        "top": 2502,
-        "width": 322,
-        "height": 37
-      },
-      "selector": "p.mock-text.mock-text-muted:nth-of-type(2)",
-      "text": "Please do not hesitate to contact us if ",
-      "ratio": 2.54,
-      "passes": false
-    },
-    {
-      "index": 14,
-      "isClipped": true,
-      "bbox": {
-        "left": 1458,
-        "top": 2343,
-        "width": 48,
-        "height": 18
-      },
-      "selector": "span.mock-breakdown-label.mock-breakdown-label-orange:nth-of-type(1)",
-      "text": "Major",
-      "ratio": 3.19,
-      "passes": false
-    },
-    {
-      "index": 30,
-      "isClipped": true,
-      "bbox": {
-        "left": 771,
-        "top": 2451,
-        "width": 144,
-        "height": 26
-      },
-      "selector": "button.mock-btn.mock-btn-primary:nth-of-type(1)",
-      "text": "✓ Apply",
-      "ratio": 4.35,
-      "passes": false
-    },
-    {
-      "index": 33,
-      "isClipped": true,
-      "bbox": {
-        "left": 771,
-        "top": 2260,
-        "width": 296,
-        "height": 33
-      },
-      "selector": "p.mock-popover-desc",
-      "text": "Literal translation of 「努力します」 sounds st",
-      "ratio": 4.83,
-      "passes": true
-    },
-    {
-      "index": 37,
-      "isClipped": true,
-      "bbox": {
-        "left": 1458,
-        "top": 2319,
-        "width": 48,
-        "height": 18
-      },
-      "selector": "span.mock-breakdown-label.mock-breakdown-label-red:nth-of-type(1)",
-      "text": "Critical",
-      "ratio": 4.83,
-      "passes": true
-    },
-    {
-      "index": 38,
-      "isClipped": true,
-      "bbox": {
-        "left": 1458,
-        "top": 2417,
-        "width": 66,
-        "height": 18
-      },
-      "selector": "span.mock-issue-type-name:nth-of-type(1)",
-      "text": "Naturalness",
-      "ratio": 4.83,
-      "passes": true
-    },
-    {
-      "index": 39,
-      "isClipped": true,
-      "bbox": {
-        "left": 1458,
-        "top": 2442,
-        "width": 67,
-        "height": 18
-      },
-      "selector": "span.mock-issue-type-name:nth-of-type(1)",
-      "text": "Terminology",
-      "ratio": 4.83,
-      "passes": true
-    },
-    {
-      "index": 40,
-      "isClipped": true,
-      "bbox": {
-        "left": 1458,
-        "top": 2467,
-        "width": 51,
-        "height": 18
-      },
-      "selector": "span.mock-issue-type-name:nth-of-type(1)",
-      "text": "Omission",
-      "ratio": 4.83,
-      "passes": true
-    },
-    {
-      "index": 41,
-      "isClipped": true,
-      "bbox": {
-        "left": 1458,
-        "top": 2492,
-        "width": 51,
-        "height": 18
-      },
-      "selector": "span.mock-issue-type-name:nth-of-type(1)",
-      "text": "Formality",
-      "ratio": 4.83,
-      "passes": true
-    },
-    {
-      "index": 42,
-      "isClipped": true,
-      "bbox": {
-        "left": 1458,
-        "top": 2553,
-        "width": 85,
-        "height": 18
-      },
-      "selector": "span.mock-summary-label:nth-of-type(1)",
-      "text": "Issues resolved",
-      "ratio": 4.83,
-      "passes": true
-    },
-    {
-      "index": 43,
-      "isClipped": true,
-      "bbox": {
-        "left": 1458,
-        "top": 2575,
-        "width": 121,
-        "height": 18
-      },
-      "selector": "span.mock-summary-label:nth-of-type(1)",
-      "text": "• Suggestions applied",
-      "ratio": 4.83,
-      "passes": true
-    },
-    {
-      "index": 44,
-      "isClipped": true,
-      "bbox": {
-        "left": 1458,
-        "top": 2598,
-        "width": 102,
-        "height": 18
-      },
-      "selector": "span.mock-summary-label:nth-of-type(1)",
-      "text": "• Issues dismissed",
-      "ratio": 4.83,
-      "passes": true
-    },
-    {
-      "index": 45,
-      "isClipped": true,
-      "bbox": {
-        "left": 1458,
-        "top": 2367,
-        "width": 48,
-        "height": 18
-      },
-      "selector": "span.mock-breakdown-label.mock-breakdown-label-amber:nth-of-type(1)",
-      "text": "Minor",
-      "ratio": 5.02,
-      "passes": true
-    },
-    {
-      "index": 47,
-      "isClipped": true,
-      "bbox": {
-        "left": 1572,
-        "top": 2235,
-        "width": 95,
-        "height": 19
-      },
-      "selector": "span.mock-status-title.mock-status-title-warning:nth-of-type(1)",
-      "text": "Needs Review",
-      "ratio": 6.84,
-      "passes": true
-    },
-    {
-      "index": 60,
-      "isClipped": true,
-      "bbox": {
-        "left": 802,
-        "top": 2181,
-        "width": 92,
-        "height": 16
-      },
-      "selector": "span.mock-highlight",
-      "text": "make efforts to",
-      "ratio": 9.3,
-      "passes": true
-    },
-    {
-      "index": 61,
-      "isClipped": true,
-      "bbox": {
-        "left": 781,
-        "top": 2326,
-        "width": 276,
-        "height": 18
-      },
-      "selector": "p.mock-val",
-      "text": "make efforts to",
-      "ratio": 9.86,
-      "passes": true
-    },
-    {
-      "index": 65,
-      "isClipped": true,
-      "bbox": {
-        "left": 758,
-        "top": 2179,
-        "width": 322,
-        "height": 39
-      },
-      "selector": "p.mock-text:nth-of-type(1)",
-      "text": "We will make efforts to respond to your ",
-      "ratio": 10.31,
-      "passes": true
-    },
-    {
-      "index": 66,
-      "isClipped": true,
-      "bbox": {
-        "left": 921,
-        "top": 2451,
-        "width": 146,
-        "height": 26
-      },
-      "selector": "button.mock-btn.mock-btn-outline:nth-of-type(2)",
-      "text": "✗ Dismiss",
-      "ratio": 10.31,
-      "passes": true
-    },
-    {
-      "index": 71,
-      "isClipped": true,
-      "bbox": {
-        "left": 1759,
-        "top": 2416,
-        "width": 21,
-        "height": 20
-      },
-      "selector": "span.mock-badge:nth-of-type(2)",
-      "text": "4",
-      "ratio": 10.31,
-      "passes": true
-    },
-    {
-      "index": 72,
-      "isClipped": true,
-      "bbox": {
-        "left": 1759,
-        "top": 2441,
-        "width": 21,
-        "height": 20
-      },
-      "selector": "span.mock-badge:nth-of-type(2)",
-      "text": "3",
-      "ratio": 10.31,
-      "passes": true
-    },
-    {
-      "index": 73,
-      "isClipped": true,
-      "bbox": {
-        "left": 1759,
-        "top": 2466,
-        "width": 21,
-        "height": 20
-      },
-      "selector": "span.mock-badge:nth-of-type(2)",
-      "text": "2",
-      "ratio": 10.31,
-      "passes": true
-    },
-    {
-      "index": 74,
-      "isClipped": true,
-      "bbox": {
-        "left": 1759,
-        "top": 2490,
-        "width": 21,
-        "height": 20
-      },
-      "selector": "span.mock-badge:nth-of-type(2)",
-      "text": "1",
-      "ratio": 10.31,
-      "passes": true
-    },
-    {
-      "index": 101,
-      "isClipped": true,
-      "bbox": {
-        "left": 781,
-        "top": 2375,
-        "width": 276,
-        "height": 18
-      },
-      "selector": "p.mock-val.mock-val-bold",
-      "text": "strive to",
-      "ratio": 14.67,
-      "passes": true
-    },
-    {
-      "index": 103,
-      "isClipped": true,
-      "bbox": {
-        "left": 1159,
-        "top": 2648,
-        "width": 250,
-        "height": 18
-      },
-      "selector": "p.mock-val.mock-val-bold",
-      "text": "Please verify the test results.",
-      "ratio": 14.67,
-      "passes": true
-    },
-    {
-      "index": 104,
-      "isClipped": true,
-      "bbox": {
-        "left": 771,
-        "top": 2243,
-        "width": 296,
-        "height": 14
-      },
-      "selector": "h4.mock-popover-heading",
-      "text": "Naturalness — Major",
-      "ratio": 15.33,
-      "passes": true
-    },
-    {
-      "index": 105,
-      "isClipped": true,
-      "bbox": {
-        "left": 1458,
-        "top": 2168,
-        "width": 322,
-        "height": 13
-      },
-      "selector": "h5.mock-section-heading",
-      "text": "Quality Status",
-      "ratio": 15.33,
-      "passes": true
-    },
-    {
-      "index": 106,
-      "isClipped": true,
-      "bbox": {
-        "left": 1458,
-        "top": 2299,
-        "width": 322,
-        "height": 13
-      },
-      "selector": "h5.mock-section-heading",
-      "text": "Issue Breakdown",
-      "ratio": 15.33,
-      "passes": true
-    },
-    {
-      "index": 107,
-      "isClipped": true,
-      "bbox": {
-        "left": 1766,
-        "top": 2319,
-        "width": 14,
-        "height": 18
-      },
-      "selector": "span.mock-breakdown-count:nth-of-type(2)",
-      "text": "2",
-      "ratio": 15.33,
-      "passes": true
-    },
-    {
-      "index": 108,
-      "isClipped": true,
-      "bbox": {
-        "left": 1766,
-        "top": 2343,
-        "width": 14,
-        "height": 18
-      },
-      "selector": "span.mock-breakdown-count:nth-of-type(2)",
-      "text": "5",
-      "ratio": 15.33,
-      "passes": true
-    },
-    {
-      "index": 109,
-      "isClipped": true,
-      "bbox": {
-        "left": 1766,
-        "top": 2367,
-        "width": 14,
-        "height": 18
-      },
-      "selector": "span.mock-breakdown-count:nth-of-type(2)",
-      "text": "3",
-      "ratio": 15.33,
-      "passes": true
-    },
-    {
-      "index": 110,
-      "isClipped": true,
-      "bbox": {
-        "left": 1458,
-        "top": 2396,
-        "width": 322,
-        "height": 13
-      },
-      "selector": "h5.mock-section-heading",
-      "text": "Top Issue Types",
-      "ratio": 15.33,
-      "passes": true
-    },
-    {
-      "index": 111,
-      "isClipped": true,
-      "bbox": {
-        "left": 1458,
-        "top": 2533,
-        "width": 322,
-        "height": 13
-      },
-      "selector": "h5.mock-section-heading",
-      "text": "Review Summary",
-      "ratio": 15.33,
-      "passes": true
-    },
-    {
-      "index": 112,
-      "isClipped": true,
-      "bbox": {
-        "left": 1773,
-        "top": 2553,
-        "width": 8,
-        "height": 18
-      },
-      "selector": "span.mock-summary-val:nth-of-type(2)",
-      "text": "6",
-      "ratio": 15.33,
-      "passes": true
-    },
-    {
-      "index": 113,
-      "isClipped": true,
-      "bbox": {
-        "left": 1773,
-        "top": 2575,
-        "width": 8,
-        "height": 18
-      },
-      "selector": "span.mock-summary-val:nth-of-type(2)",
-      "text": "4",
-      "ratio": 15.33,
-      "passes": true
-    },
-    {
-      "index": 114,
-      "isClipped": true,
-      "bbox": {
-        "left": 1773,
-        "top": 2598,
-        "width": 8,
-        "height": 18
-      },
-      "selector": "span.mock-summary-val:nth-of-type(2)",
-      "text": "2",
-      "ratio": 15.33,
-      "passes": true
-    }
-  ],
-  "totalPairs": 116,
-  "allPairsWithBbox": 116,
-  "screenshotMeta": {
-    "scale": 1.5,
-    "viewportHeight": 900,
-    "sectionCount": 1,
-    "canvasWidth": 1920,
-    "canvasHeight": 6687,
-    "docHeightAtCapture": 4458,
-    "calibrationOffsetY": 0,
-    "calibrationSamples": []
-  },
-  "cleanMeta": {
-    "canvasWidth": 1920,
-    "canvasHeight": 6687
-  },
-  "hasCleanScreenshot": true,
-  "hasExpandedScreenshot": true
-}
-</file>
-
-<file path="test-results/region-debug/svg-state.json">
-{
-  "totalRects": 236,
-  "regionIndicatorCount": 1,
-  "regionIndicators": [
-    {
-      "class": "milg-region-indicator-0",
-      "x": "1116",
-      "y": "3231",
-      "width": "525",
-      "height": "701",
-      "stroke": "#3b82f6"
-    }
-  ],
-  "textCount": 1,
-  "texts": [
-    {
-      "x": "1128",
-      "y": "3261",
-      "fontSize": "21",
-      "content": "Hidden content — 40 contrast pairs ↓"
-    }
-  ],
-  "viewBox": "0 0 1920 6687",
-  "svgWidth": 1216,
-  "svgHeight": 4235.09375
-}
-</file>
-
-<file path="test-results/.last-run.json">
-{
-  "status": "passed",
-  "failedTests": []
-}
-</file>
-
 <file path="tests/contrast-and-palette.test.mjs">
 /**
  * Contrast & Color Palette Visibility Tests
@@ -28957,6 +28236,10 @@ package-lock.json
 # Local environment (proxy URL etc.)
 .env
 
+# Playwright test output artifacts (regenerated)
+test-results/
+playwright-report/
+
 # Claude Code commands (local skills, not shared)
 .claude/
 </file>
@@ -31539,6 +30822,226 @@ window.MilgExtract = (function() {
 })();
 </file>
 
+<file path="docs/analyzer-proxy.js">
+// make-it-look-good — CORS Proxy & JS-Enabled Analysis
+// Handles URL fetching via proxy chain and "Try with JS" mode.
+// Depends on: analyzer-iframe.js (MilgIframe)
+
+window.MilgProxy = (function() {
+  "use strict";
+
+  var _corsProxyUrl = '';
+  var _showToast = function() {};
+  var _showProgress = function() {};
+  var _hideProgress = function() {};
+  var _runAnalysis = function() {};
+
+  function init(opts) {
+    if (opts.corsProxyUrl) _corsProxyUrl = opts.corsProxyUrl;
+    if (opts.showToast) _showToast = opts.showToast;
+    if (opts.showProgress) _showProgress = opts.showProgress;
+    if (opts.hideProgress) _hideProgress = opts.hideProgress;
+    if (opts.runAnalysis) _runAnalysis = opts.runAnalysis;
+  }
+
+  // --- URL Fetch via CORS proxy ---
+  // Remembers which proxy worked so subsequent requests (CSS files etc.) skip failed ones
+  var _lastWorkingProxy = -1; // -1 = direct, 0+ = proxy index
+
+  function buildProxyList() {
+    var proxies = [];
+    if (_corsProxyUrl) proxies.push(_corsProxyUrl + '?url=');
+    proxies.push(
+      'https://api.allorigins.win/raw?url=',
+      'https://api.codetabs.com/v1/proxy?quest=',
+      'https://corsproxy.io/?'
+    );
+    return proxies;
+  }
+
+  function fetchWithProxy(url) {
+    var proxies = buildProxyList();
+
+    // If we already know which proxy works, try it first
+    if (_lastWorkingProxy >= 0 && _lastWorkingProxy < proxies.length) {
+      return fetch(proxies[_lastWorkingProxy] + encodeURIComponent(url))
+        .then(function(r) { if (!r.ok) throw new Error(r.status); return r.text(); })
+        .then(function(t) { if (!t || t.length < 50) throw new Error('empty'); return t; })
+        .catch(function() {
+          // Last working proxy failed — reset and try full chain
+          _lastWorkingProxy = -1;
+          return fetchWithProxyFull(url, proxies);
+        });
+    }
+
+    return fetchWithProxyFull(url, proxies);
+  }
+
+  function fetchWithProxyFull(url, proxies) {
+    // Try direct fetch first
+    return fetch(url, { mode: 'cors', redirect: 'follow' })
+      .then(function(r) { if (r.ok) return r.text(); throw new Error(r.status); })
+      .then(function(t) { _lastWorkingProxy = -1; return t; })
+      .catch(function() {
+        // Try proxies in order, remember which one works
+        var chain = Promise.reject();
+        proxies.forEach(function(proxyBase, idx) {
+          chain = chain.catch(function() {
+            return fetch(proxyBase + encodeURIComponent(url)).then(function(r) {
+              if (!r.ok) throw new Error(r.status);
+              return r.text();
+            }).then(function(t) {
+              if (!t || t.length < 50) throw new Error('empty');
+              _lastWorkingProxy = idx;
+              return t;
+            });
+          });
+        });
+        return chain;
+      });
+  }
+
+  function fetchViaProxy(url, callback) {
+    fetchWithProxy(url)
+      .then(function(html) {
+        // Detect proxy error pages (Cloudflare challenges, 4xx/5xx error pages, consent walls)
+        var htmlStart = (html || '').substring(0, 3000);
+        if (html && (
+          /class="no-js.*oldie"/i.test(htmlStart) || // Cloudflare error template
+          /cf-error-details|cf-wrapper/i.test(htmlStart) ||
+          /Access Denied|403 Forbidden/i.test(htmlStart) ||
+          /Just a moment|Checking your browser/i.test(htmlStart) || // Cloudflare challenge
+          /consent\.google|accounts\.google.*ServiceLogin/i.test(htmlStart) // Google consent/login redirect
+        )) {
+          callback(null, 'The site returned an error/challenge page (likely blocking proxy access). Use the Console Snippet tab instead.');
+          return;
+        }
+
+        // Resolve base URL for relative paths
+        var baseUrl;
+        try { var u = new URL(url); baseUrl = u.origin + u.pathname.replace(/\/[^/]*$/, '/'); } catch(e) { baseUrl = url; }
+
+        // Find and inline linked stylesheets so CSS works inside srcdoc iframe
+        var cssLinks = [];
+        var linkRegex = /<link[^>]+rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*>/gi;
+        var altRegex = /<link[^>]+href=["']([^"']+)["'][^>]*rel=["']stylesheet["'][^>]*>/gi;
+        var m;
+        while (m = linkRegex.exec(html)) cssLinks.push(m[1]);
+        while (m = altRegex.exec(html)) { if (cssLinks.indexOf(m[1]) === -1) cssLinks.push(m[1]); }
+
+        if (cssLinks.length === 0) { callback(html, null); return; }
+
+        // Fetch all CSS files and inline them
+        Promise.all(cssLinks.map(function(href) {
+          var cssUrl = href.startsWith('http') ? href : (href.startsWith('/') ? new URL(url).origin + href : baseUrl + href);
+          return fetchWithProxy(cssUrl).catch(function() { return '/* failed: ' + href + ' */'; });
+        })).then(function(cssTexts) {
+          // Remove original link tags and inject inlined styles
+          var processed = html.replace(/<link[^>]+rel=["']stylesheet["'][^>]*>/gi, '');
+          processed = processed.replace(/<link[^>]+href=["'][^"']+\.css[^"']*["'][^>]*rel=["']stylesheet["'][^>]*>/gi, '');
+          var styleBlock = '<style>' + cssTexts.join('\n') + '</style>';
+          if (/<\/head>/i.test(processed)) {
+            processed = processed.replace(/<\/head>/i, styleBlock + '</head>');
+          } else {
+            processed = styleBlock + processed;
+          }
+          callback(processed, null);
+        });
+      })
+      .catch(function(e) {
+        callback(null, e.message || 'All CORS proxies failed');
+      });
+  }
+
+  // Try analyzing with JS enabled — fetches raw HTML via proxy, then delegates to
+  // MilgIframe.analyzeHtml which handles sandbox injection, URL patching, extraction,
+  // screenshots, and timeouts via the unified preprocessHtml pipeline.
+  function tryWithJs(url) {
+    var ok = confirm(
+      'This will fetch the page via proxy and run its JavaScript in a sandboxed frame on this page.\n\n' +
+      'Only do this if you trust the site — its scripts will execute with access to this page\'s origin (XSS risk).\n\n' +
+      'Some sites may not work if they rely on cookies, auth, or same-origin API calls.\n\n' +
+      'Continue?'
+    );
+    if (!ok) return;
+
+    var reportContainer = document.getElementById('reportContainer');
+    var errBtn = 'style="margin-top:12px;padding:8px 16px;border-radius:6px;border:1px solid currentColor;background:none;color:inherit;cursor:pointer;font-size:13px"';
+
+    // Show progress directly in reportContainer (the input section with the
+    // normal progress bar is hidden at this point since the warning is showing)
+    var isDark = document.body.classList.contains('dark-ui');
+    var progBg = isDark ? '#1e293b' : '#f1f5f9';
+    var progText = isDark ? '#94a3b8' : '#475569';
+    var progAccent = isDark ? '#3b82f6' : '#2563eb';
+    function showJsProgress(pct, label) {
+      reportContainer.innerHTML = '<div style="padding:30px 40px;background:' + progBg + ';border-radius:var(--radius);text-align:center">' +
+        '<div style="font-size:13px;color:' + progText + ';margin-bottom:12px;font-weight:500">' + label + '</div>' +
+        '<div style="height:6px;background:' + (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)') + ';border-radius:3px;overflow:hidden">' +
+        '<div style="height:100%;width:' + pct + '%;background:' + progAccent + ';border-radius:3px;transition:width 0.6s ease"></div></div>' +
+        '</div>';
+      reportContainer.classList.add('visible');
+    }
+
+    showJsProgress(5, 'Fetching page via proxy...');
+
+    // Fetch raw HTML via proxy (don't use fetchViaProxy which inlines CSS — let JS handle it)
+    fetchWithProxy(url).then(function(html) {
+      if (!html || html.length < 50) {
+        reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
+          'Could not fetch the page (empty response).<br>' +
+          '<button onclick="window.__milgSwitchToSnippet()" ' + errBtn + '>Use Console Snippet instead</button></div>';
+        return;
+      }
+
+      showJsProgress(20, 'Preparing JavaScript environment...');
+
+      var wantShots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
+      var exclude = window.__milgCombinedExclude || (document.getElementById('excludeSelector') && document.getElementById('excludeSelector').value || '').trim() || null;
+
+      showJsProgress(30, 'Running JavaScript & rendering page...');
+
+      // Animate progress while waiting for JS hydration
+      var _jpPct = 30;
+      var _jsProgressTimer = setInterval(function() {
+        _jpPct = Math.min(_jpPct + 3, 90);
+        var label = _jpPct < 50 ? 'Running JavaScript & rendering page...'
+          : _jpPct < 70 ? 'Waiting for framework hydration...'
+          : 'Extracting design data...';
+        showJsProgress(_jpPct, label);
+      }, 600);
+
+      MilgIframe.analyzeHtml(html, {
+        url: url,
+        jsEnabled: true,
+        screenshots: wantShots,
+        exclude: exclude
+      }, function(data) {
+        clearInterval(_jsProgressTimer);
+        data.meta.url = url;
+        data.meta._inputMethod = 'url';
+        data.meta._jsEnabled = true;
+        _runAnalysis(data);
+      });
+
+    }).catch(function(e) {
+      reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
+        'Failed to fetch the page: ' + (e.message || 'proxy error') + '<br>' +
+        '<button onclick="window.__milgSwitchToSnippet()" ' + errBtn + '>Use Console Snippet instead</button></div>';
+    });
+  }
+
+  // Wire up the global handler
+  window.__milgTryWithJs = function(url) { tryWithJs(url); };
+
+  return {
+    init: init,
+    fetchWithProxy: fetchWithProxy,
+    fetchViaProxy: fetchViaProxy
+  };
+})();
+</file>
+
 <file path="docs/analyzer-queue.js">
 // make-it-look-good — Background Computation Queue v1.1
 // Async work queue with priority promotion. Items run one at a time,
@@ -32056,226 +31559,6 @@ module.exports = defineConfig({
   },
   workers: 1,
 });
-</file>
-
-<file path="docs/analyzer-proxy.js">
-// make-it-look-good — CORS Proxy & JS-Enabled Analysis
-// Handles URL fetching via proxy chain and "Try with JS" mode.
-// Depends on: analyzer-iframe.js (MilgIframe)
-
-window.MilgProxy = (function() {
-  "use strict";
-
-  var _corsProxyUrl = '';
-  var _showToast = function() {};
-  var _showProgress = function() {};
-  var _hideProgress = function() {};
-  var _runAnalysis = function() {};
-
-  function init(opts) {
-    if (opts.corsProxyUrl) _corsProxyUrl = opts.corsProxyUrl;
-    if (opts.showToast) _showToast = opts.showToast;
-    if (opts.showProgress) _showProgress = opts.showProgress;
-    if (opts.hideProgress) _hideProgress = opts.hideProgress;
-    if (opts.runAnalysis) _runAnalysis = opts.runAnalysis;
-  }
-
-  // --- URL Fetch via CORS proxy ---
-  // Remembers which proxy worked so subsequent requests (CSS files etc.) skip failed ones
-  var _lastWorkingProxy = -1; // -1 = direct, 0+ = proxy index
-
-  function buildProxyList() {
-    var proxies = [];
-    if (_corsProxyUrl) proxies.push(_corsProxyUrl + '?url=');
-    proxies.push(
-      'https://api.allorigins.win/raw?url=',
-      'https://api.codetabs.com/v1/proxy?quest=',
-      'https://corsproxy.io/?'
-    );
-    return proxies;
-  }
-
-  function fetchWithProxy(url) {
-    var proxies = buildProxyList();
-
-    // If we already know which proxy works, try it first
-    if (_lastWorkingProxy >= 0 && _lastWorkingProxy < proxies.length) {
-      return fetch(proxies[_lastWorkingProxy] + encodeURIComponent(url))
-        .then(function(r) { if (!r.ok) throw new Error(r.status); return r.text(); })
-        .then(function(t) { if (!t || t.length < 50) throw new Error('empty'); return t; })
-        .catch(function() {
-          // Last working proxy failed — reset and try full chain
-          _lastWorkingProxy = -1;
-          return fetchWithProxyFull(url, proxies);
-        });
-    }
-
-    return fetchWithProxyFull(url, proxies);
-  }
-
-  function fetchWithProxyFull(url, proxies) {
-    // Try direct fetch first
-    return fetch(url, { mode: 'cors', redirect: 'follow' })
-      .then(function(r) { if (r.ok) return r.text(); throw new Error(r.status); })
-      .then(function(t) { _lastWorkingProxy = -1; return t; })
-      .catch(function() {
-        // Try proxies in order, remember which one works
-        var chain = Promise.reject();
-        proxies.forEach(function(proxyBase, idx) {
-          chain = chain.catch(function() {
-            return fetch(proxyBase + encodeURIComponent(url)).then(function(r) {
-              if (!r.ok) throw new Error(r.status);
-              return r.text();
-            }).then(function(t) {
-              if (!t || t.length < 50) throw new Error('empty');
-              _lastWorkingProxy = idx;
-              return t;
-            });
-          });
-        });
-        return chain;
-      });
-  }
-
-  function fetchViaProxy(url, callback) {
-    fetchWithProxy(url)
-      .then(function(html) {
-        // Detect proxy error pages (Cloudflare challenges, 4xx/5xx error pages, consent walls)
-        var htmlStart = (html || '').substring(0, 3000);
-        if (html && (
-          /class="no-js.*oldie"/i.test(htmlStart) || // Cloudflare error template
-          /cf-error-details|cf-wrapper/i.test(htmlStart) ||
-          /Access Denied|403 Forbidden/i.test(htmlStart) ||
-          /Just a moment|Checking your browser/i.test(htmlStart) || // Cloudflare challenge
-          /consent\.google|accounts\.google.*ServiceLogin/i.test(htmlStart) // Google consent/login redirect
-        )) {
-          callback(null, 'The site returned an error/challenge page (likely blocking proxy access). Use the Console Snippet tab instead.');
-          return;
-        }
-
-        // Resolve base URL for relative paths
-        var baseUrl;
-        try { var u = new URL(url); baseUrl = u.origin + u.pathname.replace(/\/[^/]*$/, '/'); } catch(e) { baseUrl = url; }
-
-        // Find and inline linked stylesheets so CSS works inside srcdoc iframe
-        var cssLinks = [];
-        var linkRegex = /<link[^>]+rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*>/gi;
-        var altRegex = /<link[^>]+href=["']([^"']+)["'][^>]*rel=["']stylesheet["'][^>]*>/gi;
-        var m;
-        while (m = linkRegex.exec(html)) cssLinks.push(m[1]);
-        while (m = altRegex.exec(html)) { if (cssLinks.indexOf(m[1]) === -1) cssLinks.push(m[1]); }
-
-        if (cssLinks.length === 0) { callback(html, null); return; }
-
-        // Fetch all CSS files and inline them
-        Promise.all(cssLinks.map(function(href) {
-          var cssUrl = href.startsWith('http') ? href : (href.startsWith('/') ? new URL(url).origin + href : baseUrl + href);
-          return fetchWithProxy(cssUrl).catch(function() { return '/* failed: ' + href + ' */'; });
-        })).then(function(cssTexts) {
-          // Remove original link tags and inject inlined styles
-          var processed = html.replace(/<link[^>]+rel=["']stylesheet["'][^>]*>/gi, '');
-          processed = processed.replace(/<link[^>]+href=["'][^"']+\.css[^"']*["'][^>]*rel=["']stylesheet["'][^>]*>/gi, '');
-          var styleBlock = '<style>' + cssTexts.join('\n') + '</style>';
-          if (/<\/head>/i.test(processed)) {
-            processed = processed.replace(/<\/head>/i, styleBlock + '</head>');
-          } else {
-            processed = styleBlock + processed;
-          }
-          callback(processed, null);
-        });
-      })
-      .catch(function(e) {
-        callback(null, e.message || 'All CORS proxies failed');
-      });
-  }
-
-  // Try analyzing with JS enabled — fetches raw HTML via proxy, then delegates to
-  // MilgIframe.analyzeHtml which handles sandbox injection, URL patching, extraction,
-  // screenshots, and timeouts via the unified preprocessHtml pipeline.
-  function tryWithJs(url) {
-    var ok = confirm(
-      'This will fetch the page via proxy and run its JavaScript in a sandboxed frame on this page.\n\n' +
-      'Only do this if you trust the site — its scripts will execute with access to this page\'s origin (XSS risk).\n\n' +
-      'Some sites may not work if they rely on cookies, auth, or same-origin API calls.\n\n' +
-      'Continue?'
-    );
-    if (!ok) return;
-
-    var reportContainer = document.getElementById('reportContainer');
-    var errBtn = 'style="margin-top:12px;padding:8px 16px;border-radius:6px;border:1px solid currentColor;background:none;color:inherit;cursor:pointer;font-size:13px"';
-
-    // Show progress directly in reportContainer (the input section with the
-    // normal progress bar is hidden at this point since the warning is showing)
-    var isDark = document.body.classList.contains('dark-ui');
-    var progBg = isDark ? '#1e293b' : '#f1f5f9';
-    var progText = isDark ? '#94a3b8' : '#475569';
-    var progAccent = isDark ? '#3b82f6' : '#2563eb';
-    function showJsProgress(pct, label) {
-      reportContainer.innerHTML = '<div style="padding:30px 40px;background:' + progBg + ';border-radius:var(--radius);text-align:center">' +
-        '<div style="font-size:13px;color:' + progText + ';margin-bottom:12px;font-weight:500">' + label + '</div>' +
-        '<div style="height:6px;background:' + (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)') + ';border-radius:3px;overflow:hidden">' +
-        '<div style="height:100%;width:' + pct + '%;background:' + progAccent + ';border-radius:3px;transition:width 0.6s ease"></div></div>' +
-        '</div>';
-      reportContainer.classList.add('visible');
-    }
-
-    showJsProgress(5, 'Fetching page via proxy...');
-
-    // Fetch raw HTML via proxy (don't use fetchViaProxy which inlines CSS — let JS handle it)
-    fetchWithProxy(url).then(function(html) {
-      if (!html || html.length < 50) {
-        reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
-          'Could not fetch the page (empty response).<br>' +
-          '<button onclick="window.__milgSwitchToSnippet()" ' + errBtn + '>Use Console Snippet instead</button></div>';
-        return;
-      }
-
-      showJsProgress(20, 'Preparing JavaScript environment...');
-
-      var wantShots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
-      var exclude = window.__milgCombinedExclude || (document.getElementById('excludeSelector') && document.getElementById('excludeSelector').value || '').trim() || null;
-
-      showJsProgress(30, 'Running JavaScript & rendering page...');
-
-      // Animate progress while waiting for JS hydration
-      var _jpPct = 30;
-      var _jsProgressTimer = setInterval(function() {
-        _jpPct = Math.min(_jpPct + 3, 90);
-        var label = _jpPct < 50 ? 'Running JavaScript & rendering page...'
-          : _jpPct < 70 ? 'Waiting for framework hydration...'
-          : 'Extracting design data...';
-        showJsProgress(_jpPct, label);
-      }, 600);
-
-      MilgIframe.analyzeHtml(html, {
-        url: url,
-        jsEnabled: true,
-        screenshots: wantShots,
-        exclude: exclude
-      }, function(data) {
-        clearInterval(_jsProgressTimer);
-        data.meta.url = url;
-        data.meta._inputMethod = 'url';
-        data.meta._jsEnabled = true;
-        _runAnalysis(data);
-      });
-
-    }).catch(function(e) {
-      reportContainer.innerHTML = '<div style="padding:20px;color:#dc2626;text-align:center">' +
-        'Failed to fetch the page: ' + (e.message || 'proxy error') + '<br>' +
-        '<button onclick="window.__milgSwitchToSnippet()" ' + errBtn + '>Use Console Snippet instead</button></div>';
-    });
-  }
-
-  // Wire up the global handler
-  window.__milgTryWithJs = function(url) { tryWithJs(url); };
-
-  return {
-    init: init,
-    fetchWithProxy: fetchWithProxy,
-    fetchViaProxy: fetchViaProxy
-  };
-})();
 </file>
 
 <file path="docs/analyzer.css">
@@ -35995,92 +35278,6 @@ window.MilgReport = (function() {
 })();
 </file>
 
-<file path="NEXT-SESSION-PROMPT.md">
-# Task: Region pipeline unification + verify v3.11.6
-
-## What was fixed in v3.11 → v3.11.6
-
-### v3.11: Verify callback crash + layout findings leak
-- Wrapped verifyPair() in try-catch inside processBatch (silent batch death)
-- Added alignmentElements + borderRadii to updatedData from iframe→parent
-- Filtered layout items by _regionContainerId before main scoring
-- Added layout items to _addRegionalBbox exclusion in viewer
-
-### v3.11.1: Region verify re-render + phantom error counts
-- Call MilgViewer.refreshRegionOverlays() after async region verify callback
-- Summary bar counts now filter by locator.bboxes presence
-
-### v3.11.3: Clean screenshot preview
-- Report preview now shows a single 240px thumbnail of the clean (as-rendered) screenshot
-- Previously showed expanded screenshot sections with carousel content overlaying the page
-
-### v3.11.4: Main verify excludes region rects + right-click fix
-- Added containerRect bounds check to renderVerifyOverlays — verify rects inside region containers excluded from main overlay
-- Right-click on verify rects cycles mask/zones debug layers (was showing generic debug menu)
-
-### v3.11.5: Region verify coordinate mismatch (ROOT CAUSE FIX)
-- **Root cause**: cropOffsetY was computed from extraction bboxes (pre-resize mini-page ~40002), but `__milgReReadBboxes()` mutated those same bbox objects during mask capture to post-resize coordinates (~9345). Verify results inherited the mutated bboxes → rects at y=-45945 (off-screen).
-- **Fix**: Compute cropOffset from DOM content bounds (same values used for actual canvas crop), not from extraction bboxes that get mutated. In `analyzer-region.js` lines 316-325.
-
-### v3.11.6: Full interaction parity for region verify rects
-- Right-click/double-click: cycle mask/zones debug layers
-- Click: cycle sample point dots (all/worst/P10/median/P90/best/off)
-- Hover: verify tooltip with nearest FG/BG sample colors and ratio
-- showVerifyTooltip accepts optional results array for region context
-
-## Testing v3.11.6
-1. Confirm header shows **v3.11.6**
-2. Run fink-translate.com → open viewer
-3. Select "Pixel Verified" or "Pixel Fails" filter:
-   - Main screenshot: NO verify rects in the carousel area (containerRect exclusion)
-   - Region section: verify overlay rects visible with correct positioning
-   - Right-click on region verify rect → cycles mask/zones
-   - Click on region verify rect → cycles sample dots
-   - Hover shows tooltip with FG/BG colors
-4. Select severity filter (e.g. "All"): region findings render correctly
-5. Preview thumbnail shows clean page (no carousel overlay)
-6. regionExcluded count in console log should be >0
-
-## Next: Region pipeline unification
-
-Deep analysis found these issues across the three analysis modes (URL, HTML paste, console snippet):
-
-### Issue 1: Console snippet missing cropOffset (HIGH)
-- **Location**: `docs/analyzer-snippet-screenshots.js` lines 331-335
-- Snippet region data uses `localBboxes` (relative coordinates) instead of `cropOffsetX/Y`
-- Pixel verify falls back to cropOffset=0, mapping to wrong canvas pixels
-- **Fix**: Apply the same content-bounds crop offset logic from `analyzer-region.js` lines 316-325
-
-### Issue 2: Inline fallback duplicates MilgRegion (MEDIUM)
-- **Location**: `docs/analyzer-iframe.js` lines 381-540
-- ~160 lines duplicate all of analyzer-region.js as a fallback
-- MilgRegion is always loaded (via script tag in analyzer.html), so fallback is dead code
-- **Fix**: Remove fallback, always use MilgRegion.getRegionFn()
-
-### Issue 3: Console snippet region data format mismatch (MEDIUM)
-- Snippet regions lack `extractedData` and `maskResults` fields
-- Viewer/verify code expects these → no regional findings or mask-based verify for snippet
-- **Fix**: Populate extractedData + maskResults in snippet region capture, matching iframe format
-
-### Priority order
-1. Add cropOffset to snippet regions (correctness)
-2. Remove inline fallback from analyzer-iframe.js (maintenance)
-3. Unify region data format across modes (completeness)
-
-## Key files
-| File | Role |
-|------|------|
-| `docs/analyzer-region.js` | Shared region detection module (MilgRegion) |
-| `docs/analyzer-iframe.js` | URL/HTML mode — uses MilgRegion + has inline fallback to remove |
-| `docs/analyzer-snippet-screenshots.js` | Console snippet — needs cropOffset + data format alignment |
-| `docs/analyzer-viewer.js` | Viewer overlays — region verify interactions added in v3.11.6 |
-| `docs/analyzer-contrast-verify.js` | Pixel verify — uses cropOffset for coordinate mapping |
-| `docs/analyzer.js` | Orchestrator — region scoring + verify kickoff |
-
-## Version
-Current: v3.11.6
-</file>
-
 <file path="tests/html-analysis.spec.js">
 // @ts-check
 const { test, expect } = require('@playwright/test');
@@ -36088,17 +35285,32 @@ const fs = require('fs');
 const path = require('path');
 
 const ANALYZER_URL = 'http://localhost:8384/analyzer.html';
+const BASE_URL = 'http://localhost:8384';
 
-function loadPreset(name) {
-  return fs.readFileSync(path.join(__dirname, '..', 'docs', 'presets', name, 'clean.html'), 'utf8');
+// Presets and fixtures are served by the same static server that hosts the
+// analyzer (docs/ at :8384). We drive the analyzer's URL-mode path so the tests
+// exercise the same code users actually use, with faithful CSS/font rendering
+// (the bare paste-HTML srcdoc could mask real bugs). For a same-origin localhost
+// URL, MilgProxy's direct fetch succeeds without any external CORS proxy.
+
+function presetUrl(name) {
+  return `${BASE_URL}/presets/${name}/clean.html`;
 }
 
-async function analyzeHtml(page, html) {
+// Drive URL mode against a served URL (preset or fixture).
+async function analyzeUrl(page, url) {
   await page.goto(ANALYZER_URL);
-  await page.click('[data-tab="tabHtml"]');
-  await page.fill('#htmlInput', html);
-  await page.click('#analyzeHtmlBtn');
-  await page.waitForSelector('.report-container.visible', { timeout: 30000 });
+  await page.click('[data-tab="tabUrl"]');
+  await page.fill('#urlInput', url);
+  await page.click('#analyzeUrlBtn');
+  await page.waitForSelector('.report-container.visible', { timeout: 60000 });
+}
+
+// Back-compat shim: callers pass a preset NAME (not raw HTML) and we analyze
+// the served preset URL. Preset fragments get the same Tailwind-CDN wrapper in
+// URL mode as in paste mode, so scores are identical (verified 1:1).
+async function analyzeHtml(page, presetName) {
+  await analyzeUrl(page, presetUrl(presetName));
 }
 
 async function getScore(page) {
@@ -36111,7 +35323,7 @@ async function getScore(page) {
 test.describe('HTML Analysis', () => {
 
   test('buttons preset produces valid scores', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('buttons'));
+    await analyzeHtml(page, 'buttons');
     const score = await getScore(page);
     expect(score).toBeGreaterThanOrEqual(0);
     expect(score).toBeLessThanOrEqual(100);
@@ -36121,19 +35333,19 @@ test.describe('HTML Analysis', () => {
   });
 
   test('form preset produces report with findings', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('form'));
+    await analyzeHtml(page, 'form');
     const findings = await page.locator('.finding-header').count();
     expect(findings).toBeGreaterThan(0);
   });
 
   test('landing preset scores above 50', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('landing'));
+    await analyzeHtml(page, 'landing');
     const score = await getScore(page);
     expect(score).toBeGreaterThanOrEqual(50);
   });
 
   test('dashboard preset renders category cards', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('dashboard'));
+    await analyzeHtml(page, 'dashboard');
     const cards = await page.locator('.report-card').count();
     expect(cards).toBeGreaterThanOrEqual(5);
   });
@@ -36144,7 +35356,7 @@ test.describe('HTML Analysis', () => {
 test.describe('Export and Import', () => {
 
   test('export .milg and re-import produces same score', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('buttons'));
+    await analyzeHtml(page, 'buttons');
     const originalScore = await getScore(page);
 
     // Download .milg (compressed) or .json (fallback)
@@ -36167,7 +35379,7 @@ test.describe('Export and Import', () => {
   });
 
   test('export Markdown contains expected sections', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('cards'));
+    await analyzeHtml(page, 'cards');
 
     const [download] = await Promise.all([
       page.waitForEvent('download'),
@@ -36186,7 +35398,7 @@ test.describe('Export and Import', () => {
 test.describe('UI Controls', () => {
 
   test('audience profile switch re-scores', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('form'));
+    await analyzeHtml(page, 'form');
     const originalScore = await getScore(page);
 
     await page.selectOption('#profileSelect', 'wcag_aaa');
@@ -36197,7 +35409,7 @@ test.describe('UI Controls', () => {
   });
 
   test('new analysis button resets view', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('buttons'));
+    await analyzeHtml(page, 'buttons');
     await page.click('#newAnalysisBtn');
     await expect(page.locator('#inputSection')).toBeVisible();
     await expect(page.locator('#reportContainer')).not.toHaveClass(/visible/);
@@ -36212,7 +35424,7 @@ test.describe('UI Controls', () => {
   });
 
   test('help modal opens and closes', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('buttons'));
+    await analyzeHtml(page, 'buttons');
     await page.click('#helpBtn');
     await expect(page.locator('#helpModal')).toBeVisible();
     // Close via X button
@@ -36221,7 +35433,7 @@ test.describe('UI Controls', () => {
   });
 
   test('ephemeral banner visible after analysis', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('buttons'));
+    await analyzeHtml(page, 'buttons');
     await expect(page.locator('#ephemeralBanner')).toBeVisible();
     await expect(page.locator('#ephemeralBanner')).toContainText('temporary');
   });
@@ -36231,56 +35443,28 @@ test.describe('UI Controls', () => {
 
 test.describe('Screenshot Pipeline', () => {
 
-  // HTML with a nested carousel pattern (like fink-translate.com):
-  // overflow:hidden container > intermediate wrapper > track[transform]
-  // Also includes a fragment-only img src and an <a href="#n"> to test filtering
-  const CAROUSEL_HTML = `<!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"><title>Carousel Test</title>
-<style>
-  body { font-family: sans-serif; margin: 0; padding: 20px; background: #fff; }
-  .carousel-container { overflow: hidden; width: 400px; position: relative; }
-  .carousel-inner { position: relative; }
-  .carousel-track-container { position: relative; }
-  .carousel-track { display: flex; transform: translateX(-400px); transition: transform 0.5s ease; }
-  .carousel-slide { min-width: 400px; padding: 20px; box-sizing: border-box; }
-  .slide-1 { background: #f0f0f0; }
-  .slide-2 { background: #e0e0ff; }
-  .slide-3 { background: #ffe0e0; }
-  h2 { color: #111; margin: 0 0 8px; }
-  p { color: #333; }
-</style></head><body>
-  <h1>Carousel Test Page</h1>
-  <a href="#n">Skip nav</a>
-  <div class="carousel-container">
-    <div class="carousel-inner">
-      <div class="carousel-track-container">
-        <div class="carousel-track">
-          <div class="carousel-slide slide-1"><h2>Slide One</h2><p>First slide content here.</p></div>
-          <div class="carousel-slide slide-2"><h2>Slide Two</h2><p>Second slide visible.</p></div>
-          <div class="carousel-slide slide-3"><h2>Slide Three</h2><p>Third slide content.</p></div>
-        </div>
-      </div>
-    </div>
-  </div>
-  <img src="#fragment" alt="fragment-only test">
-  <p>Below the carousel.</p>
-</body></html>`;
+  // Carousel fixture served at docs/tests/fixtures/carousel.html — a nested
+  // carousel pattern (like fink-translate.com): overflow:hidden container >
+  // intermediate wrapper > track[transform]. Also has a fragment-only img src
+  // and an <a href="#n"> to exercise URL filtering. Analyzed via real URL mode
+  // (faithful rendering + real fetch/preload path) instead of paste-HTML srcdoc.
+  const CAROUSEL_URL = `${BASE_URL}/tests/fixtures/carousel.html`;
 
-  async function analyzeWithScreenshots(page, html) {
+  async function analyzeWithScreenshots(page) {
     await page.goto(ANALYZER_URL);
-    // Enable screenshot checkbox
+    // Enable screenshot checkbox (checked by default, but be explicit)
     await page.check('#screenshotCheck');
-    await page.click('[data-tab="tabHtml"]');
-    await page.fill('#htmlInput', html);
-    await page.click('#analyzeHtmlBtn');
-    await page.waitForSelector('.report-container.visible', { timeout: 45000 });
+    await page.click('[data-tab="tabUrl"]');
+    await page.fill('#urlInput', CAROUSEL_URL);
+    await page.click('#analyzeUrlBtn');
+    await page.waitForSelector('.report-container.visible', { timeout: 90000 });
   }
 
   test('carousel overflow:hidden containers get expanded for screenshots', async ({ page }) => {
     const consoleLogs = [];
     page.on('console', msg => consoleLogs.push(msg.text()));
 
-    await analyzeWithScreenshots(page, CAROUSEL_HTML);
+    await analyzeWithScreenshots(page);
 
     const score = await getScore(page);
     expect(score).toBeGreaterThanOrEqual(0);
@@ -36307,7 +35491,7 @@ test.describe('Screenshot Pipeline', () => {
     const consoleLogs = [];
     page.on('console', msg => consoleLogs.push(msg.text()));
 
-    await analyzeWithScreenshots(page, CAROUSEL_HTML);
+    await analyzeWithScreenshots(page);
 
     // Check if region screenshots were captured (may be 0 if carousel slides have passing contrast)
     const regionDone = consoleLogs.find(l => l.includes('Region screenshots done:'));
@@ -36371,7 +35555,7 @@ test.describe('Screenshot Pipeline', () => {
     const consoleLogs = [];
     page.on('console', msg => consoleLogs.push(msg.text()));
 
-    await analyzeWithScreenshots(page, CAROUSEL_HTML);
+    await analyzeWithScreenshots(page);
 
     // Check verification log for clippedSkipped count
     const verifyLog = consoleLogs.find(l => l.includes('clippedSkipped='));
@@ -36390,7 +35574,7 @@ test.describe('Screenshot Pipeline', () => {
       if (msg.type() === 'warning') consoleWarnings.push(msg.text());
     });
 
-    await analyzeWithScreenshots(page, CAROUSEL_HTML);
+    await analyzeWithScreenshots(page);
 
     // Should NOT have a preload warning for fragment URLs
     const fragWarn = consoleWarnings.find(w => w.includes('#fragment') || w.includes('%23fragment'));
@@ -36501,7 +35685,7 @@ test.describe('Preset Scoring', () => {
 
   for (const preset of presets) {
     test(`${preset} produces valid analysis`, async ({ page }) => {
-      await analyzeHtml(page, loadPreset(preset));
+      await analyzeHtml(page, preset);
       const score = await getScore(page);
       expect(score).toBeGreaterThanOrEqual(0);
       expect(score).toBeLessThanOrEqual(100);
@@ -36510,6 +35694,92 @@ test.describe('Preset Scoring', () => {
     });
   }
 });
+</file>
+
+<file path="NEXT-SESSION-PROMPT.md">
+# Task: Region pipeline unification + verify v3.11.6
+
+## What was fixed in v3.11 → v3.11.6
+
+### v3.11: Verify callback crash + layout findings leak
+- Wrapped verifyPair() in try-catch inside processBatch (silent batch death)
+- Added alignmentElements + borderRadii to updatedData from iframe→parent
+- Filtered layout items by _regionContainerId before main scoring
+- Added layout items to _addRegionalBbox exclusion in viewer
+
+### v3.11.1: Region verify re-render + phantom error counts
+- Call MilgViewer.refreshRegionOverlays() after async region verify callback
+- Summary bar counts now filter by locator.bboxes presence
+
+### v3.11.3: Clean screenshot preview
+- Report preview now shows a single 240px thumbnail of the clean (as-rendered) screenshot
+- Previously showed expanded screenshot sections with carousel content overlaying the page
+
+### v3.11.4: Main verify excludes region rects + right-click fix
+- Added containerRect bounds check to renderVerifyOverlays — verify rects inside region containers excluded from main overlay
+- Right-click on verify rects cycles mask/zones debug layers (was showing generic debug menu)
+
+### v3.11.5: Region verify coordinate mismatch (ROOT CAUSE FIX)
+- **Root cause**: cropOffsetY was computed from extraction bboxes (pre-resize mini-page ~40002), but `__milgReReadBboxes()` mutated those same bbox objects during mask capture to post-resize coordinates (~9345). Verify results inherited the mutated bboxes → rects at y=-45945 (off-screen).
+- **Fix**: Compute cropOffset from DOM content bounds (same values used for actual canvas crop), not from extraction bboxes that get mutated. In `analyzer-region.js` lines 316-325.
+
+### v3.11.6: Full interaction parity for region verify rects
+- Right-click/double-click: cycle mask/zones debug layers
+- Click: cycle sample point dots (all/worst/P10/median/P90/best/off)
+- Hover: verify tooltip with nearest FG/BG sample colors and ratio
+- showVerifyTooltip accepts optional results array for region context
+
+## Testing v3.11.6
+1. Confirm header shows **v3.11.6**
+2. Run fink-translate.com → open viewer
+3. Select "Pixel Verified" or "Pixel Fails" filter:
+   - Main screenshot: NO verify rects in the carousel area (containerRect exclusion)
+   - Region section: verify overlay rects visible with correct positioning
+   - Right-click on region verify rect → cycles mask/zones
+   - Click on region verify rect → cycles sample dots
+   - Hover shows tooltip with FG/BG colors
+4. Select severity filter (e.g. "All"): region findings render correctly
+5. Preview thumbnail shows clean page (no carousel overlay)
+6. regionExcluded count in console log should be >0
+
+## Next: Region pipeline unification
+
+Deep analysis found these issues across the three analysis modes (URL, HTML paste, console snippet):
+
+### Issue 1: Console snippet missing cropOffset (HIGH)
+- **Location**: `docs/analyzer-snippet-screenshots.js` lines 331-335
+- Snippet region data uses `localBboxes` (relative coordinates) instead of `cropOffsetX/Y`
+- Pixel verify falls back to cropOffset=0, mapping to wrong canvas pixels
+- **Fix**: Apply the same content-bounds crop offset logic from `analyzer-region.js` lines 316-325
+
+### Issue 2: Inline fallback duplicates MilgRegion (MEDIUM)
+- **Location**: `docs/analyzer-iframe.js` lines 381-540
+- ~160 lines duplicate all of analyzer-region.js as a fallback
+- MilgRegion is always loaded (via script tag in analyzer.html), so fallback is dead code
+- **Fix**: Remove fallback, always use MilgRegion.getRegionFn()
+
+### Issue 3: Console snippet region data format mismatch (MEDIUM)
+- Snippet regions lack `extractedData` and `maskResults` fields
+- Viewer/verify code expects these → no regional findings or mask-based verify for snippet
+- **Fix**: Populate extractedData + maskResults in snippet region capture, matching iframe format
+
+### Priority order
+1. Add cropOffset to snippet regions (correctness)
+2. Remove inline fallback from analyzer-iframe.js (maintenance)
+3. Unify region data format across modes (completeness)
+
+## Key files
+| File | Role |
+|------|------|
+| `docs/analyzer-region.js` | Shared region detection module (MilgRegion) |
+| `docs/analyzer-iframe.js` | URL/HTML mode — uses MilgRegion + has inline fallback to remove |
+| `docs/analyzer-snippet-screenshots.js` | Console snippet — needs cropOffset + data format alignment |
+| `docs/analyzer-viewer.js` | Viewer overlays — region verify interactions added in v3.11.6 |
+| `docs/analyzer-contrast-verify.js` | Pixel verify — uses cropOffset for coordinate mapping |
+| `docs/analyzer.js` | Orchestrator — region scoring + verify kickoff |
+
+## Version
+Current: v3.11.6
 </file>
 
 <file path="docs/analyzer-contrast-verify.js">

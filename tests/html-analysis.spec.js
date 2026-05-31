@@ -4,17 +4,32 @@ const fs = require('fs');
 const path = require('path');
 
 const ANALYZER_URL = 'http://localhost:8384/analyzer.html';
+const BASE_URL = 'http://localhost:8384';
 
-function loadPreset(name) {
-  return fs.readFileSync(path.join(__dirname, '..', 'docs', 'presets', name, 'clean.html'), 'utf8');
+// Presets and fixtures are served by the same static server that hosts the
+// analyzer (docs/ at :8384). We drive the analyzer's URL-mode path so the tests
+// exercise the same code users actually use, with faithful CSS/font rendering
+// (the bare paste-HTML srcdoc could mask real bugs). For a same-origin localhost
+// URL, MilgProxy's direct fetch succeeds without any external CORS proxy.
+
+function presetUrl(name) {
+  return `${BASE_URL}/presets/${name}/clean.html`;
 }
 
-async function analyzeHtml(page, html) {
+// Drive URL mode against a served URL (preset or fixture).
+async function analyzeUrl(page, url) {
   await page.goto(ANALYZER_URL);
-  await page.click('[data-tab="tabHtml"]');
-  await page.fill('#htmlInput', html);
-  await page.click('#analyzeHtmlBtn');
-  await page.waitForSelector('.report-container.visible', { timeout: 30000 });
+  await page.click('[data-tab="tabUrl"]');
+  await page.fill('#urlInput', url);
+  await page.click('#analyzeUrlBtn');
+  await page.waitForSelector('.report-container.visible', { timeout: 60000 });
+}
+
+// Back-compat shim: callers pass a preset NAME (not raw HTML) and we analyze
+// the served preset URL. Preset fragments get the same Tailwind-CDN wrapper in
+// URL mode as in paste mode, so scores are identical (verified 1:1).
+async function analyzeHtml(page, presetName) {
+  await analyzeUrl(page, presetUrl(presetName));
 }
 
 async function getScore(page) {
@@ -27,7 +42,7 @@ async function getScore(page) {
 test.describe('HTML Analysis', () => {
 
   test('buttons preset produces valid scores', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('buttons'));
+    await analyzeHtml(page, 'buttons');
     const score = await getScore(page);
     expect(score).toBeGreaterThanOrEqual(0);
     expect(score).toBeLessThanOrEqual(100);
@@ -37,19 +52,19 @@ test.describe('HTML Analysis', () => {
   });
 
   test('form preset produces report with findings', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('form'));
+    await analyzeHtml(page, 'form');
     const findings = await page.locator('.finding-header').count();
     expect(findings).toBeGreaterThan(0);
   });
 
   test('landing preset scores above 50', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('landing'));
+    await analyzeHtml(page, 'landing');
     const score = await getScore(page);
     expect(score).toBeGreaterThanOrEqual(50);
   });
 
   test('dashboard preset renders category cards', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('dashboard'));
+    await analyzeHtml(page, 'dashboard');
     const cards = await page.locator('.report-card').count();
     expect(cards).toBeGreaterThanOrEqual(5);
   });
@@ -60,7 +75,7 @@ test.describe('HTML Analysis', () => {
 test.describe('Export and Import', () => {
 
   test('export .milg and re-import produces same score', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('buttons'));
+    await analyzeHtml(page, 'buttons');
     const originalScore = await getScore(page);
 
     // Download .milg (compressed) or .json (fallback)
@@ -83,7 +98,7 @@ test.describe('Export and Import', () => {
   });
 
   test('export Markdown contains expected sections', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('cards'));
+    await analyzeHtml(page, 'cards');
 
     const [download] = await Promise.all([
       page.waitForEvent('download'),
@@ -102,7 +117,7 @@ test.describe('Export and Import', () => {
 test.describe('UI Controls', () => {
 
   test('audience profile switch re-scores', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('form'));
+    await analyzeHtml(page, 'form');
     const originalScore = await getScore(page);
 
     await page.selectOption('#profileSelect', 'wcag_aaa');
@@ -113,7 +128,7 @@ test.describe('UI Controls', () => {
   });
 
   test('new analysis button resets view', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('buttons'));
+    await analyzeHtml(page, 'buttons');
     await page.click('#newAnalysisBtn');
     await expect(page.locator('#inputSection')).toBeVisible();
     await expect(page.locator('#reportContainer')).not.toHaveClass(/visible/);
@@ -128,7 +143,7 @@ test.describe('UI Controls', () => {
   });
 
   test('help modal opens and closes', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('buttons'));
+    await analyzeHtml(page, 'buttons');
     await page.click('#helpBtn');
     await expect(page.locator('#helpModal')).toBeVisible();
     // Close via X button
@@ -137,7 +152,7 @@ test.describe('UI Controls', () => {
   });
 
   test('ephemeral banner visible after analysis', async ({ page }) => {
-    await analyzeHtml(page, loadPreset('buttons'));
+    await analyzeHtml(page, 'buttons');
     await expect(page.locator('#ephemeralBanner')).toBeVisible();
     await expect(page.locator('#ephemeralBanner')).toContainText('temporary');
   });
@@ -147,56 +162,28 @@ test.describe('UI Controls', () => {
 
 test.describe('Screenshot Pipeline', () => {
 
-  // HTML with a nested carousel pattern (like fink-translate.com):
-  // overflow:hidden container > intermediate wrapper > track[transform]
-  // Also includes a fragment-only img src and an <a href="#n"> to test filtering
-  const CAROUSEL_HTML = `<!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"><title>Carousel Test</title>
-<style>
-  body { font-family: sans-serif; margin: 0; padding: 20px; background: #fff; }
-  .carousel-container { overflow: hidden; width: 400px; position: relative; }
-  .carousel-inner { position: relative; }
-  .carousel-track-container { position: relative; }
-  .carousel-track { display: flex; transform: translateX(-400px); transition: transform 0.5s ease; }
-  .carousel-slide { min-width: 400px; padding: 20px; box-sizing: border-box; }
-  .slide-1 { background: #f0f0f0; }
-  .slide-2 { background: #e0e0ff; }
-  .slide-3 { background: #ffe0e0; }
-  h2 { color: #111; margin: 0 0 8px; }
-  p { color: #333; }
-</style></head><body>
-  <h1>Carousel Test Page</h1>
-  <a href="#n">Skip nav</a>
-  <div class="carousel-container">
-    <div class="carousel-inner">
-      <div class="carousel-track-container">
-        <div class="carousel-track">
-          <div class="carousel-slide slide-1"><h2>Slide One</h2><p>First slide content here.</p></div>
-          <div class="carousel-slide slide-2"><h2>Slide Two</h2><p>Second slide visible.</p></div>
-          <div class="carousel-slide slide-3"><h2>Slide Three</h2><p>Third slide content.</p></div>
-        </div>
-      </div>
-    </div>
-  </div>
-  <img src="#fragment" alt="fragment-only test">
-  <p>Below the carousel.</p>
-</body></html>`;
+  // Carousel fixture served at docs/tests/fixtures/carousel.html — a nested
+  // carousel pattern (like fink-translate.com): overflow:hidden container >
+  // intermediate wrapper > track[transform]. Also has a fragment-only img src
+  // and an <a href="#n"> to exercise URL filtering. Analyzed via real URL mode
+  // (faithful rendering + real fetch/preload path) instead of paste-HTML srcdoc.
+  const CAROUSEL_URL = `${BASE_URL}/tests/fixtures/carousel.html`;
 
-  async function analyzeWithScreenshots(page, html) {
+  async function analyzeWithScreenshots(page) {
     await page.goto(ANALYZER_URL);
-    // Enable screenshot checkbox
+    // Enable screenshot checkbox (checked by default, but be explicit)
     await page.check('#screenshotCheck');
-    await page.click('[data-tab="tabHtml"]');
-    await page.fill('#htmlInput', html);
-    await page.click('#analyzeHtmlBtn');
-    await page.waitForSelector('.report-container.visible', { timeout: 45000 });
+    await page.click('[data-tab="tabUrl"]');
+    await page.fill('#urlInput', CAROUSEL_URL);
+    await page.click('#analyzeUrlBtn');
+    await page.waitForSelector('.report-container.visible', { timeout: 90000 });
   }
 
   test('carousel overflow:hidden containers get expanded for screenshots', async ({ page }) => {
     const consoleLogs = [];
     page.on('console', msg => consoleLogs.push(msg.text()));
 
-    await analyzeWithScreenshots(page, CAROUSEL_HTML);
+    await analyzeWithScreenshots(page);
 
     const score = await getScore(page);
     expect(score).toBeGreaterThanOrEqual(0);
@@ -223,7 +210,7 @@ test.describe('Screenshot Pipeline', () => {
     const consoleLogs = [];
     page.on('console', msg => consoleLogs.push(msg.text()));
 
-    await analyzeWithScreenshots(page, CAROUSEL_HTML);
+    await analyzeWithScreenshots(page);
 
     // Check if region screenshots were captured (may be 0 if carousel slides have passing contrast)
     const regionDone = consoleLogs.find(l => l.includes('Region screenshots done:'));
@@ -287,7 +274,7 @@ test.describe('Screenshot Pipeline', () => {
     const consoleLogs = [];
     page.on('console', msg => consoleLogs.push(msg.text()));
 
-    await analyzeWithScreenshots(page, CAROUSEL_HTML);
+    await analyzeWithScreenshots(page);
 
     // Check verification log for clippedSkipped count
     const verifyLog = consoleLogs.find(l => l.includes('clippedSkipped='));
@@ -306,7 +293,7 @@ test.describe('Screenshot Pipeline', () => {
       if (msg.type() === 'warning') consoleWarnings.push(msg.text());
     });
 
-    await analyzeWithScreenshots(page, CAROUSEL_HTML);
+    await analyzeWithScreenshots(page);
 
     // Should NOT have a preload warning for fragment URLs
     const fragWarn = consoleWarnings.find(w => w.includes('#fragment') || w.includes('%23fragment'));
@@ -417,7 +404,7 @@ test.describe('Preset Scoring', () => {
 
   for (const preset of presets) {
     test(`${preset} produces valid analysis`, async ({ page }) => {
-      await analyzeHtml(page, loadPreset(preset));
+      await analyzeHtml(page, preset);
       const score = await getScore(page);
       expect(score).toBeGreaterThanOrEqual(0);
       expect(score).toBeLessThanOrEqual(100);

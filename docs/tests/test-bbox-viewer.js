@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // E2E test: bbox data, screenshot metadata, viewer, and contrast verification
-// Tests all three input paths: HTML paste, URL fetch, and console snippet output
+// Tests input paths: URL fetch (real user path) and console snippet output.
 // Requires: puppeteer, a local HTTP server on port 8787
 
 var http = require('http');
@@ -80,9 +80,9 @@ async function run() {
 
   try {
     // ============================================================
-    console.log('\n--- Test 1: HTML Paste with Screenshots ---');
+    console.log('\n--- Test 1: URL Analysis with Screenshots ---');
     // ============================================================
-    await testHtmlPaste(browser);
+    await testUrlAnalysis(browser);
 
     // ============================================================
     console.log('\n--- Test 2: Console Snippet Output (JSON paste) ---');
@@ -118,32 +118,31 @@ async function run() {
   process.exit(failed > 0 ? 1 : 0);
 }
 
-// Test 1: Paste HTML, enable screenshots, verify report has bbox + meta + viewer
-async function testHtmlPaste(browser) {
+// Test 1: Analyze via URL mode (the real user path), enable screenshots,
+// verify report has bbox + meta + viewer. The test page is served as a
+// fixture file (docs/tests/fixtures/bbox-test.html) and fetched directly
+// (same-origin localhost → MilgProxy direct fetch, no external CORS proxy).
+async function testUrlAnalysis(browser) {
   var page = await browser.newPage();
   await page.setViewport({ width: 1280, height: 900 });
   await page.goto(BASE + '/analyzer.html', { waitUntil: 'networkidle0', timeout: 15000 });
-
-  // Click HTML tab
-  await page.click('[data-tab="tabHtml"]');
-  await page.waitForSelector('#htmlInput', { visible: true });
 
   // Ensure screenshots checkbox is checked
   var ssChecked = await page.$eval('#screenshotCheck', function(el) { return el.checked; });
   assert(ssChecked, 'Screenshot checkbox is checked by default');
 
-  // Paste test HTML
-  await page.evaluate(function(html) { document.getElementById('htmlInput').value = html; }, TEST_HTML);
+  // Click URL tab and analyze the served fixture
+  await page.click('[data-tab="tabUrl"]');
+  await page.waitForSelector('#urlInput', { visible: true });
+  await page.evaluate(function(url) { document.getElementById('urlInput').value = url; }, BASE + '/tests/fixtures/bbox-test.html');
+  await page.click('#analyzeUrlBtn');
 
-  // Click Analyze HTML
-  await page.click('#analyzeHtmlBtn');
-
-  // Wait for report to appear (up to 30s for screenshots)
-  await page.waitForSelector('.report-container.visible', { timeout: 30000 });
+  // Wait for report to appear (URL fetch + render + screenshots)
+  await page.waitForSelector('.report-container.visible', { timeout: 60000 });
 
   // Check that report rendered
   var hasReport = await page.$('.report-header');
-  assert(hasReport, 'Report rendered after HTML paste');
+  assert(hasReport, 'Report rendered after URL analysis');
 
   // Check for screenshot section
   var hasScreenshots = await page.$('.report-screenshots');
