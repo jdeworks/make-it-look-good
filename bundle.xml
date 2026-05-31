@@ -158,7 +158,6 @@ responsive/
   mobile-first.md
   responsive-patterns.md
 scripts/
-  analyze-narratu.mjs
   build-screenshot-snippet.sh
   inject-proxy.sh
   test-full-matrix.mjs
@@ -20154,157 +20153,6 @@ Choosing a responsive pattern?
 - Ethan Marcotte (2011). "Responsive Web Design." A Book Apart.
 </file>
 
-<file path="scripts/analyze-narratu.mjs">
-#!/usr/bin/env node
-/**
- * Run make-it-look-good Design Analyzer against Narratu SPA.
- * Uses Puppeteer to navigate, inject extraction engine, extract, then score.
- */
-import puppeteer from 'puppeteer';
-import { createServer } from 'http';
-import { readFileSync, existsSync } from 'fs';
-import { join, extname } from 'path';
-
-const MILG_DIR = join(import.meta.dirname, '..', 'docs');
-const NARRATU_URL = 'http://localhost:4173/narratu/';
-const MILG_PORT = 8765;
-
-function startServer(dir, port) {
-  const mimeTypes = {
-    '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css',
-    '.json': 'application/json', '.svg': 'image/svg+xml',
-  };
-  const server = createServer((req, res) => {
-    let url = req.url.split('?')[0];
-    let filePath = join(dir, url === '/' ? 'index.html' : url);
-    if (!existsSync(filePath)) { res.writeHead(404); res.end('Not found'); return; }
-    res.writeHead(200, {
-      'Content-Type': mimeTypes[extname(filePath)] || 'application/octet-stream',
-      'Access-Control-Allow-Origin': '*',
-    });
-    res.end(readFileSync(filePath));
-  });
-  server.listen(port);
-  return server;
-}
-
-async function main() {
-  console.log('Narratu Design Analysis\n');
-  const milgServer = startServer(MILG_DIR, MILG_PORT);
-
-  // Read extraction engine source
-  const extractCode = readFileSync(join(MILG_DIR, 'analyzer-extract.js'), 'utf8');
-
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-  });
-
-  const viewports = [
-    { w: 1280, h: 900, label: 'desktop' },
-    { w: 768, h: 1024, label: 'tablet' },
-    { w: 375, h: 812, label: 'phone' },
-  ];
-
-  for (const vp of viewports) {
-    console.log(`\n=== ${vp.label} (${vp.w}x${vp.h}) ===`);
-    const page = await browser.newPage();
-    await page.setViewport({ width: vp.w, height: vp.h });
-
-    // Navigate to Narratu
-    await page.goto(NARRATU_URL, { waitUntil: 'networkidle0', timeout: 15000 });
-    await new Promise(r => setTimeout(r, 3000)); // Wait for React
-
-    // Inject extraction engine and run it
-    const data = await page.evaluate((code) => {
-      return new Promise((resolve, reject) => {
-        try {
-          // Eval the extraction engine — it sets window.MilgExtract
-          (new Function(code))();
-          if (!window.MilgExtract) { reject('MilgExtract not defined'); return; }
-
-          // Set callback and run extraction
-          // MilgExtract IS extractFromDocument — call it directly
-          window.__milgOnExtractComplete = function(data) {
-            resolve(data);
-          };
-          window.MilgExtract();
-        } catch(err) {
-          reject(err.message || String(err));
-        }
-
-        // Timeout
-        setTimeout(() => reject('Extraction timeout (15s)'), 15000);
-      });
-    }, extractCode).catch(err => ({ _error: String(err) }));
-
-    if (data._error) {
-      console.log(`  ERROR: ${data._error}`);
-      await page.close();
-      continue;
-    }
-
-    // Score using the scoring engine
-    const scoringPage = await browser.newPage();
-    await scoringPage.goto(`http://localhost:${MILG_PORT}/tests/test-presets-rendered.html`, {
-      waitUntil: 'networkidle0', timeout: 15000
-    });
-
-    const result = await scoringPage.evaluate((data, label) => {
-      data.profile = 'general';
-      data.meta = data.meta || {};
-      data.meta.url = label;
-      try {
-        const report = window.MilgScoring.runScoring(data);
-        return {
-          overall: report.overall,
-          grade: report.grade,
-          categories: report.categories.map(c => ({
-            label: c.label,
-            score: c.score,
-            errors: c.findings.filter(f => f.severity === 'error').length,
-            warnings: c.findings.filter(f => f.severity === 'warning').length,
-            findings: c.findings
-              .filter(f => f.severity === 'error' || f.severity === 'warning')
-              .map(f => ({ severity: f.severity, title: f.title, detail: (f.detail || '').slice(0, 150) }))
-          }))
-        };
-      } catch(err) {
-        return { _error: 'Scoring error: ' + err.message };
-      }
-    }, data, `narratu-${vp.label}`);
-
-    await scoringPage.close();
-    await page.close();
-
-    if (result._error) {
-      console.log(`  ERROR: ${result._error}`);
-      continue;
-    }
-
-    const totalE = result.categories.reduce((s, c) => s + c.errors, 0);
-    const totalW = result.categories.reduce((s, c) => s + c.warnings, 0);
-    console.log(`  Score: ${result.overall}/100 (${result.grade}) — ${totalE} errors, ${totalW} warnings\n`);
-
-    for (const cat of result.categories) {
-      const icon = cat.errors > 0 ? 'X' : cat.warnings > 0 ? '!' : ' ';
-      const detail = (cat.errors > 0 || cat.warnings > 0) ? ` (${cat.errors}E ${cat.warnings}W)` : '';
-      console.log(`  [${icon}] ${cat.label}: ${cat.score}${detail}`);
-      for (const f of cat.findings) {
-        const fi = f.severity === 'error' ? 'X' : '!';
-        console.log(`      [${fi}] ${f.title}${f.detail ? ' — ' + f.detail : ''}`);
-      }
-    }
-  }
-
-  await browser.close();
-  milgServer.close();
-  console.log('\nDone.');
-}
-
-main().catch(e => { console.error(e); process.exit(1); });
-</file>
-
 <file path="scripts/build-screenshot-snippet.sh">
 #!/usr/bin/env bash
 # Downloads modern-screenshot and inlines it into the screenshot snippet.
@@ -34823,70 +34671,6 @@ window.MilgReport = (function() {
 })();
 </file>
 
-<file path="NEXT-SESSION-PROMPT.md">
-# Analyzer state — capture/mask/region unified (v3.11.15)
-
-## What was done (v3.11.6 → v3.11.15)
-
-Goal: make extraction + region/mask + full-page capture **single-source** across all
-input modes so a change in one place applies everywhere — killing the recurring
-"fixed it for URL mode but missed snippet mode" bug class.
-
-### Architecture now
-```
-<mode PRE>  →  [shared core: MilgExtract + MilgRegion + MilgCapture]  →  <mode POST>
-URL/iframe : proxy-fetch → build hidden srcdoc iframe, inject core via .toString() → postMessage → runAnalysis
-Snippet    : live page    → core inlined into paste block via manifest               → data obj → paste/import → runAnalysis
-Crawl      : per-page same-origin iframe → core injected into each crawl iframe       → aggregate per page
-Load saved : —            → replay only                                              → runAnalysis
-```
-Shared modules expose serializable `getXxxFn()` returning **context-free** functions.
-Mode differences (PRE prep, image preload, result-send, region fn) are passed as
-`opts` (`preHookSrc` / `preloadSrc` / `sendFn` / `regionFnSrc`) — never branched inside
-the core. The snippet paste block is assembled by `SNIPPET_MANIFEST` + literal
-`// @milg-insert: <part>` markers in `analyzer.js` `loadSnippet()`.
-
-### Stages shipped
-| Stage | Version | What |
-|------|---------|------|
-| 1 | — | Migrated Playwright tests off the paste-HTML harness onto real URL mode |
-| 2 | 3.11.7 | Removed the Paste-HTML input mode entirely |
-| 3 | 3.11.8 | Deleted dead `_regionScreenshotFnFallback` (~160 lines) in analyzer-iframe.js |
-| 4 | 3.11.9 | Robust marker/manifest snippet assembly (replaced fragile regex) |
-| 5 | 3.11.10 | Snippet uses shared `MilgRegion` (deleted its localBboxes region copy) |
-| 5b | 3.11.11 | Moved region marking pre-pass into MilgRegion (was duplicated) |
-| 6a | 3.11.12 | Unified full-page mask dark-pixel threshold to 240 (snippet/crawl were 180) |
-| 6b | 3.11.13 | Extracted iframe capture into new `analyzer-capture.js` (`MilgCapture`) |
-| 6c | 3.11.14 | Snippet adopts `MilgCapture` (multi-layer upgrade); regions via core |
-| 6d | 3.11.15 | Crawl adopts `MilgCapture`; third capture copy retired |
-
-The full-page capture+mask core is now single-source in `docs/analyzer-capture.js`.
-On the carousel fixture, URL-mode and snippet-mode output is byte-identical.
-
-## Key files
-| File | Module / role |
-|------|---------------|
-| `docs/analyzer-extract.js` | `MilgExtract` — DOM/style/token extraction (shared) |
-| `docs/analyzer-region.js` | `MilgRegion` — region/carousel detect + per-region screenshot + mask + crop + marking |
-| `docs/analyzer-capture.js` | `MilgCapture` — full-page screenshot + multi-layer mask (shared; NEW) |
-| `docs/analyzer-iframe.js` | URL-mode shell — proxy/iframe/inject + postMessage |
-| `docs/analyzer-snippet-screenshots.js` | Snippet + crawl shells — live-page PRE + clipboard/download POST |
-| `docs/analyzer.js` | Orchestrator — `runAnalysis`, `SNIPPET_MANIFEST` / `loadSnippet`, region scoring + verify |
-
-## Tests
-- `npx playwright test tests/html-analysis.spec.js tests/region-debug.spec.js --reporter=list` → 22/22 (URL mode; serves docs/ on :8384).
-- `node tests/crawl-flow.test.mjs` → 22/0 (URL discovery/normalization only — does NOT cover capture).
-- `node tests/contrast-and-palette.test.mjs` → 8 pre-existing failures (focus-visible primary colors + accordion contrast), unrelated to this effort.
-- region-debug baseline anchor: region 1, score 84, crop (0,15627), container {744,3863,350,467}. Note: that test hits live fink-translate.com — compare structurally, not byte-exact.
-
-## Follow-ups (not done)
-1. `docs/tests/test-bbox-viewer.js` Test 1: 4 assertions read `sessionStorage['milg-last-extraction']` which the analyzer never writes (it exposes `window.__milgLastReport`). Pre-existing, not wired into CI — fix the test to read `window.__milgLastReport.raw`.
-2. iframe srcdoc under-renders responsive CDN-Tailwind pages (pricing preset rendered 1212 CSS px in iframe vs 30656 px on the real page). Snippet mode is more faithful. Investigate whether URL mode should let pages render their full responsive height.
-3. Crawl uses `expand:false` + no regions (kept lean to match prior behavior). Could be upgraded to full per-page parity if desired.
-4. `textMask` (full-page combined data URI) is now `null` in all modes — consumers use per-pair `_maskBmp`. If anything still expects the combined mask, it should be removed.
-5. Minor: an unused `var _cacheBust` remains in `analyzer-snippet-screenshots.js` (Stage 4 left it for parity).
-</file>
-
 <file path="tests/html-analysis.spec.js">
 // @ts-check
 const { test, expect } = require('@playwright/test');
@@ -35303,6 +35087,70 @@ test.describe('Preset Scoring', () => {
     });
   }
 });
+</file>
+
+<file path="NEXT-SESSION-PROMPT.md">
+# Analyzer state — capture/mask/region unified (v3.11.15)
+
+## What was done (v3.11.6 → v3.11.15)
+
+Goal: make extraction + region/mask + full-page capture **single-source** across all
+input modes so a change in one place applies everywhere — killing the recurring
+"fixed it for URL mode but missed snippet mode" bug class.
+
+### Architecture now
+```
+<mode PRE>  →  [shared core: MilgExtract + MilgRegion + MilgCapture]  →  <mode POST>
+URL/iframe : proxy-fetch → build hidden srcdoc iframe, inject core via .toString() → postMessage → runAnalysis
+Snippet    : live page    → core inlined into paste block via manifest               → data obj → paste/import → runAnalysis
+Crawl      : per-page same-origin iframe → core injected into each crawl iframe       → aggregate per page
+Load saved : —            → replay only                                              → runAnalysis
+```
+Shared modules expose serializable `getXxxFn()` returning **context-free** functions.
+Mode differences (PRE prep, image preload, result-send, region fn) are passed as
+`opts` (`preHookSrc` / `preloadSrc` / `sendFn` / `regionFnSrc`) — never branched inside
+the core. The snippet paste block is assembled by `SNIPPET_MANIFEST` + literal
+`// @milg-insert: <part>` markers in `analyzer.js` `loadSnippet()`.
+
+### Stages shipped
+| Stage | Version | What |
+|------|---------|------|
+| 1 | — | Migrated Playwright tests off the paste-HTML harness onto real URL mode |
+| 2 | 3.11.7 | Removed the Paste-HTML input mode entirely |
+| 3 | 3.11.8 | Deleted dead `_regionScreenshotFnFallback` (~160 lines) in analyzer-iframe.js |
+| 4 | 3.11.9 | Robust marker/manifest snippet assembly (replaced fragile regex) |
+| 5 | 3.11.10 | Snippet uses shared `MilgRegion` (deleted its localBboxes region copy) |
+| 5b | 3.11.11 | Moved region marking pre-pass into MilgRegion (was duplicated) |
+| 6a | 3.11.12 | Unified full-page mask dark-pixel threshold to 240 (snippet/crawl were 180) |
+| 6b | 3.11.13 | Extracted iframe capture into new `analyzer-capture.js` (`MilgCapture`) |
+| 6c | 3.11.14 | Snippet adopts `MilgCapture` (multi-layer upgrade); regions via core |
+| 6d | 3.11.15 | Crawl adopts `MilgCapture`; third capture copy retired |
+
+The full-page capture+mask core is now single-source in `docs/analyzer-capture.js`.
+On the carousel fixture, URL-mode and snippet-mode output is byte-identical.
+
+## Key files
+| File | Module / role |
+|------|---------------|
+| `docs/analyzer-extract.js` | `MilgExtract` — DOM/style/token extraction (shared) |
+| `docs/analyzer-region.js` | `MilgRegion` — region/carousel detect + per-region screenshot + mask + crop + marking |
+| `docs/analyzer-capture.js` | `MilgCapture` — full-page screenshot + multi-layer mask (shared; NEW) |
+| `docs/analyzer-iframe.js` | URL-mode shell — proxy/iframe/inject + postMessage |
+| `docs/analyzer-snippet-screenshots.js` | Snippet + crawl shells — live-page PRE + clipboard/download POST |
+| `docs/analyzer.js` | Orchestrator — `runAnalysis`, `SNIPPET_MANIFEST` / `loadSnippet`, region scoring + verify |
+
+## Tests
+- `npx playwright test tests/html-analysis.spec.js tests/region-debug.spec.js --reporter=list` → 22/22 (URL mode; serves docs/ on :8384).
+- `node tests/crawl-flow.test.mjs` → 22/0 (URL discovery/normalization only — does NOT cover capture).
+- `node tests/contrast-and-palette.test.mjs` → 8 pre-existing failures (focus-visible primary colors + accordion contrast), unrelated to this effort.
+- region-debug baseline anchor: region 1, score 84, crop (0,15627), container {744,3863,350,467}. Note: that test hits live fink-translate.com — compare structurally, not byte-exact.
+
+## Follow-ups (not done)
+1. `docs/tests/test-bbox-viewer.js` Test 1: 4 assertions read `sessionStorage['milg-last-extraction']` which the analyzer never writes (it exposes `window.__milgLastReport`). Pre-existing, not wired into CI — fix the test to read `window.__milgLastReport.raw`.
+2. iframe srcdoc under-renders responsive CDN-Tailwind pages (pricing preset rendered 1212 CSS px in iframe vs 30656 px on the real page). Snippet mode is more faithful. Investigate whether URL mode should let pages render their full responsive height.
+3. Crawl uses `expand:false` + no regions (kept lean to match prior behavior). Could be upgraded to full per-page parity if desired.
+4. `textMask` (full-page combined data URI) is now `null` in all modes — consumers use per-pair `_maskBmp`. If anything still expects the combined mask, it should be removed.
+5. Minor: an unused `var _cacheBust` remains in `analyzer-snippet-screenshots.js` (Stage 4 left it for parity).
 </file>
 
 <file path="docs/analyzer-contrast-verify.js">
@@ -38645,6 +38493,20 @@ window.MilgRegion = (function() {
           'getCaptureFn: function() { return (' + window.MilgCapture.getCaptureFn().toString() + '); } ' +
           '};';
       }
+      // Pre-serialize the REAL region fn in THIS (parent) realm, where window.MilgRegion
+      // is defined. The serialized getRegionFn() output is self-contained (it only
+      // references window.MilgExtract, which IS injected into the crawl iframe), so it
+      // works inside the iframe even though MilgRegion itself is not injected there —
+      // exactly how the single-page _captureOpts uses it. Guard: if MilgRegion is
+      // unavailable, leave it empty so the crawl callback falls back to its no-op.
+      var __milgCrawlRegionFnSrc = '';
+      if (window.MilgRegion && window.MilgRegion.getRegionFn) {
+        try {
+          __milgCrawlRegionFnSrc =
+            'window.__milgCrawlRegionFnSrc = ' +
+            JSON.stringify(window.MilgRegion.getRegionFn().toString()) + ';';
+        } catch (e) { __milgCrawlRegionFnSrc = ''; }
+      }
       var _cm = Math.min(Math.max(window.__milgCrawlMaxPages || 5, 1), 25);
       var _cb = window.__milgCrawlBlacklist || [];
       var _co = location.origin;
@@ -38726,8 +38588,11 @@ window.MilgRegion = (function() {
         //     pre-scroll, force-reveal animated, fast-forward CSS anims, overflow:visible
         //     (exactly what the old hand-rolled crawl PRE did).
         //   - preload: no-op (same-origin iframe; no CORS proxy, images already load).
-        //   - expand: false (crawl stays lean — no carousel-expanded second screenshot).
-        //   - regions: none — a no-op region fn that yields [] (crawl captures no regions).
+        //   - expand: true (carousel-expanded second screenshot, same as single-page).
+        //   - regions: the REAL region fn (window.MilgRegion.getRegionFn), pre-serialized
+        //     in the parent realm and injected as window.__milgCrawlRegionFnSrc, with a
+        //     no-op fallback if MilgRegion is unavailable. Crawled pages now get the same
+        //     capture treatment as single-page snippet mode.
         //   - sink: a LIVE function (sendFn) closing over `data` + `_finalize`. The core
         //     runs in this same realm (getCaptureFn() called directly, not re-serialized),
         //     so the sink may close over these locals — same discipline as the snippet's
@@ -38791,14 +38656,25 @@ window.MilgRegion = (function() {
             _finalize();
           }
 
+          // Region fn: prefer the REAL region fn pre-serialized in the parent realm
+          // (window.__milgCrawlRegionFnSrc, injected alongside MilgCapture). It's
+          // self-contained and only references window.MilgExtract (which is injected),
+          // so it runs in this iframe even though window.MilgRegion is not present here.
+          // Fall back to the no-op if the parent couldn't serialize it (MilgRegion
+          // undefined at crawl time) so crawl never hard-crashes. This mirrors the
+          // single-page _captureOpts, which uses the same getRegionFn() source.
+          var _crawlRegionFnSrc = (typeof window.__milgCrawlRegionFnSrc === 'string' && window.__milgCrawlRegionFnSrc)
+            ? window.__milgCrawlRegionFnSrc
+            : _crawlNoopRegionFn.toString();
+
           var _crawlOpts = {
             msgType: 'milg-screenshots-result',
             cdnUrl: 'https://cdn.jsdelivr.net/npm/modern-screenshot@4.6.8/dist/index.js',
             proxyUrl: '',
-            expand: false,
+            expand: true,
             preHookSrc: window.MilgCapture.getIframePreHook().toString(),
             preloadSrc: _crawlNoopPreload.toString(),
-            regionFnSrc: _crawlNoopRegionFn.toString(),
+            regionFnSrc: _crawlRegionFnSrc,
             sendFn: _crawlSend
           };
           // Scale 1.5 / quality 0.8 \u2014 same as crawl has always used (and iframe mode).
@@ -38811,6 +38687,7 @@ window.MilgRegion = (function() {
         var snippetSrc = 'window.__milgProgress = "Extracting design data\\u2026";\n' +
           'window.MilgExtract = ' + window.MilgExtract.toString() + ';\n' +
           __milgCaptureSrc + '\n' +
+          __milgCrawlRegionFnSrc + '\n' +
           'window.__milgOnExtractComplete = ' + _crawlScreenshotCallback.toString() + ';\n' +
           'window.MilgExtract();\n';
         (function() {
@@ -38932,14 +38809,14 @@ window.MilgRegion = (function() {
                         // marks "screenshot + mask pipeline finished".
                         var d = iWin.__milgCrawlPageDone ? iWin.__milgData : null;
                         if (d) { clearInterval(pi); done = true; d.meta.url = url; _cResults.push({ url: url, data: d }); cleanup(); var hasShots = d.screenshots && d.screenshots.length > 0; console.log('%c  \u2713 ' + path + (hasShots ? ' (with screenshots)' : ''), 'color: #16a34a;'); setTimeout(function() { _next(idx + 1); }, 500); }
-                        else if (polls > 80) { clearInterval(pi); done = true; cleanup(); console.log('%c  \u2717 Timeout: ' + path, 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }
+                        else if (polls > 160) { clearInterval(pi); done = true; cleanup(); console.log('%c  \u2717 Timeout: ' + path, 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }
                       } catch(e) { clearInterval(pi); done = true; cleanup(); console.log('%c  \u2717 Error: ' + path + ' (' + e.message + ')', 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }
                     }, 500);
                   } catch(e) { done = true; cleanup(); console.log('%c  \u2717 Cannot inject snippet: ' + path + ' (' + e.message + ')', 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }
                 }, 1500);
               });
               iframe.srcdoc = html;
-              setTimeout(function() { if (done) return; done = true; cleanup(); console.log('%c  \u2717 Timeout (45s): ' + path, 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }, 45000);
+              setTimeout(function() { if (done) return; done = true; cleanup(); console.log('%c  \u2717 Timeout (90s): ' + path, 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }, 90000);
             }).catch(function(e) {
               console.log('%c  \u2717 Fetch failed: ' + path + ' (' + (e.message || e) + ')', 'color: #dc2626;');
               setTimeout(function() { _next(idx + 1); }, 500);
@@ -42817,7 +42694,7 @@ window.MilgIframe = (function() {
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.15 loaded');
+console.log('[milg] analyzer.js v3.11.16 loaded');
 
 (function() {
   "use strict";
@@ -44675,7 +44552,7 @@ console.log('[milg] analyzer.js v3.11.15 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.11.15</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.11.16</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -45085,33 +44962,33 @@ console.log('[milg] analyzer.js v3.11.15 loaded');
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=3.11.15"></script>
-  <script src="scoring/contrast.js?v=3.11.15"></script>
-  <script src="scoring/typography.js?v=3.11.15"></script>
-  <script src="scoring/spacing.js?v=3.11.15"></script>
-  <script src="scoring/touch.js?v=3.11.15"></script>
-  <script src="scoring/accessibility.js?v=3.11.15"></script>
-  <script src="scoring/responsive.js?v=3.11.15"></script>
-  <script src="scoring/consistency.js?v=3.11.15"></script>
-  <script src="scoring/cognitive.js?v=3.11.15"></script>
-  <script src="scoring/layout.js?v=3.11.15"></script>
-  <script src="scoring/performance.js?v=3.11.15"></script>
-  <script src="scoring/readability.js?v=3.11.15"></script>
-  <script src="scoring/filters.js?v=3.11.15"></script>
-  <script src="scoring/balance.js?v=3.11.15"></script>
+  <script src="scoring/registry.js?v=3.11.16"></script>
+  <script src="scoring/contrast.js?v=3.11.16"></script>
+  <script src="scoring/typography.js?v=3.11.16"></script>
+  <script src="scoring/spacing.js?v=3.11.16"></script>
+  <script src="scoring/touch.js?v=3.11.16"></script>
+  <script src="scoring/accessibility.js?v=3.11.16"></script>
+  <script src="scoring/responsive.js?v=3.11.16"></script>
+  <script src="scoring/consistency.js?v=3.11.16"></script>
+  <script src="scoring/cognitive.js?v=3.11.16"></script>
+  <script src="scoring/layout.js?v=3.11.16"></script>
+  <script src="scoring/performance.js?v=3.11.16"></script>
+  <script src="scoring/readability.js?v=3.11.16"></script>
+  <script src="scoring/filters.js?v=3.11.16"></script>
+  <script src="scoring/balance.js?v=3.11.16"></script>
   <!-- Queue + Report rendering + UI -->
-  <script src="analyzer-queue.js?v=3.11.15"></script>
-  <script src="analyzer-report.js?v=3.11.15"></script>
-  <script src="analyzer-crawl.js?v=3.11.15"></script>
-  <script src="analyzer-extract.js?v=3.11.15"></script>
-  <script src="analyzer-region.js?v=3.11.15"></script>
-  <script src="analyzer-capture.js?v=3.11.15"></script>
-  <script src="analyzer-iframe.js?v=3.11.15"></script>
-  <script src="analyzer-proxy.js?v=3.11.15"></script>
-  <script src="analyzer-crawl-ui.js?v=3.11.15"></script>
-  <script src="analyzer-contrast-verify.js?v=3.11.15"></script>
-  <script src="analyzer-viewer.js?v=3.11.15"></script>
-  <script src="analyzer.js?v=3.11.15"></script>
+  <script src="analyzer-queue.js?v=3.11.16"></script>
+  <script src="analyzer-report.js?v=3.11.16"></script>
+  <script src="analyzer-crawl.js?v=3.11.16"></script>
+  <script src="analyzer-extract.js?v=3.11.16"></script>
+  <script src="analyzer-region.js?v=3.11.16"></script>
+  <script src="analyzer-capture.js?v=3.11.16"></script>
+  <script src="analyzer-iframe.js?v=3.11.16"></script>
+  <script src="analyzer-proxy.js?v=3.11.16"></script>
+  <script src="analyzer-crawl-ui.js?v=3.11.16"></script>
+  <script src="analyzer-contrast-verify.js?v=3.11.16"></script>
+  <script src="analyzer-viewer.js?v=3.11.16"></script>
+  <script src="analyzer.js?v=3.11.16"></script>
 </body>
 </html>
 </file>

@@ -403,6 +403,20 @@
           'getCaptureFn: function() { return (' + window.MilgCapture.getCaptureFn().toString() + '); } ' +
           '};';
       }
+      // Pre-serialize the REAL region fn in THIS (parent) realm, where window.MilgRegion
+      // is defined. The serialized getRegionFn() output is self-contained (it only
+      // references window.MilgExtract, which IS injected into the crawl iframe), so it
+      // works inside the iframe even though MilgRegion itself is not injected there —
+      // exactly how the single-page _captureOpts uses it. Guard: if MilgRegion is
+      // unavailable, leave it empty so the crawl callback falls back to its no-op.
+      var __milgCrawlRegionFnSrc = '';
+      if (window.MilgRegion && window.MilgRegion.getRegionFn) {
+        try {
+          __milgCrawlRegionFnSrc =
+            'window.__milgCrawlRegionFnSrc = ' +
+            JSON.stringify(window.MilgRegion.getRegionFn().toString()) + ';';
+        } catch (e) { __milgCrawlRegionFnSrc = ''; }
+      }
       var _cm = Math.min(Math.max(window.__milgCrawlMaxPages || 5, 1), 25);
       var _cb = window.__milgCrawlBlacklist || [];
       var _co = location.origin;
@@ -484,8 +498,11 @@
         //     pre-scroll, force-reveal animated, fast-forward CSS anims, overflow:visible
         //     (exactly what the old hand-rolled crawl PRE did).
         //   - preload: no-op (same-origin iframe; no CORS proxy, images already load).
-        //   - expand: false (crawl stays lean — no carousel-expanded second screenshot).
-        //   - regions: none — a no-op region fn that yields [] (crawl captures no regions).
+        //   - expand: true (carousel-expanded second screenshot, same as single-page).
+        //   - regions: the REAL region fn (window.MilgRegion.getRegionFn), pre-serialized
+        //     in the parent realm and injected as window.__milgCrawlRegionFnSrc, with a
+        //     no-op fallback if MilgRegion is unavailable. Crawled pages now get the same
+        //     capture treatment as single-page snippet mode.
         //   - sink: a LIVE function (sendFn) closing over `data` + `_finalize`. The core
         //     runs in this same realm (getCaptureFn() called directly, not re-serialized),
         //     so the sink may close over these locals — same discipline as the snippet's
@@ -549,14 +566,25 @@
             _finalize();
           }
 
+          // Region fn: prefer the REAL region fn pre-serialized in the parent realm
+          // (window.__milgCrawlRegionFnSrc, injected alongside MilgCapture). It's
+          // self-contained and only references window.MilgExtract (which is injected),
+          // so it runs in this iframe even though window.MilgRegion is not present here.
+          // Fall back to the no-op if the parent couldn't serialize it (MilgRegion
+          // undefined at crawl time) so crawl never hard-crashes. This mirrors the
+          // single-page _captureOpts, which uses the same getRegionFn() source.
+          var _crawlRegionFnSrc = (typeof window.__milgCrawlRegionFnSrc === 'string' && window.__milgCrawlRegionFnSrc)
+            ? window.__milgCrawlRegionFnSrc
+            : _crawlNoopRegionFn.toString();
+
           var _crawlOpts = {
             msgType: 'milg-screenshots-result',
             cdnUrl: 'https://cdn.jsdelivr.net/npm/modern-screenshot@4.6.8/dist/index.js',
             proxyUrl: '',
-            expand: false,
+            expand: true,
             preHookSrc: window.MilgCapture.getIframePreHook().toString(),
             preloadSrc: _crawlNoopPreload.toString(),
-            regionFnSrc: _crawlNoopRegionFn.toString(),
+            regionFnSrc: _crawlRegionFnSrc,
             sendFn: _crawlSend
           };
           // Scale 1.5 / quality 0.8 \u2014 same as crawl has always used (and iframe mode).
@@ -569,6 +597,7 @@
         var snippetSrc = 'window.__milgProgress = "Extracting design data\\u2026";\n' +
           'window.MilgExtract = ' + window.MilgExtract.toString() + ';\n' +
           __milgCaptureSrc + '\n' +
+          __milgCrawlRegionFnSrc + '\n' +
           'window.__milgOnExtractComplete = ' + _crawlScreenshotCallback.toString() + ';\n' +
           'window.MilgExtract();\n';
         (function() {
@@ -690,14 +719,14 @@
                         // marks "screenshot + mask pipeline finished".
                         var d = iWin.__milgCrawlPageDone ? iWin.__milgData : null;
                         if (d) { clearInterval(pi); done = true; d.meta.url = url; _cResults.push({ url: url, data: d }); cleanup(); var hasShots = d.screenshots && d.screenshots.length > 0; console.log('%c  \u2713 ' + path + (hasShots ? ' (with screenshots)' : ''), 'color: #16a34a;'); setTimeout(function() { _next(idx + 1); }, 500); }
-                        else if (polls > 80) { clearInterval(pi); done = true; cleanup(); console.log('%c  \u2717 Timeout: ' + path, 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }
+                        else if (polls > 160) { clearInterval(pi); done = true; cleanup(); console.log('%c  \u2717 Timeout: ' + path, 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }
                       } catch(e) { clearInterval(pi); done = true; cleanup(); console.log('%c  \u2717 Error: ' + path + ' (' + e.message + ')', 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }
                     }, 500);
                   } catch(e) { done = true; cleanup(); console.log('%c  \u2717 Cannot inject snippet: ' + path + ' (' + e.message + ')', 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }
                 }, 1500);
               });
               iframe.srcdoc = html;
-              setTimeout(function() { if (done) return; done = true; cleanup(); console.log('%c  \u2717 Timeout (45s): ' + path, 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }, 45000);
+              setTimeout(function() { if (done) return; done = true; cleanup(); console.log('%c  \u2717 Timeout (90s): ' + path, 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }, 90000);
             }).catch(function(e) {
               console.log('%c  \u2717 Fetch failed: ' + path + ' (' + (e.message || e) + ')', 'color: #dc2626;');
               setTimeout(function() { _next(idx + 1); }, 500);
