@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Cross-Mode Parity Fixture</title>
+<!--
+  Self-contained parity fixture for tests/cross-mode-parity.spec.js.
+  ONLY inline CSS, NO external requests (no CDN, no web fonts) so that BOTH
+  URL/iframe mode (rendered in an srcdoc iframe) and console-snippet mode
+  (rendered as a live page) produce IDENTICAL layout + computed styles.
+  Everything is fixed-size and deterministic: no animations that change layout,
+  system fonts only, explicit px sizes.
+
+  Contents exercising scoring:
+    - 4 passing text-on-bg contrast pairs (dark text on light, white on dark blue)
+    - 2 deliberately LOW-contrast pairs (#9aa0a6 on #ffffff ~2.6:1, #b0b0b0 on #e8e8e8 ~1.6:1)
+    - headings (h1/h2/h3)
+    - buttons / touch targets (one 44x44 OK, one 20px-tall too small)
+    - ONE overflow:hidden clipped container (carousel-like) with off-screen
+      slides so region capture fires in BOTH modes.
+-->
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    background: #ffffff;
+    color: #1a1a1a;
+    width: 1280px;
+    padding: 32px;
+  }
+  h1 { font-size: 32px; line-height: 1.3; margin: 0 0 16px; color: #111827; }
+  h2 { font-size: 24px; line-height: 1.3; margin: 24px 0 12px; color: #1f2937; }
+  h3 { font-size: 18px; line-height: 1.4; margin: 16px 0 8px; color: #374151; }
+  p  { font-size: 16px; line-height: 1.6; margin: 0 0 12px; max-width: 680px; }
+
+  /* PASSING contrast pairs */
+  .pass-dark   { color: #1a1a1a; background: #ffffff; }   /* ~18:1 */
+  .pass-onblue { color: #ffffff; background: #1d4ed8; padding: 16px; } /* ~7:1 */
+  .pass-gray   { color: #4b5563; background: #ffffff; }   /* ~7.5:1 */
+
+  /* LOW-contrast pairs (deliberate failures) */
+  .low-1 { color: #9aa0a6; background: #ffffff; }         /* ~2.6:1 fail */
+  .low-2 { color: #b0b0b0; background: #e8e8e8; padding: 12px; } /* ~1.6:1 fail */
+
+  .btn {
+    display: inline-block;
+    font-size: 16px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    color: #ffffff;
+    background: #1d4ed8;
+  }
+  .btn-ok    { width: 160px; height: 44px; line-height: 44px; text-align: center; } /* good touch target */
+  .btn-small { padding: 2px 8px; height: 20px; line-height: 16px; font-size: 13px; } /* too small */
+
+  /* Carousel-like clipped region: overflow:hidden with off-screen slides */
+  .carousel {
+    overflow: hidden;
+    width: 600px;
+    height: 140px;
+    position: relative;
+    border: 1px solid #d1d5db;
+    margin: 24px 0;
+  }
+  .carousel-track {
+    display: flex;
+    width: 1800px;            /* 3 slides wide — only first is visible */
+    transform: translateX(0);
+  }
+  .carousel-slide {
+    width: 600px;
+    height: 140px;
+    padding: 20px;
+    flex: 0 0 600px;
+  }
+  .slide-a { background: #eef2ff; color: #1e3a8a; }
+  .slide-b { background: #ecfdf5; color: #065f46; }
+  .slide-c { background: #fef2f2; color: #7f1d1d; }
+</style>
+</head>
+<body>
+  <h1 class="pass-dark">Cross-Mode Parity Fixture</h1>
+  <p class="pass-dark">This page is rendered identically by URL/iframe mode and console-snippet mode because it is a complete self-contained document with only inline CSS and no external network requests.</p>
+
+  <h2 class="pass-dark">Readable content</h2>
+  <p class="pass-gray">This paragraph uses a medium gray on white and comfortably passes the WCAG AA contrast threshold for normal body text at sixteen pixels.</p>
+
+  <div class="pass-onblue">
+    <h3 style="color:#ffffff; margin-top:0;">White text on blue</h3>
+    <p style="color:#ffffff; max-width:none; margin:0;">White text on a saturated blue surface, well above the four point five to one minimum.</p>
+  </div>
+
+  <h2 class="pass-dark">Low-contrast examples</h2>
+  <p class="low-1">This light gray text on white does not meet the contrast minimum and should be flagged as a failure by the contrast scorer.</p>
+  <p class="low-2">This near-tone gray text on a light gray panel is even harder to read and is a second deliberate contrast failure.</p>
+
+  <h2 class="pass-dark">Actions</h2>
+  <button class="btn btn-ok">Primary action</button>
+  <button class="btn btn-small">tiny</button>
+
+  <h2 class="pass-dark">Carousel</h2>
+  <div class="carousel">
+    <div class="carousel-track">
+      <div class="carousel-slide slide-a"><h3>Slide One</h3><p style="margin:0;">Visible slide with readable indigo text.</p></div>
+      <div class="carousel-slide slide-b"><h3>Slide Two</h3><p style="margin:0;">Off-screen slide clipped by the container.</p></div>
+      <div class="carousel-slide slide-c"><h3>Slide Three</h3><p style="margin:0;">Another off-screen slide content here.</p></div>
+    </div>
+  </div>
+
+  <p class="pass-dark">Footer text after the clipped carousel region.</p>
+</body>
+</html>
