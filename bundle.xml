@@ -24777,45 +24777,6 @@ Are you building for Android/Google platforms?
 *Related: [Color Systems](../color/color-systems.md) | [Design Tokens](design-tokens.md) | [Animation Timing](../interaction/animation-timing.md)*
 </file>
 
-<file path="tests/analyzer-a11y.spec.js">
-// @ts-check
-// Guards the analyzer UI's own accessibility affordances (v3.11.25).
-const { test, expect } = require('@playwright/test');
-const ANALYZER = 'http://localhost:8384/analyzer.html';
-
-test('analyzer UI exposes accessible names + live regions', async ({ page }) => {
-  test.setTimeout(60000);
-  await page.goto(ANALYZER);
-  const a = await page.evaluate(() => {
-    const attr = (id, name) => { const el = document.getElementById(id); return el ? el.getAttribute(name) : '__missing__'; };
-    return {
-      toastLive: attr('toast', 'aria-live'),
-      toastRole: attr('toast', 'role'),
-      copySnippet: attr('copySnippetBtn', 'aria-label'),
-      exportJson: attr('exportJsonBtn', 'aria-label'),
-      markdown: attr('markdownBtn', 'aria-label'),
-      copyMd: attr('copyMdBtn', 'aria-label'),
-      llmPack: attr('llmPackBtn', 'aria-label'),
-      newAnalysis: attr('newAnalysisBtn', 'aria-label'),
-      sevFilter: attr('exportSeverityFilter', 'aria-label'),
-      viewportSel: attr('viewportSelect', 'aria-label'),
-      analysisProgressLive: attr('analysisProgress', 'aria-live'),
-      // No <h4> should be used for the audience-profiles section heading (heading-order skip).
-      hasProfilesH2: !!Array.from(document.querySelectorAll('h2')).find((h) => /audience profile/i.test(h.textContent || '')),
-    };
-  });
-  console.log('A11Y', JSON.stringify(a, null, 2));
-  expect(a.toastLive).toBe('polite');
-  expect(a.toastRole).toBe('status');
-  for (const k of ['copySnippet', 'exportJson', 'markdown', 'copyMd', 'llmPack', 'newAnalysis', 'sevFilter', 'viewportSel']) {
-    expect(a[k], `${k} aria-label`).toBeTruthy();
-    expect(a[k]).not.toBe('__missing__');
-  }
-  expect(a.analysisProgressLive).toBe('polite');
-  expect(a.hasProfilesH2).toBe(true);
-});
-</file>
-
 <file path="tests/contrast-and-palette.test.mjs">
 /**
  * Contrast & Color Palette Visibility Tests
@@ -25275,6 +25236,108 @@ assert(summary.pagesAnalyzed === 2, 'Summary counts 2 pages');
 assert(summary.averageScore === 79, 'Average score is (85+72)/2 = 79 (rounded)');
 assert(summary.bestPage.score === 85, 'Best page score is 85');
 assert(summary.worstPage.score === 72, 'Worst page score is 72');
+
+console.log('\n=== Sitemap Discovery Tests ===\n');
+
+assert(typeof MilgCrawl.discoverSitemap === 'function', 'discoverSitemap exists');
+assert(typeof MilgCrawl.mergeDiscovered === 'function', 'mergeDiscovered exists');
+
+// Fake fetchText factory: maps url → text (or throws/garbage). Callback-style.
+function fakeFetch(map) {
+  return function(url, cb) {
+    var v = map[url];
+    if (v === undefined) { cb('', '404'); return; }
+    if (v instanceof Error) { cb('', v.message); return; }
+    cb(v, null);
+  };
+}
+
+// Test 8: basic sitemap with same-origin, cross-origin, and media entries
+const basicSitemap = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://example.com/</loc></url>
+  <url><loc>https://example.com/about</loc></url>
+  <url><loc>https://example.com/products?ref=foo</loc></url>
+  <url><loc>https://other.com/external</loc></url>
+  <url><loc>https://example.com/brochure.pdf</loc></url>
+  <url><loc>https://example.com/logo.png</loc></url>
+</urlset>`;
+
+const r8 = await MilgCrawl.discoverSitemap('https://example.com', fakeFetch({
+  'https://example.com/robots.txt': 'User-agent: *\nDisallow:',
+  'https://example.com/sitemap.xml': basicSitemap
+}));
+assert(r8.some(u => u.includes('/about')), 'sitemap: /about discovered');
+assert(r8.some(u => u.includes('/products')), 'sitemap: /products discovered');
+assert(!r8.some(u => u.includes('other.com')), 'sitemap: cross-origin excluded');
+assert(!r8.some(u => u.includes('.pdf')), 'sitemap: PDF media excluded');
+assert(!r8.some(u => u.includes('.png')), 'sitemap: PNG media excluded');
+
+// Test 9: robots.txt Sitemap: directive points to a non-default sitemap URL
+const r9 = await MilgCrawl.discoverSitemap('https://example.com', fakeFetch({
+  'https://example.com/robots.txt': 'Sitemap: https://example.com/custom-sitemap.xml\n',
+  'https://example.com/custom-sitemap.xml': `<urlset><url><loc>https://example.com/hidden</loc></url></urlset>`
+}));
+assert(r9.some(u => u.includes('/hidden')), 'sitemap: robots.txt Sitemap: directive followed');
+
+// Test 10: sitemap-index pointing to a child sitemap (one level of nesting)
+const indexXml = `<?xml version="1.0"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <sitemap><loc>https://example.com/sitemap-pages.xml</loc></sitemap>
+</sitemapindex>`;
+const childXml = `<urlset>
+  <url><loc>https://example.com/page-a</loc></url>
+  <url><loc>https://example.com/page-b</loc></url>
+</urlset>`;
+const r10 = await MilgCrawl.discoverSitemap('https://example.com', fakeFetch({
+  'https://example.com/robots.txt': '',
+  'https://example.com/sitemap.xml': indexXml,
+  'https://example.com/sitemap-pages.xml': childXml
+}));
+assert(r10.some(u => u.includes('/page-a')), 'sitemap-index: child page-a discovered');
+assert(r10.some(u => u.includes('/page-b')), 'sitemap-index: child page-b discovered');
+assert(!r10.some(u => u.includes('sitemap-pages.xml')), 'sitemap-index: child sitemap URL not treated as a page');
+
+// Test 11: graceful failure — fetchText throws
+const r11 = await MilgCrawl.discoverSitemap('https://example.com', function() { throw new Error('boom'); });
+assert(Array.isArray(r11) && r11.length === 0, 'sitemap: returns [] when fetchText throws');
+
+// Test 12: graceful failure — garbage / non-XML response
+const r12 = await MilgCrawl.discoverSitemap('https://example.com', fakeFetch({
+  'https://example.com/robots.txt': '',
+  'https://example.com/sitemap.xml': 'NOT XML <<< broken &&& {}'
+}));
+assert(Array.isArray(r12) && r12.length === 0, 'sitemap: returns [] on garbage XML');
+
+// Test 13: bad origin string returns []
+const r13 = await MilgCrawl.discoverSitemap('not-a-url', fakeFetch({}));
+assert(Array.isArray(r13) && r13.length === 0, 'sitemap: returns [] for invalid origin');
+
+console.log('\n=== mergeDiscovered Tests ===\n');
+
+// Test 14: dedups DOM links vs sitemap URLs (by normalizeUrl)
+const m14 = MilgCrawl.mergeDiscovered(
+  ['https://example.com/about', 'https://example.com/contact'],
+  ['https://example.com/about/', 'https://example.com/blog'], // /about/ dups /about
+  [], 10);
+assert(m14.length === 3, 'mergeDiscovered: deduped about (3 unique total)');
+assert(m14.filter(u => u.includes('/about')).length === 1, 'mergeDiscovered: only one /about variant kept');
+assert(m14.some(u => u.includes('/blog')), 'mergeDiscovered: sitemap-only /blog included');
+
+// Test 15: respects blacklist
+const m15 = MilgCrawl.mergeDiscovered(
+  ['https://example.com/about'],
+  ['https://example.com/blog/post1', 'https://example.com/pricing'],
+  ['/blog/*'], 10);
+assert(!m15.some(u => u.includes('/blog/')), 'mergeDiscovered: blacklisted /blog/* dropped');
+assert(m15.some(u => u.includes('/pricing')), 'mergeDiscovered: non-blacklisted /pricing kept');
+
+// Test 16: respects maxPages cap (maxPages-1 since start page counts as 1)
+const m16 = MilgCrawl.mergeDiscovered(
+  ['https://example.com/a', 'https://example.com/b'],
+  ['https://example.com/c', 'https://example.com/d', 'https://example.com/e'],
+  [], 3); // cap = 2
+assert(m16.length === 2, 'mergeDiscovered: capped at maxPages-1 (2)');
 
 console.log('\n=== Results ===');
 console.log(`${passed} passed, ${failed} failed\n`);
@@ -30500,6 +30563,45 @@ window.MilgQueue = (function() {
 })();
 </file>
 
+<file path="tests/analyzer-a11y.spec.js">
+// @ts-check
+// Guards the analyzer UI's own accessibility affordances (v3.11.25).
+const { test, expect } = require('@playwright/test');
+const ANALYZER = 'http://localhost:8384/analyzer.html';
+
+test('analyzer UI exposes accessible names + live regions', async ({ page }) => {
+  test.setTimeout(60000);
+  await page.goto(ANALYZER);
+  const a = await page.evaluate(() => {
+    const attr = (id, name) => { const el = document.getElementById(id); return el ? el.getAttribute(name) : '__missing__'; };
+    return {
+      toastLive: attr('toast', 'aria-live'),
+      toastRole: attr('toast', 'role'),
+      copySnippet: attr('copySnippetBtn', 'aria-label'),
+      exportJson: attr('exportJsonBtn', 'aria-label'),
+      markdown: attr('markdownBtn', 'aria-label'),
+      copyMd: attr('copyMdBtn', 'aria-label'),
+      llmPack: attr('llmPackBtn', 'aria-label'),
+      newAnalysis: attr('newAnalysisBtn', 'aria-label'),
+      sevFilter: attr('exportSeverityFilter', 'aria-label'),
+      viewportSel: attr('viewportSelect', 'aria-label'),
+      analysisProgressLive: attr('analysisProgress', 'aria-live'),
+      // No <h4> should be used for the audience-profiles section heading (heading-order skip).
+      hasProfilesH2: !!Array.from(document.querySelectorAll('h2')).find((h) => /audience profile/i.test(h.textContent || '')),
+    };
+  });
+  console.log('A11Y', JSON.stringify(a, null, 2));
+  expect(a.toastLive).toBe('polite');
+  expect(a.toastRole).toBe('status');
+  for (const k of ['copySnippet', 'exportJson', 'markdown', 'copyMd', 'llmPack', 'newAnalysis', 'sevFilter', 'viewportSel']) {
+    expect(a[k], `${k} aria-label`).toBeTruthy();
+    expect(a[k]).not.toBe('__missing__');
+  }
+  expect(a.analysisProgressLive).toBe('polite');
+  expect(a.hasProfilesH2).toBe(true);
+});
+</file>
+
 <file path="tests/cross-mode-parity.spec.js">
 // @ts-check
 // CROSS-MODE PARITY TEST
@@ -33253,6 +33355,201 @@ window.MilgCapture = (function() {
 })();
 </file>
 
+<file path="tests/llm-pack-export.spec.js">
+// @ts-check
+// Regression guard for the "LLM pack (.zip)" export (v3.11.21).
+// Asserts (a) MilgReport.buildLlmPack produces the expected document set with real
+// content, and (b) clicking the button loads JSZip and downloads a valid .zip.
+const { test, expect } = require('@playwright/test');
+const fs = require('fs');
+const { execSync } = require('child_process');
+
+const BASE_URL = 'http://localhost:8384';
+const ANALYZER_URL = `${BASE_URL}/analyzer.html`;
+const FIXTURE_URL = `${BASE_URL}/tests/fixtures/parity-page.html`;
+
+test('LLM pack: builder manifest + real button download', async ({ page }) => {
+  test.setTimeout(120000);
+  await page.goto(ANALYZER_URL);
+  await page.check('#screenshotCheck');
+  await page.click('[data-tab="tabUrl"]');
+  await page.fill('#urlInput', FIXTURE_URL);
+  await page.click('#analyzeUrlBtn');
+  await page.waitForSelector('.report-container.visible', { timeout: 90000 });
+  await page.waitForTimeout(2000);
+
+  // (a) Builder manifest shape + content.
+  const pack = await page.evaluate(() => {
+    const r = window.__milgLastReport;
+    const p = MilgReport.buildLlmPack(r, { severityFilter: 'all' });
+    const byPath = {};
+    p.files.forEach((f) => { byPath[f.path] = f.text; });
+    return {
+      folder: p.folder,
+      paths: p.files.map((f) => f.path),
+      assets: p.assets.map((a) => ({ path: a.path, len: (a.b64 || '').length })),
+      readmeHasScore: /Overall score:/.test(byPath['README.md'] || ''),
+      agentHasObjective: /## Objective/.test(byPath['AGENT_PROMPT.md'] || ''),
+      guidelinesHasTokens: /## 1\. Design tokens to honor/.test(byPath['GUIDELINES.md'] || ''),
+      guidelinesHasContrast: /4\.5:1/.test(byPath['GUIDELINES.md'] || ''),
+      indexHasTable: /\| # \| Category \|/.test(byPath['findings/00-index.md'] || ''),
+      thirdPartyHasJSZip: /JSZip/.test(byPath['THIRD_PARTY.md'] || ''),
+      categoryDocs: p.files.filter((f) => /^findings\/\d\d-/.test(f.path) && f.path !== 'findings/00-index.md').length,
+      // A category doc that has a selector-bearing finding should surface a `Selector(s):` block.
+      anyDocHasSelector: p.files.some((f) => /^findings\/\d\d-/.test(f.path) && /\*\*Selector\(s\):\*\*/.test(f.text)),
+    };
+  });
+  console.log('PACK', JSON.stringify(pack, null, 2));
+
+  expect(pack.folder).toMatch(/^milg-llm-pack-/);
+  expect(pack.paths).toContain('README.md');
+  expect(pack.paths).toContain('AGENT_PROMPT.md');
+  expect(pack.paths).toContain('GUIDELINES.md');
+  expect(pack.paths).toContain('findings/00-index.md');
+  expect(pack.paths).toContain('THIRD_PARTY.md');
+  expect(pack.categoryDocs).toBeGreaterThan(0);
+  expect(pack.readmeHasScore).toBe(true);
+  expect(pack.agentHasObjective).toBe(true);
+  expect(pack.guidelinesHasTokens).toBe(true);
+  expect(pack.guidelinesHasContrast).toBe(true);
+  expect(pack.indexHasTable).toBe(true);
+  expect(pack.thirdPartyHasJSZip).toBe(true);
+  expect(pack.assets.length, 'clean screenshot asset included').toBeGreaterThan(0);
+  expect(pack.assets[0].path).toMatch(/^assets\/clean-screenshot\./);
+  expect(pack.anyDocHasSelector, 'at least one finding surfaces selectors').toBe(true);
+
+  // (b) Real button click → JSZip load → .zip download.
+  const downloadPromise = page.waitForEvent('download', { timeout: 30000 });
+  await page.click('#llmPackBtn');
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^milg-llm-pack-.*\.zip$/);
+  const savePath = await download.path();
+  expect(savePath).toBeTruthy();
+  const buf = fs.readFileSync(savePath);
+  // ZIP magic bytes "PK\x03\x04".
+  expect(buf.length).toBeGreaterThan(200);
+  expect(buf[0]).toBe(0x50); expect(buf[1]).toBe(0x4b);
+
+  // List entries with the system unzip (present in CI/dev images) to confirm structure.
+  let listing = '';
+  try { listing = execSync(`unzip -l "${savePath}"`, { encoding: 'utf8' }); } catch (e) { listing = ''; }
+  if (listing) {
+    console.log('ZIP_LISTING', listing);
+    expect(listing).toMatch(/README\.md/);
+    expect(listing).toMatch(/AGENT_PROMPT\.md/);
+    expect(listing).toMatch(/GUIDELINES\.md/);
+    expect(listing).toMatch(/findings\/00-index\.md/);
+    expect(listing).toMatch(/assets\/clean-screenshot\./);
+    expect(listing).toMatch(/THIRD_PARTY\.md/);
+  }
+});
+
+test('LLM pack multi (viewport): dedup, affects N/M, per-unit docs', async ({ page }) => {
+  test.setTimeout(120000);
+  await page.goto(ANALYZER_URL);
+  await page.check('#screenshotCheck');
+  await page.click('[data-tab="tabUrl"]');
+  await page.fill('#urlInput', FIXTURE_URL);
+  await page.click('#analyzeUrlBtn');
+  await page.waitForSelector('.report-container.visible', { timeout: 90000 });
+  await page.waitForTimeout(2000);
+
+  // Build a 2-viewport pack: unit A (Desktop) = full report; unit B (Phone) = same
+  // report with the FIRST category's findings removed → those findings become
+  // "Desktop only" (1/2), the rest "all 2 viewports" (2/2).
+  const m = await page.evaluate(() => {
+    const r = window.__milgLastReport;
+    const clone = () => ({ overall: r.overall, grade: r.grade, gradeLabel: r.gradeLabel, meta: r.meta, raw: r.raw,
+      categories: r.categories.map((c) => ({ label: c.label, weight: c.weight, score: c.score, findings: c.findings.slice() })) });
+    const a = clone();                 // Desktop — full
+    const b = clone(); b.categories[0].findings = []; // Phone — first category cleared
+    const firstCat = r.categories[0].label;
+    const p = MilgReport.buildLlmPackMulti({
+      mode: 'viewport',
+      units: [{ id: 'v0', label: 'Desktop (1280px)', report: a }, { id: 'v1', label: 'Phone (375px)', report: b }],
+      primaryReport: r, host: 'example', aggregateScore: r.overall, dims: { viewports: 2 }, severityFilter: 'all',
+    });
+    const byPath = {}; p.files.forEach((f) => { byPath[f.path] = f.text; });
+    return {
+      folder: p.folder,
+      paths: p.files.map((f) => f.path),
+      unitDocs: p.files.filter((f) => /^units\//.test(f.path)).map((f) => f.path),
+      readme: byPath['README.md'],
+      agent: byPath['AGENT_PROMPT.md'],
+      index: byPath['findings/00-index.md'],
+      firstCat,
+      firstCatDoc: byPath['findings/01-' + (r.categories[0].label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''))  + '.md'],
+    };
+  });
+  console.log('MULTI_PATHS', JSON.stringify(m.paths, null, 2));
+  console.log('MULTI_INDEX', m.index);
+
+  expect(m.folder).toMatch(/-viewports$/);
+  expect(m.unitDocs.length).toBe(2);              // one per viewport
+  expect(m.readme).toMatch(/Checked across:\*\* 2 viewports/);
+  expect(m.agent).toMatch(/scored independently/);
+  expect(m.agent).toMatch(/Viewport-specific/);   // mode-specific solve strategy present
+  // Affects column shows both the universal (2/2) and the desktop-only (1/2) issues.
+  expect(m.index).toMatch(/\| 2\/2 \|/);
+  expect(m.index).toMatch(/\| 1\/2 \|/);
+  // The first category's issues are Desktop-only → badge "1/2 ... Desktop".
+  if (m.firstCatDoc) {
+    expect(m.firstCatDoc).toMatch(/\*\*Affects:\*\*/);
+    expect(m.firstCatDoc).toMatch(/Desktop/);
+  }
+});
+
+// A console-snippet CRAWL produces a {_milgCrawl:true, results:[...]} JSON. Importing
+// it populates the crawl session, so the LLM-pack button must yield a multi-PAGE pack.
+test('LLM pack: crawl import (snippet crawl shape) → multi-page -site pack', async ({ page }) => {
+  test.setTimeout(120000);
+  // 1. Get a real extraction `data` object from a normal analysis.
+  await page.goto(ANALYZER_URL);
+  await page.check('#screenshotCheck');
+  await page.click('[data-tab="tabUrl"]');
+  await page.fill('#urlInput', FIXTURE_URL);
+  await page.click('#analyzeUrlBtn');
+  await page.waitForSelector('.report-container.visible', { timeout: 90000 });
+  await page.waitForTimeout(2000);
+  const rawJson = await page.evaluate(() => JSON.stringify(window.__milgLastReport.raw));
+  const raw = JSON.parse(rawJson);
+
+  // 2. Build a snippet-crawl-shaped JSON with two pages.
+  const a = JSON.parse(JSON.stringify(raw)); a.meta = Object.assign({}, a.meta, { url: 'https://example.com/' });
+  const b = JSON.parse(JSON.stringify(raw)); b.meta = Object.assign({}, b.meta, { url: 'https://example.com/about' });
+  const crawl = { _milgCrawl: true, startUrl: 'https://example.com/', results: [
+    { url: 'https://example.com/', data: a }, { url: 'https://example.com/about', data: b } ] };
+  const tmp = require('path').join(require('os').tmpdir(), 'milg-crawl-llmpack.json');
+  require('fs').writeFileSync(tmp, JSON.stringify(crawl));
+
+  // 3. Import it → crawl session populated.
+  await page.goto(ANALYZER_URL);
+  await page.setInputFiles('#importJsonFile', tmp);
+  await page.waitForFunction(() => !!(window.MilgCrawlUI && MilgCrawlUI.getCrawlSession && MilgCrawlUI.getCrawlSession()), { timeout: 30000 });
+  const sess = await page.evaluate(() => { const s = MilgCrawlUI.getCrawlSession(); return { pages: s.pages.length, hasSummary: !!s.summary }; });
+  console.log('CRAWL_SESSION', JSON.stringify(sess));
+  expect(sess.pages).toBe(2);
+
+  // 4. Click the LLM-pack button → expect a multi-page -site pack.
+  const dl = page.waitForEvent('download', { timeout: 30000 });
+  await page.evaluate(() => document.getElementById('llmPackBtn').click());
+  const download = await dl;
+  console.log('CRAWL_PACK_FILE', download.suggestedFilename());
+  expect(download.suggestedFilename()).toMatch(/^milg-llm-pack-.*-site\.zip$/);
+  const savePath = await download.path();
+  let listing = '';
+  try { listing = require('child_process').execSync(`unzip -l "${savePath}"`, { encoding: 'utf8' }); } catch (e) {}
+  if (listing) {
+    console.log('CRAWL_ZIP', listing);
+    expect(listing).toMatch(/findings\/00-index\.md/);
+    expect(listing).toMatch(/units\//);                 // per-page docs exist
+    // Two page units → two unit docs.
+    const unitDocs = (listing.match(/units\/[^\s]+\.md/g) || []);
+    expect(unitDocs.length).toBe(2);
+  }
+});
+</file>
+
 <file path="docs/analyzer.css">
 /* Analyzer — inherits vars from style.css */
 
@@ -34723,201 +35020,6 @@ body.dark-ui .milg-viewer-overlap-item:hover { background: #334155; }
   .milg-viewer-tooltip { max-width: 280px; font-size: 11px; }
   .milg-viewer-overlap-picker { max-width: 300px; }
 }
-</file>
-
-<file path="tests/llm-pack-export.spec.js">
-// @ts-check
-// Regression guard for the "LLM pack (.zip)" export (v3.11.21).
-// Asserts (a) MilgReport.buildLlmPack produces the expected document set with real
-// content, and (b) clicking the button loads JSZip and downloads a valid .zip.
-const { test, expect } = require('@playwright/test');
-const fs = require('fs');
-const { execSync } = require('child_process');
-
-const BASE_URL = 'http://localhost:8384';
-const ANALYZER_URL = `${BASE_URL}/analyzer.html`;
-const FIXTURE_URL = `${BASE_URL}/tests/fixtures/parity-page.html`;
-
-test('LLM pack: builder manifest + real button download', async ({ page }) => {
-  test.setTimeout(120000);
-  await page.goto(ANALYZER_URL);
-  await page.check('#screenshotCheck');
-  await page.click('[data-tab="tabUrl"]');
-  await page.fill('#urlInput', FIXTURE_URL);
-  await page.click('#analyzeUrlBtn');
-  await page.waitForSelector('.report-container.visible', { timeout: 90000 });
-  await page.waitForTimeout(2000);
-
-  // (a) Builder manifest shape + content.
-  const pack = await page.evaluate(() => {
-    const r = window.__milgLastReport;
-    const p = MilgReport.buildLlmPack(r, { severityFilter: 'all' });
-    const byPath = {};
-    p.files.forEach((f) => { byPath[f.path] = f.text; });
-    return {
-      folder: p.folder,
-      paths: p.files.map((f) => f.path),
-      assets: p.assets.map((a) => ({ path: a.path, len: (a.b64 || '').length })),
-      readmeHasScore: /Overall score:/.test(byPath['README.md'] || ''),
-      agentHasObjective: /## Objective/.test(byPath['AGENT_PROMPT.md'] || ''),
-      guidelinesHasTokens: /## 1\. Design tokens to honor/.test(byPath['GUIDELINES.md'] || ''),
-      guidelinesHasContrast: /4\.5:1/.test(byPath['GUIDELINES.md'] || ''),
-      indexHasTable: /\| # \| Category \|/.test(byPath['findings/00-index.md'] || ''),
-      thirdPartyHasJSZip: /JSZip/.test(byPath['THIRD_PARTY.md'] || ''),
-      categoryDocs: p.files.filter((f) => /^findings\/\d\d-/.test(f.path) && f.path !== 'findings/00-index.md').length,
-      // A category doc that has a selector-bearing finding should surface a `Selector(s):` block.
-      anyDocHasSelector: p.files.some((f) => /^findings\/\d\d-/.test(f.path) && /\*\*Selector\(s\):\*\*/.test(f.text)),
-    };
-  });
-  console.log('PACK', JSON.stringify(pack, null, 2));
-
-  expect(pack.folder).toMatch(/^milg-llm-pack-/);
-  expect(pack.paths).toContain('README.md');
-  expect(pack.paths).toContain('AGENT_PROMPT.md');
-  expect(pack.paths).toContain('GUIDELINES.md');
-  expect(pack.paths).toContain('findings/00-index.md');
-  expect(pack.paths).toContain('THIRD_PARTY.md');
-  expect(pack.categoryDocs).toBeGreaterThan(0);
-  expect(pack.readmeHasScore).toBe(true);
-  expect(pack.agentHasObjective).toBe(true);
-  expect(pack.guidelinesHasTokens).toBe(true);
-  expect(pack.guidelinesHasContrast).toBe(true);
-  expect(pack.indexHasTable).toBe(true);
-  expect(pack.thirdPartyHasJSZip).toBe(true);
-  expect(pack.assets.length, 'clean screenshot asset included').toBeGreaterThan(0);
-  expect(pack.assets[0].path).toMatch(/^assets\/clean-screenshot\./);
-  expect(pack.anyDocHasSelector, 'at least one finding surfaces selectors').toBe(true);
-
-  // (b) Real button click → JSZip load → .zip download.
-  const downloadPromise = page.waitForEvent('download', { timeout: 30000 });
-  await page.click('#llmPackBtn');
-  const download = await downloadPromise;
-  expect(download.suggestedFilename()).toMatch(/^milg-llm-pack-.*\.zip$/);
-  const savePath = await download.path();
-  expect(savePath).toBeTruthy();
-  const buf = fs.readFileSync(savePath);
-  // ZIP magic bytes "PK\x03\x04".
-  expect(buf.length).toBeGreaterThan(200);
-  expect(buf[0]).toBe(0x50); expect(buf[1]).toBe(0x4b);
-
-  // List entries with the system unzip (present in CI/dev images) to confirm structure.
-  let listing = '';
-  try { listing = execSync(`unzip -l "${savePath}"`, { encoding: 'utf8' }); } catch (e) { listing = ''; }
-  if (listing) {
-    console.log('ZIP_LISTING', listing);
-    expect(listing).toMatch(/README\.md/);
-    expect(listing).toMatch(/AGENT_PROMPT\.md/);
-    expect(listing).toMatch(/GUIDELINES\.md/);
-    expect(listing).toMatch(/findings\/00-index\.md/);
-    expect(listing).toMatch(/assets\/clean-screenshot\./);
-    expect(listing).toMatch(/THIRD_PARTY\.md/);
-  }
-});
-
-test('LLM pack multi (viewport): dedup, affects N/M, per-unit docs', async ({ page }) => {
-  test.setTimeout(120000);
-  await page.goto(ANALYZER_URL);
-  await page.check('#screenshotCheck');
-  await page.click('[data-tab="tabUrl"]');
-  await page.fill('#urlInput', FIXTURE_URL);
-  await page.click('#analyzeUrlBtn');
-  await page.waitForSelector('.report-container.visible', { timeout: 90000 });
-  await page.waitForTimeout(2000);
-
-  // Build a 2-viewport pack: unit A (Desktop) = full report; unit B (Phone) = same
-  // report with the FIRST category's findings removed → those findings become
-  // "Desktop only" (1/2), the rest "all 2 viewports" (2/2).
-  const m = await page.evaluate(() => {
-    const r = window.__milgLastReport;
-    const clone = () => ({ overall: r.overall, grade: r.grade, gradeLabel: r.gradeLabel, meta: r.meta, raw: r.raw,
-      categories: r.categories.map((c) => ({ label: c.label, weight: c.weight, score: c.score, findings: c.findings.slice() })) });
-    const a = clone();                 // Desktop — full
-    const b = clone(); b.categories[0].findings = []; // Phone — first category cleared
-    const firstCat = r.categories[0].label;
-    const p = MilgReport.buildLlmPackMulti({
-      mode: 'viewport',
-      units: [{ id: 'v0', label: 'Desktop (1280px)', report: a }, { id: 'v1', label: 'Phone (375px)', report: b }],
-      primaryReport: r, host: 'example', aggregateScore: r.overall, dims: { viewports: 2 }, severityFilter: 'all',
-    });
-    const byPath = {}; p.files.forEach((f) => { byPath[f.path] = f.text; });
-    return {
-      folder: p.folder,
-      paths: p.files.map((f) => f.path),
-      unitDocs: p.files.filter((f) => /^units\//.test(f.path)).map((f) => f.path),
-      readme: byPath['README.md'],
-      agent: byPath['AGENT_PROMPT.md'],
-      index: byPath['findings/00-index.md'],
-      firstCat,
-      firstCatDoc: byPath['findings/01-' + (r.categories[0].label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''))  + '.md'],
-    };
-  });
-  console.log('MULTI_PATHS', JSON.stringify(m.paths, null, 2));
-  console.log('MULTI_INDEX', m.index);
-
-  expect(m.folder).toMatch(/-viewports$/);
-  expect(m.unitDocs.length).toBe(2);              // one per viewport
-  expect(m.readme).toMatch(/Checked across:\*\* 2 viewports/);
-  expect(m.agent).toMatch(/scored independently/);
-  expect(m.agent).toMatch(/Viewport-specific/);   // mode-specific solve strategy present
-  // Affects column shows both the universal (2/2) and the desktop-only (1/2) issues.
-  expect(m.index).toMatch(/\| 2\/2 \|/);
-  expect(m.index).toMatch(/\| 1\/2 \|/);
-  // The first category's issues are Desktop-only → badge "1/2 ... Desktop".
-  if (m.firstCatDoc) {
-    expect(m.firstCatDoc).toMatch(/\*\*Affects:\*\*/);
-    expect(m.firstCatDoc).toMatch(/Desktop/);
-  }
-});
-
-// A console-snippet CRAWL produces a {_milgCrawl:true, results:[...]} JSON. Importing
-// it populates the crawl session, so the LLM-pack button must yield a multi-PAGE pack.
-test('LLM pack: crawl import (snippet crawl shape) → multi-page -site pack', async ({ page }) => {
-  test.setTimeout(120000);
-  // 1. Get a real extraction `data` object from a normal analysis.
-  await page.goto(ANALYZER_URL);
-  await page.check('#screenshotCheck');
-  await page.click('[data-tab="tabUrl"]');
-  await page.fill('#urlInput', FIXTURE_URL);
-  await page.click('#analyzeUrlBtn');
-  await page.waitForSelector('.report-container.visible', { timeout: 90000 });
-  await page.waitForTimeout(2000);
-  const rawJson = await page.evaluate(() => JSON.stringify(window.__milgLastReport.raw));
-  const raw = JSON.parse(rawJson);
-
-  // 2. Build a snippet-crawl-shaped JSON with two pages.
-  const a = JSON.parse(JSON.stringify(raw)); a.meta = Object.assign({}, a.meta, { url: 'https://example.com/' });
-  const b = JSON.parse(JSON.stringify(raw)); b.meta = Object.assign({}, b.meta, { url: 'https://example.com/about' });
-  const crawl = { _milgCrawl: true, startUrl: 'https://example.com/', results: [
-    { url: 'https://example.com/', data: a }, { url: 'https://example.com/about', data: b } ] };
-  const tmp = require('path').join(require('os').tmpdir(), 'milg-crawl-llmpack.json');
-  require('fs').writeFileSync(tmp, JSON.stringify(crawl));
-
-  // 3. Import it → crawl session populated.
-  await page.goto(ANALYZER_URL);
-  await page.setInputFiles('#importJsonFile', tmp);
-  await page.waitForFunction(() => !!(window.MilgCrawlUI && MilgCrawlUI.getCrawlSession && MilgCrawlUI.getCrawlSession()), { timeout: 30000 });
-  const sess = await page.evaluate(() => { const s = MilgCrawlUI.getCrawlSession(); return { pages: s.pages.length, hasSummary: !!s.summary }; });
-  console.log('CRAWL_SESSION', JSON.stringify(sess));
-  expect(sess.pages).toBe(2);
-
-  // 4. Click the LLM-pack button → expect a multi-page -site pack.
-  const dl = page.waitForEvent('download', { timeout: 30000 });
-  await page.evaluate(() => document.getElementById('llmPackBtn').click());
-  const download = await dl;
-  console.log('CRAWL_PACK_FILE', download.suggestedFilename());
-  expect(download.suggestedFilename()).toMatch(/^milg-llm-pack-.*-site\.zip$/);
-  const savePath = await download.path();
-  let listing = '';
-  try { listing = require('child_process').execSync(`unzip -l "${savePath}"`, { encoding: 'utf8' }); } catch (e) {}
-  if (listing) {
-    console.log('CRAWL_ZIP', listing);
-    expect(listing).toMatch(/findings\/00-index\.md/);
-    expect(listing).toMatch(/units\//);                 // per-page docs exist
-    // Two page units → two unit docs.
-    const unitDocs = (listing.match(/units\/[^\s]+\.md/g) || []);
-    expect(unitDocs.length).toBe(2);
-  }
-});
 </file>
 
 <file path="docs/analyzer-report.js">
@@ -38604,6 +38706,139 @@ window.MilgCrawl = (function() {
     return links;
   }
 
+  // --- Sitemap discovery ---
+  // Best-effort: fetches /sitemap.xml (and robots.txt Sitemap: hints), parses <loc>
+  // entries, follows one level of sitemap-index nesting, returns same-origin URLs.
+  // fetchText(url, cb(text, err)) is injected so this is unit-testable in node and
+  // routes through the proxy in the browser. NEVER throws — returns [] on any failure.
+
+  function _extractLocs(xml) {
+    var locs = [];
+    if (!xml || typeof xml !== 'string') return locs;
+    var re = /<loc>\s*([^<]+?)\s*<\/loc>/gi;
+    var m;
+    while ((m = re.exec(xml)) !== null) {
+      var val = m[1]
+        .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&apos;/g, "'")
+        .trim();
+      if (val) locs.push(val);
+    }
+    return locs;
+  }
+
+  function _isSitemapIndex(xml) {
+    return /<sitemapindex[\s>]/i.test(xml || '');
+  }
+
+  // Parse robots.txt for `Sitemap:` directives → array of sitemap URLs.
+  function _parseRobotsSitemaps(robotsText) {
+    var out = [];
+    if (!robotsText || typeof robotsText !== 'string') return out;
+    var lines = robotsText.split(/\r?\n/);
+    for (var i = 0; i < lines.length; i++) {
+      var mm = /^\s*sitemap\s*:\s*(\S+)/i.exec(lines[i]);
+      if (mm && mm[1]) out.push(mm[1].trim());
+    }
+    return out;
+  }
+
+  // Wrap a callback-style fetchText into a promise; resolve to '' on error so
+  // discovery never rejects.
+  function _fetchTextP(fetchText, url) {
+    return new Promise(function(resolve) {
+      try {
+        var ret = fetchText(url, function(text, err) {
+          resolve(err || !text ? '' : String(text));
+        });
+        // Support fetchText returning a promise/value too (test convenience)
+        if (ret && typeof ret.then === 'function') {
+          ret.then(function(text) { resolve(text == null ? '' : String(text)); },
+                   function() { resolve(''); });
+        }
+      } catch (e) { resolve(''); }
+    });
+  }
+
+  // discoverSitemap(origin, fetchText) → Promise<string[]> of same-origin page URLs.
+  // origin: e.g. 'https://example.com' (origin or full URL — origin is derived).
+  function discoverSitemap(origin, fetchText) {
+    var org;
+    try { org = new URL(origin).origin; } catch (e) { return Promise.resolve([]); }
+
+    // Candidate sitemap URLs: robots.txt hints first, then the conventional default.
+    return _fetchTextP(fetchText, org + '/robots.txt').then(function(robots) {
+      var candidates = _parseRobotsSitemaps(robots).filter(function(u) {
+        try { return new URL(u).origin === org; } catch (e) { return false; }
+      });
+      if (candidates.indexOf(org + '/sitemap.xml') === -1) candidates.push(org + '/sitemap.xml');
+
+      // Fetch each candidate. If it's a sitemap-index, follow one level of children.
+      var seenSitemaps = {};
+      function fetchSitemap(url, allowNest) {
+        if (seenSitemaps[url]) return Promise.resolve([]);
+        seenSitemaps[url] = true;
+        return _fetchTextP(fetchText, url).then(function(xml) {
+          if (!xml) return [];
+          var locs = _extractLocs(xml);
+          if (_isSitemapIndex(xml) && allowNest) {
+            // locs point to child sitemaps — fetch each (one level deep, same origin).
+            var children = locs.filter(function(u) {
+              try { return new URL(u).origin === org; } catch (e) { return false; }
+            }).slice(0, 50);
+            return Promise.all(children.map(function(c) { return fetchSitemap(c, false); }))
+              .then(function(arrs) {
+                return arrs.reduce(function(a, b) { return a.concat(b); }, []);
+              });
+          }
+          return locs;
+        });
+      }
+
+      return Promise.all(candidates.map(function(c) { return fetchSitemap(c, true); }))
+        .then(function(arrs) {
+          var all = arrs.reduce(function(a, b) { return a.concat(b); }, []);
+          var seen = new Set();
+          var out = [];
+          for (var i = 0; i < all.length; i++) {
+            var raw = all[i];
+            var u;
+            try { u = new URL(raw); } catch (e) { continue; }
+            if (u.origin !== org) continue;
+            if (SKIP_EXTENSIONS.test(u.pathname)) continue;
+            var norm = normalizeUrl(raw);
+            if (seen.has(norm)) continue;
+            seen.add(norm);
+            out.push(raw);
+          }
+          return out;
+        });
+    }).catch(function() { return []; });
+  }
+
+  // mergeDiscovered(domLinks, sitemapUrls, blacklist, maxPages) — union by
+  // normalizeUrl, drop blacklisted, cap at maxPages-1 (start page counts as 1).
+  function mergeDiscovered(domLinks, sitemapUrls, blacklist, maxPages) {
+    var seen = new Set();
+    var out = [];
+    var cap = Math.max((maxPages || 1) - 1, 0);
+    var sources = [domLinks || [], sitemapUrls || []];
+    for (var s = 0; s < sources.length; s++) {
+      var list = sources[s];
+      for (var i = 0; i < list.length; i++) {
+        if (out.length >= cap) return out;
+        var url = list[i];
+        if (!url) continue;
+        var norm = normalizeUrl(url);
+        if (seen.has(norm)) continue;
+        if (matchesBlacklist(norm, blacklist)) continue;
+        seen.add(norm);
+        out.push(url);
+      }
+    }
+    return out;
+  }
+
   // --- Session management ---
 
   var _sessionCounter = 0;
@@ -38673,34 +38908,73 @@ window.MilgCrawl = (function() {
       }
 
       // Discover links from starting page HTML
-      var discovered = discoverLinks(html, startUrl, opts.blacklist, opts.maxPages);
-      session.discoveredUrls = discovered;
-      session.queue = discovered.slice();
-      if (pipeline.onDiscovery) pipeline.onDiscovery(discovered);
+      var domLinks = discoverLinks(html, startUrl, opts.blacklist, opts.maxPages);
 
-      // Analyze starting page
-      startPage.status = 'analyzing';
-      pipeline.analyzePage(html, startUrl, opts, function(data) {
-        if (session._aborted) return;
-        if (data) {
-          startPage.rawData = data;
-          startPage.title = (data.meta && data.meta.title) || '';
-          startPage.reportData = pipeline.scorePage(data);
-          startPage.status = 'done';
-        } else {
-          startPage.status = 'error';
-          startPage.error = 'Analysis failed';
-        }
-        startPage.completedAt = new Date().toISOString();
-        if (startPage.status === 'done') {
-          if (pipeline.onPageComplete) pipeline.onPageComplete(startPage);
-        } else {
-          if (pipeline.onPageError) pipeline.onPageError(startPage);
-        }
+      // Helper: merge DOM links + sitemap URLs, exclude the start page (and its index
+      // variants), apply blacklist, cap at maxPages-1, then queue + analyze.
+      function _finishDiscovery(sitemapUrls) {
+        var startNorms = {};
+        startNorms[normalizeUrl(startUrl)] = 1;
+        try {
+          var bP = new URL(startUrl).pathname, bO = new URL(startUrl).origin;
+          if (bP === '/' || bP === '/index.html' || bP === '/index.htm') {
+            startNorms[normalizeUrl(bO + '/')] = 1;
+            startNorms[normalizeUrl(bO + '/index.html')] = 1;
+            startNorms[normalizeUrl(bO + '/index.htm')] = 1;
+          }
+        } catch (e) {}
+        var cleanSitemap = (sitemapUrls || []).filter(function(u) {
+          return !startNorms[normalizeUrl(u)];
+        });
+        var discovered = mergeDiscovered(domLinks, cleanSitemap, opts.blacklist, opts.maxPages);
+        session.discoveredUrls = discovered;
+        session.queue = discovered.slice();
+        if (pipeline.onDiscovery) pipeline.onDiscovery(discovered);
 
-        // Process remaining queue
-        processQueue(session, pipeline, 0);
-      });
+        // Analyze starting page
+        startPage.status = 'analyzing';
+        pipeline.analyzePage(html, startUrl, opts, function(data) {
+          if (session._aborted) return;
+          if (data) {
+            startPage.rawData = data;
+            startPage.title = (data.meta && data.meta.title) || '';
+            startPage.reportData = pipeline.scorePage(data);
+            startPage.status = 'done';
+          } else {
+            startPage.status = 'error';
+            startPage.error = 'Analysis failed';
+          }
+          startPage.completedAt = new Date().toISOString();
+          if (startPage.status === 'done') {
+            if (pipeline.onPageComplete) pipeline.onPageComplete(startPage);
+          } else {
+            if (pipeline.onPageError) pipeline.onPageError(startPage);
+          }
+
+          // Process remaining queue
+          processQueue(session, pipeline, 0);
+        });
+      }
+
+      // Best-effort sitemap discovery: reuse the crawl's proxy fetch (pipeline.fetchPage)
+      // as fetchText so CORS works. Never blocks/breaks the crawl on failure.
+      var origin;
+      try { origin = new URL(startUrl).origin; } catch (e) { origin = null; }
+      if (origin && pipeline.fetchPage) {
+        var sitemapFetch = function(url, cb) { pipeline.fetchPage(url, cb); };
+        var done = false;
+        var finalize = function(urls) {
+          if (done) return; done = true;
+          if (session._aborted) return;
+          _finishDiscovery(urls || []);
+        };
+        try {
+          discoverSitemap(origin, sitemapFetch).then(function(urls) { finalize(urls); },
+                                                      function() { finalize([]); });
+        } catch (e) { finalize([]); }
+      } else {
+        _finishDiscovery([]);
+      }
     });
   }
 
@@ -39159,6 +39433,8 @@ window.MilgCrawl = (function() {
     normalizeUrl: normalizeUrl,
     matchesBlacklist: matchesBlacklist,
     discoverLinks: discoverLinks,
+    discoverSitemap: discoverSitemap,
+    mergeDiscovered: mergeDiscovered,
     createSession: createSession,
     startCrawl: startCrawl,
     abortCrawl: abortCrawl,
@@ -39166,6 +39442,703 @@ window.MilgCrawl = (function() {
     filterFindings: filterFindings,
     renderCrawlMarkdown: renderCrawlMarkdown,
     renderCrawlJSON: renderCrawlJSON
+  };
+})();
+</file>
+
+<file path="docs/analyzer-crawl-ui.js">
+// make-it-look-good — Crawl UI Wiring
+// Manages multi-page site crawl progress, tabs, and results display.
+// Depends on: analyzer-crawl.js (MilgCrawl), analyzer-report.js (MilgReport),
+//             analyzer-iframe.js (MilgIframe), analyzer-proxy.js (MilgProxy)
+
+window.MilgCrawlUI = (function() {
+  "use strict";
+
+  var _crawlSession = null;
+  var _crawlPageReports = {}; // pageIndex → rendered HTML cache
+  var _crawlActivePageTab = 'summary';
+  var CRAWL_HARD_MAX = 25;
+
+  // Dependencies injected via setup()
+  var _showToast, _runAnalysis, _restoreCachedAnalysis, _analyzeUrlBtn, _runDeepScanLoop;
+  var _showFocusModal, _updateFocusModal, _hideFocusModal;
+
+  // DOM refs queried during setup
+  var crawlSiteCheck, crawlOptions, cancelCrawlBtn, crawlMaxPages, crawlBlacklist;
+  var crawlProgressArea, crawlProgressLabel, crawlProgressCount, crawlProgressFill, crawlProgressList;
+  var crawlResults, crawlPageTabs, crawlPageContent;
+
+  function _esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+  // Use the shared focus modal for crawl progress (same as single-URL deep scan).
+  // The modal has a close button so users can dismiss it and browse results.
+  var _crawlModalDismissed = false;
+  function _crawlModal(msg) {
+    if (_crawlModalDismissed) return;
+    if (_showFocusModal) _showFocusModal();
+    if (_updateFocusModal) _updateFocusModal(msg + '\n');
+  }
+  function _crawlModalClose() {
+    _crawlModalDismissed = false;
+    if (_hideFocusModal) _hideFocusModal();
+  }
+
+  function getCrawlSession() { return _crawlSession; }
+  function setCrawlSession(s) { _crawlSession = s; }
+  function getActiveTab() { return _crawlActivePageTab; }
+
+  function isCrawlMode() { return crawlSiteCheck && crawlSiteCheck.checked; }
+  function isCrawlActive() { return _crawlSession && _crawlSession.pages.length > 0 && crawlResults && crawlResults.style.display !== 'none'; }
+  // Show the "Include per-viewport data" export option only for crawls that actually
+  // carry deep-scan viewport data (so re-import can rebuild the page×viewport matrix).
+  function _toggleViewportExportOption() {
+    var lbl = document.getElementById('crawlIncludeViewportsLabel');
+    if (!lbl) return;
+    var hasVp = !!(_crawlSession && _crawlSession.pages && _crawlSession.pages.some(function(p) {
+      return p.rawData && p.rawData.deepScan && p.rawData.deepScan.viewportData && p.rawData.deepScan.viewportData.filter(Boolean).length > 1;
+    }));
+    lbl.style.display = hasVp ? 'inline-flex' : 'none';
+  }
+
+  function crawlStatusIcon(status) {
+    if (status === 'done') return '<span class="status-icon done"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></span>';
+    if (status === 'error') return '<span class="status-icon error"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>';
+    if (status === 'fetching' || status === 'analyzing') return '<span class="status-icon active"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/></svg></span>';
+    return '<span class="status-icon pending"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-dasharray="20" stroke-dashoffset="10"/></svg></span>';
+  }
+
+  function updateCrawlProgressItem(page) {
+    var existing = document.getElementById('crawl-progress-' + encodeURIComponent(page.url));
+    var path; try { path = new URL(page.url).pathname; } catch(e) { path = page.url; }
+    var scoreText = page.status === 'done' && page.reportData ? ' ' + page.reportData.overall + '/100' : '';
+    var errorText = page.status === 'error' ? ' <span style="color:#dc2626;font-size:12px">' + (page.error || 'Failed').substring(0, 40) + '</span>' : '';
+    var html = crawlStatusIcon(page.status) +
+      '<span class="page-url" title="' + page.url + '">' + path + '</span>' +
+      '<span class="page-score">' + scoreText + errorText + '</span>';
+    if (existing) {
+      existing.innerHTML = html;
+    } else {
+      var div = document.createElement('div');
+      div.className = 'crawl-progress-item';
+      div.id = 'crawl-progress-' + encodeURIComponent(page.url);
+      div.innerHTML = html;
+      crawlProgressList.appendChild(div);
+    }
+  }
+
+  function renderCrawlTabs() {
+    if (!_crawlSession || !crawlPageTabs) return;
+    var html = '<button class="crawl-page-tab' + (_crawlActivePageTab === 'summary' ? ' active' : '') + '" data-crawl-page="summary">Summary</button>';
+    _crawlSession.pages.forEach(function(page, idx) {
+      html += MilgReport.renderCrawlPageTab(page, idx, _crawlActivePageTab === String(idx));
+    });
+    crawlPageTabs.innerHTML = html;
+  }
+
+  var _spinnerHtml = '<div style="padding:60px;text-align:center">' +
+    '<div style="width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite;margin:0 auto"></div>' +
+    '<div style="color:var(--text-secondary);margin-top:12px;font-size:13px">Loading report\u2026</div>' +
+    '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style></div>';
+
+  function showCrawlPageContent(key) {
+    _crawlActivePageTab = key;
+    // Promote this page's verify to front of queue so it completes first
+    if (key !== 'summary' && window.MilgQueue) {
+      MilgQueue.promote('crawl-verify-' + key);
+    }
+    renderCrawlTabs();
+    var reportContainer = document.getElementById('reportContainer');
+    var reportActions = document.getElementById('reportActions');
+    // Show export/actions only after crawl is complete (not during progress)
+    var crawlDone = _crawlSession && _crawlSession.status === 'complete';
+    if (reportActions) reportActions.style.display = crawlDone ? 'flex' : 'none';
+    if (crawlDone) _toggleViewportExportOption();
+    if (key === 'summary') {
+      var summary = _crawlSession.summary || MilgCrawl.buildSummary(_crawlSession);
+      var ephBanner = document.getElementById('ephemeralBanner');
+      if (ephBanner && crawlDone) ephBanner.style.display = 'flex';
+      crawlPageContent.innerHTML = MilgReport.renderCrawlSummary(summary);
+      crawlPageContent.style.display = '';
+      crawlPageContent.className = 'report-container visible';
+      if (reportContainer) { reportContainer.style.display = 'none'; reportContainer.className = 'report-container'; }
+      // Re-inject pixel verify summary if all pages have been verified
+      if (crawlDone && _crawlSession.pages.some(function(p) { return p.rawData && p.rawData._contrastVerifyResults; })) {
+        var allVerified = _crawlSession.pages.filter(function(p) { return p.status === 'done'; })
+          .every(function(p) { return p.rawData && p.rawData._contrastVerifyResults; });
+        if (allVerified) _updateVerifySummary(_crawlSession.pages.length, _crawlSession.pages.length, _crawlSession);
+      }
+    } else {
+      var idx = parseInt(key);
+      var page = _crawlSession.pages[idx];
+      if (!page || page.status !== 'done') {
+        crawlPageContent.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-secondary)">' +
+          (page && page.status === 'error' ? 'Error: ' + (page.error || 'Analysis failed') : 'Analyzing\u2026') + '</div>';
+        crawlPageContent.style.display = '';
+        crawlPageContent.className = 'report-container visible';
+        if (reportContainer) { reportContainer.style.display = 'none'; reportContainer.className = 'report-container'; }
+        return;
+      }
+
+      crawlPageContent.style.display = 'none';
+      crawlPageContent.className = 'report-container';
+      if (reportContainer) reportContainer.style.display = '';
+
+      // Clear viewport cache when switching crawl pages (viewport indices collide across pages)
+      if (typeof window.__milgClearViewportCache === 'function') window.__milgClearViewportCache();
+
+      // Cache hit: re-run with cached scoring + precomputed verify (fast, preserves overlays)
+      if (_crawlPageReports[idx]) {
+        var cached = _crawlPageReports[idx];
+        _runAnalysis(cached.data || page.rawData, 'crawl-page');
+        return;
+      }
+
+      // Cache miss: show spinner, defer heavy work so spinner paints
+      reportContainer.innerHTML = _spinnerHtml;
+      reportContainer.classList.add('visible');
+      setTimeout(function() {
+        // Guard: user may have switched tabs during the setTimeout
+        if (_crawlActivePageTab !== String(idx)) return;
+        page.rawData.meta = page.rawData.meta || {};
+        var origMethod = page.rawData.meta._inputMethod;
+        _runAnalysis(page.rawData, 'crawl-page');
+        page.rawData.meta._inputMethod = origMethod;
+        // Cache the data for instant restore (runAnalysis uses _cachedReportData + _contrastVerifyResults)
+        _crawlPageReports[idx] = {
+          data: page.rawData
+        };
+      }, 0);
+    }
+  }
+
+  // Load multi-page crawl results into the tabbed view
+  function loadCrawlResults(crawlState, source) {
+    if (!crawlState || !crawlState.results || crawlState.results.length === 0) return false;
+    _showToast('Loaded crawl results' + (source ? ' from ' + source : '') + ' (' + crawlState.results.length + ' pages)');
+    // Honor the audience profile the crawl was scored with: prefer a session-level
+    // profile, else the first page's data.profile, else the current dropdown. Restore
+    // the dropdown so the UI matches, and ensure each page's data carries its profile
+    // before re-scoring (getProfile reads data.profile).
+    var _curProf = document.getElementById('profileSelect') ? document.getElementById('profileSelect').value : 'general';
+    var _impProf = crawlState.profile || (crawlState.results[0].data && crawlState.results[0].data.profile) || _curProf;
+    var _profSel = document.getElementById('profileSelect');
+    if (_profSel && _impProf) _profSel.value = _impProf;
+    _crawlSession = MilgCrawl.createSession(crawlState.startUrl || crawlState.results[0].url, {
+      maxPages: crawlState.results.length, profile: _impProf
+    });
+    crawlState.results.forEach(function(r) {
+      if (r.data && !r.data.profile) r.data.profile = _impProf;
+      var report = MilgScoring.runScoring(r.data);
+      _crawlSession.pages.push({
+        url: r.url, status: 'done', title: (r.data.meta && r.data.meta.title) || '',
+        rawData: r.data, reportData: report, error: null,
+        startedAt: (r.data.meta && r.data.meta.timestamp) || null, completedAt: (r.data.meta && r.data.meta.timestamp) || null
+      });
+    });
+    _crawlSession.status = 'complete';
+    _crawlSession.summary = MilgCrawl.buildSummary(_crawlSession);
+    crawlResults.style.display = '';
+    var reportActions = document.getElementById('reportActions');
+    if (reportActions) reportActions.style.display = '';
+    _toggleViewportExportOption();
+    document.getElementById('inputSection').style.display = 'none';
+    renderCrawlTabs();
+    showCrawlPageContent('summary');
+
+    // Pre-compute pixel verify for each page with screenshots (async, best-effort).
+    // Results are cached on rawData._contrastVerifyResults so tab switches use cache.
+    _preComputePixelVerify();
+
+    return true;
+  }
+
+  function _preComputePixelVerify() {
+    if (!_crawlSession || !window.MilgContrastVerify || !window.MilgQueue) return;
+    var pagesToVerify = _crawlSession.pages.filter(function(p) {
+      return p.status === 'done' && p.rawData && !p.rawData._contrastVerifyResults &&
+        p.rawData.screenshots && p.rawData.screenshots.length && p.rawData.screenshotMeta;
+    });
+    if (pagesToVerify.length === 0) return;
+    var doneCount = 0;
+    var totalCount = pagesToVerify.length;
+
+    // Show pixel verify progress on summary page
+    _updateVerifySummary(0, totalCount, null);
+
+    // Queue all page verifies — active page tab gets highest priority
+    MilgQueue.clear();
+    pagesToVerify.forEach(function(page, pi) {
+      var pageIdx = _crawlSession.pages.indexOf(page);
+      var priority = (_crawlActivePageTab === String(pageIdx)) ? 100 : (totalCount - pi);
+      MilgQueue.enqueue('crawl-verify-' + pageIdx, function(done) {
+        // Skip if already verified by another path
+        if (page.rawData._contrastVerifyResults) { done(null); return; }
+        var report = page.reportData || MilgScoring.runScoring(page.rawData);
+        MilgContrastVerify.verify(report, function(results, bboxEdgeResults) {
+          if (!page.rawData._contrastVerifyResults) {
+            page.rawData._contrastVerifyResults = results;
+            page.rawData._bboxEdgeResults = bboxEdgeResults || [];
+            if (pageIdx >= 0) delete _crawlPageReports[pageIdx];
+          }
+          done(results);
+        });
+      }, function() {
+        doneCount++;
+        _crawlModal('Pixel verify ' + doneCount + '/' + totalCount + ' pages');
+        _updateVerifySummary(doneCount, totalCount, doneCount === totalCount ? _crawlSession : null);
+        if (doneCount === totalCount) setTimeout(_crawlModalClose, 2000);
+      }, priority);
+    });
+  }
+
+  function _updateVerifySummary(done, total, completedSession) {
+    var container = document.getElementById('milg-crawl-verify-summary');
+    if (!container && crawlPageContent) {
+      // Insert verify section near the top of the summary (after Site Overview stats, before Page Scores)
+      container = document.createElement('div');
+      container.id = 'milg-crawl-verify-summary';
+      container.style.marginTop = '24px';
+      var summaryDiv = crawlPageContent.querySelector('.crawl-summary');
+      var firstH3 = summaryDiv ? summaryDiv.querySelector('h3') : null;
+      if (firstH3) {
+        firstH3.parentNode.insertBefore(container, firstH3);
+      } else if (summaryDiv) {
+        summaryDiv.appendChild(container);
+      } else {
+        crawlPageContent.appendChild(container);
+      }
+    }
+    if (!container) return;
+
+    if (!completedSession) {
+      // Still running — show spinner with progress
+      container.innerHTML = '<div class="crawl-summary">' +
+        '<h3 style="display:flex;align-items:center;gap:8px">' +
+        '<span style="display:inline-block;width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite"></span>' +
+        'Pixel Contrast Verification (' + done + '/' + total + ' pages)' +
+        '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style>' +
+        '</h3></div>';
+      return;
+    }
+
+    // All done — build the pixel verify summary across all pages
+    var falsePassTotal = 0, falseFailTotal = 0, verifiedTotal = 0;
+    var pageIssues = []; // [{url, path, falsePass, results}]
+    completedSession.pages.forEach(function(page) {
+      if (!page.rawData || !page.rawData._contrastVerifyResults) return;
+      var results = page.rawData._contrastVerifyResults;
+      var fp = 0, ff = 0, v = 0;
+      results.forEach(function(r) {
+        if (r.crossesBoundary) {
+          if (r.cssPasses && !r.pixelPasses) fp++;
+          else ff++;
+        } else { v++; }
+      });
+      falsePassTotal += fp; falseFailTotal += ff; verifiedTotal += v;
+      if (fp > 0) {
+        var path; try { path = new URL(page.url).pathname; } catch(e) { path = page.url; }
+        pageIssues.push({ url: page.url, path: path, falsePass: fp, results: results });
+      }
+    });
+
+    var isDark = document.body && document.body.classList.contains('dark-ui');
+    var html = '<div class="crawl-summary"><h3>Pixel Contrast Verification</h3>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px">';
+    html += '<div style="padding:8px 16px;border-radius:8px;background:var(--surface);border:1px solid var(--border);font-size:13px">' +
+      '<span style="font-weight:600">' + verifiedTotal + '</span> <span style="color:var(--text-secondary)">verified</span></div>';
+    if (falsePassTotal > 0) {
+      html += '<div style="padding:8px 16px;border-radius:8px;background:' + (isDark ? '#2d0f0f' : '#fef2f2') + ';border:1px solid ' + (isDark ? '#991b1b' : '#fecaca') + ';font-size:13px">' +
+        '<span style="font-weight:700;color:#ef4444">' + falsePassTotal + '</span> <span style="color:#ef4444">hidden failure' + (falsePassTotal > 1 ? 's' : '') + '</span></div>';
+    }
+    if (falseFailTotal > 0) {
+      html += '<div style="padding:8px 16px;border-radius:8px;background:' + (isDark ? '#0c2d1e' : '#f0fdf4') + ';border:1px solid ' + (isDark ? '#166534' : '#bbf7d0') + ';font-size:13px">' +
+        '<span style="font-weight:600;color:#16a34a">' + falseFailTotal + '</span> <span style="color:#16a34a">better than CSS</span></div>';
+    }
+    if (falsePassTotal === 0 && falseFailTotal === 0) {
+      html += '<div style="padding:8px 16px;border-radius:8px;background:' + (isDark ? '#0c2d1e' : '#f0fdf4') + ';border:1px solid ' + (isDark ? '#166534' : '#bbf7d0') + ';font-size:13px">' +
+        '<span style="color:#16a34a">All pixel checks match CSS — no hidden issues</span></div>';
+    }
+    html += '</div>';
+
+    // Per-page breakdown of failures
+    if (pageIssues.length > 0) {
+      html += '<div style="font-size:13px;line-height:1.6">';
+      pageIssues.forEach(function(pi) {
+        html += '<div style="padding:6px 10px;margin-bottom:4px;border-radius:6px;background:var(--surface);border:1px solid var(--border)">';
+        html += '<span style="color:#ef4444;font-weight:600">' + pi.falsePass + ' hidden failure' + (pi.falsePass > 1 ? 's' : '') + '</span>';
+        html += ' on <span style="font-weight:500">' + _esc(pi.path) + '</span>';
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+
+    html += '</div>';
+    container.innerHTML = html;
+  }
+
+  function startCrawl(url) {
+    var maxPages = parseInt(crawlMaxPages.value) || 5;
+    maxPages = Math.min(Math.max(maxPages, 1), CRAWL_HARD_MAX);
+
+    var blacklist = (crawlBlacklist.value || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+    var deepScan = document.getElementById('deepScanCheck') && document.getElementById('deepScanCheck').checked;
+    var jsCheck = document.getElementById('jsEnabledCheck');
+    var jsAck = document.getElementById('jsRiskAck');
+    var wantJs = jsCheck && jsCheck.checked && jsAck && jsAck.checked;
+    var profile = document.getElementById('profileSelect');
+
+    _crawlSession = MilgCrawl.createSession(url, {
+      maxPages: maxPages,
+      blacklist: blacklist,
+      deepScan: deepScan,
+      jsEnabled: wantJs,
+      profile: profile ? profile.value : 'general'
+    });
+    _crawlPageReports = {};
+    _crawlActivePageTab = 'summary';
+
+    // Show progress
+    _analyzeUrlBtn.disabled = true;
+    _analyzeUrlBtn.textContent = 'Crawling\u2026';
+    cancelCrawlBtn.style.display = '';
+    crawlProgressArea.style.display = '';
+    crawlProgressList.innerHTML = '';
+    crawlProgressFill.style.width = '0%';
+    crawlProgressLabel.textContent = 'Fetching starting page\u2026';
+    crawlProgressCount.textContent = '0 / ' + maxPages;
+    _crawlModalDismissed = false;
+    window._milgFocusModalDismissed = false;
+    _showFocusModal(true); // dismissable
+    _crawlModal('Fetching starting page\u2026');
+
+    // Show crawl results area, hide input section
+    var inputSection = document.getElementById('inputSection');
+    var reportActions = document.getElementById('reportActions');
+    var reportContainer = document.getElementById('reportContainer');
+    if (inputSection) inputSection.style.display = 'none';
+    crawlResults.style.display = '';
+    if (reportContainer) reportContainer.className = 'report-container';
+    // Hide export bar during crawl — show only when crawl completes
+    if (reportActions) reportActions.style.display = 'none';
+    // Scroll to results
+    crawlResults.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    renderCrawlTabs();
+    showCrawlPageContent('summary');
+
+    var doneCount = 0;
+    var totalPages = 1;
+
+    MilgCrawl.startCrawl(_crawlSession, {
+      fetchPage: function(pageUrl, cb) {
+        MilgProxy.fetchViaProxy(pageUrl, function(html, err) { cb(html, err); });
+      },
+      analyzePage: function(html, pageUrl, opts, cb) {
+        var wantShots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
+        var isDeep = _crawlSession && _crawlSession.options && _crawlSession.options.deepScan && _runDeepScanLoop;
+        var jsOn = _crawlSession && _crawlSession.options && _crawlSession.options.jsEnabled;
+        var analysisOpts = { jsEnabled: jsOn, screenshots: wantShots, exclude: opts.excludeSelector || null };
+        if (isDeep) {
+          _runDeepScanLoop(html, pageUrl, analysisOpts, null, function(primary) {
+            if (primary) {
+              primary.meta.url = pageUrl;
+              primary.meta._inputMethod = 'crawl';
+              if (jsOn) primary.meta._jsEnabled = true;
+              if (opts.profile) primary.profile = opts.profile;
+            }
+            cb(primary);
+          });
+        } else {
+          function _doCrawlAnalysis() {
+            MilgIframe.analyzeHtml(html, {
+              url: pageUrl,
+              jsEnabled: jsOn,
+              screenshots: wantShots,
+              exclude: opts.excludeSelector || null
+            }, function(data) {
+              if (data) {
+                data.meta.url = pageUrl;
+                data.meta._inputMethod = 'crawl';
+                if (jsOn) data.meta._jsEnabled = true;
+                if (opts.profile) data.profile = opts.profile;
+              }
+              cb(data);
+          });
+          }
+          // Prefetch fonts for crawl pages (first page warms cache, subsequent get hits)
+          if (wantShots) {
+            MilgIframe.prefetchFonts(html, pageUrl, _doCrawlAnalysis);
+          } else {
+            _doCrawlAnalysis();
+          }
+        }
+      },
+      scorePage: function(data) { return MilgScoring.runScoring(data); },
+      onDiscovery: function(urls) {
+        totalPages = 1 + urls.length;
+        crawlProgressCount.textContent = '0 / ' + totalPages;
+        crawlProgressLabel.textContent = 'Found ' + urls.length + ' page' + (urls.length !== 1 ? 's' : '') + ' to crawl';
+        _crawlModal('Found ' + urls.length + ' pages to crawl');
+      },
+      onPageStart: function(page) {
+        updateCrawlProgressItem(page);
+        var path = page.url.replace(/^https?:\/\/[^/]+/, '');
+        crawlProgressLabel.textContent = 'Analyzing ' + path + '\u2026';
+        _crawlModal('Page ' + (doneCount + 1) + '/' + totalPages + ': ' + path);
+        renderCrawlTabs();
+      },
+      onPageComplete: function(page) {
+        doneCount++;
+        updateCrawlProgressItem(page);
+        crawlProgressCount.textContent = doneCount + ' / ' + totalPages;
+        crawlProgressFill.style.width = Math.round(doneCount / totalPages * 100) + '%';
+        renderCrawlTabs();
+        if (_crawlActivePageTab === 'summary') showCrawlPageContent('summary');
+        // Pre-compute pixel verify as soon as page completes (async, best-effort)
+        if (page.rawData && page.rawData.screenshots && page.rawData.screenshots.length && page.rawData.screenshotMeta && window.MilgContrastVerify) {
+          var report = page.reportData || MilgScoring.runScoring(page.rawData);
+          MilgContrastVerify.verify(report, function(results, bboxEdgeResults) {
+            page.rawData._contrastVerifyResults = results;
+            page.rawData._bboxEdgeResults = bboxEdgeResults || [];
+          });
+        }
+      },
+      onPageError: function(page) {
+        doneCount++;
+        updateCrawlProgressItem(page);
+        crawlProgressCount.textContent = doneCount + ' / ' + totalPages;
+        crawlProgressFill.style.width = Math.round(doneCount / totalPages * 100) + '%';
+        renderCrawlTabs();
+      },
+      onComplete: function(session) {
+        _analyzeUrlBtn.disabled = false;
+        _analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
+        cancelCrawlBtn.style.display = 'none';
+        crawlProgressLabel.textContent = 'Crawl complete!';
+        crawlProgressFill.style.width = '100%';
+        _crawlModal('Crawl complete! ' + _crawlSession.pages.length + ' pages analyzed');
+        setTimeout(_crawlModalClose, 3000);
+        renderCrawlTabs();
+        showCrawlPageContent('summary');
+      }
+    });
+  }
+
+  function setupCrawlExports(exportSeverityFilter) {
+    var copyMdBtn = document.getElementById('copyMdBtn');
+    var markdownBtn = document.getElementById('markdownBtn');
+    var exportJsonBtn = document.getElementById('exportJsonBtn');
+
+    if (copyMdBtn) {
+      copyMdBtn.addEventListener('click', function(e) {
+        if (!isCrawlActive()) return; // let original handler run
+        e.stopImmediatePropagation();
+        var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
+        var md = MilgCrawl.renderCrawlMarkdown(_crawlSession, filter);
+        navigator.clipboard.writeText(md).then(function() { _showToast('Crawl report copied as Markdown!'); }).catch(function() { _showToast('Copy failed'); });
+      });
+    }
+    if (markdownBtn) {
+      markdownBtn.addEventListener('click', function(e) {
+        if (!isCrawlActive()) return;
+        e.stopImmediatePropagation();
+        var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
+        var md = MilgCrawl.renderCrawlMarkdown(_crawlSession, filter);
+        var blob = new Blob([md], { type: 'text/markdown' });
+        var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+        a.download = 'site-crawl-report.md'; a.click();
+        URL.revokeObjectURL(a.href);
+      });
+    }
+    if (exportJsonBtn) {
+      exportJsonBtn.addEventListener('click', function(e) {
+        if (!isCrawlActive()) return;
+        e.stopImmediatePropagation();
+        var origLabel = exportJsonBtn.innerHTML;
+        exportJsonBtn.disabled = true;
+        exportJsonBtn.innerHTML = '<span style="display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite;vertical-align:middle"></span> <span class="btn-label">Exporting\u2026</span>';
+        requestAnimationFrame(function() { setTimeout(function() {
+          try {
+            var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
+            var _incVp = document.getElementById('crawlIncludeViewports');
+            var json = MilgCrawl.renderCrawlJSON(_crawlSession, filter, !!(_incVp && _incVp.checked));
+            // Compress with gzip
+            if (typeof CompressionStream !== 'undefined') {
+              exportJsonBtn.innerHTML = '<span style="display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite;vertical-align:middle"></span> <span class="btn-label">Compressing\u2026</span>';
+              var blob = new Blob([json]);
+              var cs = new CompressionStream('gzip');
+              new Response(blob.stream().pipeThrough(cs)).blob().then(function(compressed) {
+                var a = document.createElement('a');
+                a.href = URL.createObjectURL(compressed);
+                a.download = 'site-crawl-data.milg'; a.click();
+                URL.revokeObjectURL(a.href);
+                _showToast('Crawl exported (' + Math.round(json.length / 1048576) + ' MB → ' + Math.round(compressed.size / 1024) + ' KB)');
+                exportJsonBtn.disabled = false;
+                exportJsonBtn.innerHTML = origLabel;
+              }).catch(function() {
+                var a = document.createElement('a');
+                a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+                a.download = 'site-crawl-data.json'; a.click();
+                URL.revokeObjectURL(a.href);
+                _showToast('Crawl exported (' + Math.round(json.length / 1024) + ' KB)');
+                exportJsonBtn.disabled = false;
+                exportJsonBtn.innerHTML = origLabel;
+              });
+            } else {
+              var a = document.createElement('a');
+              a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+              a.download = 'site-crawl-data.json'; a.click();
+              URL.revokeObjectURL(a.href);
+              _showToast('Crawl exported (' + Math.round(json.length / 1024) + ' KB)');
+              exportJsonBtn.disabled = false;
+              exportJsonBtn.innerHTML = origLabel;
+            }
+          } catch(err) {
+            _showToast('Export failed: ' + err.message);
+            exportJsonBtn.disabled = false;
+            exportJsonBtn.innerHTML = origLabel;
+          }
+        }, 0); });
+      });
+    }
+  }
+
+  function setup(deps) {
+    _showToast = deps.showToast;
+    _runAnalysis = deps.runAnalysis;
+    _restoreCachedAnalysis = deps.restoreCachedAnalysis;
+    _analyzeUrlBtn = deps.analyzeUrlBtn;
+    _runDeepScanLoop = deps.runDeepScanLoop;
+    _showFocusModal = deps.showFocusModal;
+    _updateFocusModal = deps.updateFocusModal;
+    _hideFocusModal = deps.hideFocusModal;
+
+    // Query DOM refs
+    crawlSiteCheck = document.getElementById('crawlSiteCheck');
+    crawlOptions = document.getElementById('crawlOptions');
+    cancelCrawlBtn = document.getElementById('cancelCrawlBtn');
+    crawlMaxPages = document.getElementById('crawlMaxPages');
+    crawlBlacklist = document.getElementById('crawlBlacklist');
+    crawlProgressArea = document.getElementById('crawlProgressArea');
+    crawlProgressLabel = document.getElementById('crawlProgressLabel');
+    crawlProgressCount = document.getElementById('crawlProgressCount');
+    crawlProgressFill = document.getElementById('crawlProgressFill');
+    crawlProgressList = document.getElementById('crawlProgressList');
+    crawlResults = document.getElementById('crawlResults');
+    crawlPageTabs = document.getElementById('crawlPageTabs');
+    crawlPageContent = document.getElementById('crawlPageContent');
+
+    // Crawl site toggle — show/hide crawl options
+    if (crawlSiteCheck && crawlOptions) {
+      crawlSiteCheck.addEventListener('change', function() {
+        crawlOptions.style.display = crawlSiteCheck.checked ? '' : 'none';
+      });
+    }
+
+    // Page limit easter egg — MutationObserver on max attr + input value check
+    var _crawlEasterEggShown = false;
+    if (crawlMaxPages) {
+      var _crawlMaxObserver = new MutationObserver(function(mutations) {
+        mutations.forEach(function(m) {
+          if (m.attributeName === 'max') {
+            var newMax = parseInt(crawlMaxPages.getAttribute('max'));
+            if (newMax > 10 && !_crawlEasterEggShown) {
+              _crawlEasterEggShown = true;
+              _showToast('Nice try! We see you editing the DOM \uD83D\uDE0F Fine, ' + CRAWL_HARD_MAX + ' is the real limit\u2026 but your proxy rate limit isn\u2019t.');
+              crawlMaxPages.setAttribute('max', CRAWL_HARD_MAX);
+            }
+          }
+        });
+      });
+      _crawlMaxObserver.observe(crawlMaxPages, { attributes: true, attributeFilter: ['max'] });
+      // Also catch when someone types >10 directly
+      crawlMaxPages.addEventListener('input', function() {
+        var val = parseInt(crawlMaxPages.value);
+        if (val > 10 && !_crawlEasterEggShown) {
+          _crawlEasterEggShown = true;
+          _showToast('Going beyond 10? Bold move \uD83D\uDE0F We\u2019ll allow up to ' + CRAWL_HARD_MAX + '. You found the secret ceiling!');
+          crawlMaxPages.setAttribute('max', CRAWL_HARD_MAX);
+        }
+      });
+    }
+
+    // Tab click delegation
+    if (crawlPageTabs) {
+      crawlPageTabs.addEventListener('click', function(e) {
+        var tab = e.target.closest('[data-crawl-page]');
+        if (!tab) return;
+        showCrawlPageContent(tab.getAttribute('data-crawl-page'));
+      });
+    }
+
+    // Cancel crawl
+    if (cancelCrawlBtn) {
+      cancelCrawlBtn.addEventListener('click', function() {
+        if (_crawlSession) MilgCrawl.abortCrawl(_crawlSession);
+        _analyzeUrlBtn.disabled = false;
+        _analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
+        cancelCrawlBtn.style.display = 'none';
+        crawlProgressLabel.textContent = 'Crawl cancelled';
+      });
+    }
+
+    // Check for completed snippet crawl on load
+    try {
+      var snippetCrawlData = localStorage.getItem('milg-crawl-complete');
+      if (snippetCrawlData) {
+        localStorage.removeItem('milg-crawl-complete');
+        var crawlState = JSON.parse(snippetCrawlData);
+        if (loadCrawlResults(crawlState, 'console snippet')) {
+          if (crawlSiteCheck) crawlSiteCheck.checked = true;
+          if (crawlOptions) crawlOptions.style.display = '';
+        }
+      }
+    } catch(e) { console.error('Failed to load snippet crawl data:', e); }
+
+    // Crawl export wiring
+    setupCrawlExports(document.getElementById('exportSeverityFilter'));
+  }
+
+  function resetCrawlState() {
+    _crawlSession = null;
+    _crawlPageReports = {};
+    if (crawlResults) crawlResults.style.display = 'none';
+    if (crawlPageContent) { crawlPageContent.style.display = 'none'; crawlPageContent.innerHTML = ''; }
+    if (crawlProgressArea) crawlProgressArea.style.display = 'none';
+  }
+
+  // Re-score all crawl pages (e.g. when profile changes)
+  function rescorePages() {
+    if (!_crawlSession || !_crawlSession.pages || _crawlSession.pages.length === 0) return false;
+    // Invalidate caches — profile change means all scores/reports are stale
+    _crawlPageReports = {};
+    _crawlSession.pages.forEach(function(page) {
+      if (page.status === 'done' && page.rawData) {
+        page.rawData.profile = document.getElementById('profileSelect').value;
+        delete page.rawData._cachedReportData;
+        page.reportData = MilgScoring.runScoring(page.rawData);
+      }
+    });
+    _crawlSession.summary = MilgCrawl.buildSummary(_crawlSession);
+    renderCrawlTabs();
+    showCrawlPageContent(_crawlActivePageTab);
+    return true;
+  }
+
+  return {
+    setup: setup,
+    getCrawlSession: getCrawlSession,
+    setCrawlSession: setCrawlSession,
+    getActiveTab: getActiveTab,
+    isCrawlMode: isCrawlMode,
+    isCrawlActive: isCrawlActive,
+    startCrawl: startCrawl,
+    loadCrawlResults: loadCrawlResults,
+    renderCrawlTabs: renderCrawlTabs,
+    showCrawlPageContent: showCrawlPageContent,
+    resetCrawlState: resetCrawlState,
+    rescorePages: rescorePages
   };
 })();
 </file>
@@ -39906,703 +40879,6 @@ RESOLVED (v3.11.17):
 
 Open (inherent, no action):
 - Viewport parity for real sites is inherent-limited: a live-page snippet reflects the user's real window width and can't be forced to URL mode's fixed viewport. Acceptable/desired (analyzes the page as the user sees it); only pathological for bare fragment presets, which should be analyzed via URL mode.
-</file>
-
-<file path="docs/analyzer-crawl-ui.js">
-// make-it-look-good — Crawl UI Wiring
-// Manages multi-page site crawl progress, tabs, and results display.
-// Depends on: analyzer-crawl.js (MilgCrawl), analyzer-report.js (MilgReport),
-//             analyzer-iframe.js (MilgIframe), analyzer-proxy.js (MilgProxy)
-
-window.MilgCrawlUI = (function() {
-  "use strict";
-
-  var _crawlSession = null;
-  var _crawlPageReports = {}; // pageIndex → rendered HTML cache
-  var _crawlActivePageTab = 'summary';
-  var CRAWL_HARD_MAX = 25;
-
-  // Dependencies injected via setup()
-  var _showToast, _runAnalysis, _restoreCachedAnalysis, _analyzeUrlBtn, _runDeepScanLoop;
-  var _showFocusModal, _updateFocusModal, _hideFocusModal;
-
-  // DOM refs queried during setup
-  var crawlSiteCheck, crawlOptions, cancelCrawlBtn, crawlMaxPages, crawlBlacklist;
-  var crawlProgressArea, crawlProgressLabel, crawlProgressCount, crawlProgressFill, crawlProgressList;
-  var crawlResults, crawlPageTabs, crawlPageContent;
-
-  function _esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
-
-  // Use the shared focus modal for crawl progress (same as single-URL deep scan).
-  // The modal has a close button so users can dismiss it and browse results.
-  var _crawlModalDismissed = false;
-  function _crawlModal(msg) {
-    if (_crawlModalDismissed) return;
-    if (_showFocusModal) _showFocusModal();
-    if (_updateFocusModal) _updateFocusModal(msg + '\n');
-  }
-  function _crawlModalClose() {
-    _crawlModalDismissed = false;
-    if (_hideFocusModal) _hideFocusModal();
-  }
-
-  function getCrawlSession() { return _crawlSession; }
-  function setCrawlSession(s) { _crawlSession = s; }
-  function getActiveTab() { return _crawlActivePageTab; }
-
-  function isCrawlMode() { return crawlSiteCheck && crawlSiteCheck.checked; }
-  function isCrawlActive() { return _crawlSession && _crawlSession.pages.length > 0 && crawlResults && crawlResults.style.display !== 'none'; }
-  // Show the "Include per-viewport data" export option only for crawls that actually
-  // carry deep-scan viewport data (so re-import can rebuild the page×viewport matrix).
-  function _toggleViewportExportOption() {
-    var lbl = document.getElementById('crawlIncludeViewportsLabel');
-    if (!lbl) return;
-    var hasVp = !!(_crawlSession && _crawlSession.pages && _crawlSession.pages.some(function(p) {
-      return p.rawData && p.rawData.deepScan && p.rawData.deepScan.viewportData && p.rawData.deepScan.viewportData.filter(Boolean).length > 1;
-    }));
-    lbl.style.display = hasVp ? 'inline-flex' : 'none';
-  }
-
-  function crawlStatusIcon(status) {
-    if (status === 'done') return '<span class="status-icon done"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></span>';
-    if (status === 'error') return '<span class="status-icon error"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>';
-    if (status === 'fetching' || status === 'analyzing') return '<span class="status-icon active"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/></svg></span>';
-    return '<span class="status-icon pending"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-dasharray="20" stroke-dashoffset="10"/></svg></span>';
-  }
-
-  function updateCrawlProgressItem(page) {
-    var existing = document.getElementById('crawl-progress-' + encodeURIComponent(page.url));
-    var path; try { path = new URL(page.url).pathname; } catch(e) { path = page.url; }
-    var scoreText = page.status === 'done' && page.reportData ? ' ' + page.reportData.overall + '/100' : '';
-    var errorText = page.status === 'error' ? ' <span style="color:#dc2626;font-size:12px">' + (page.error || 'Failed').substring(0, 40) + '</span>' : '';
-    var html = crawlStatusIcon(page.status) +
-      '<span class="page-url" title="' + page.url + '">' + path + '</span>' +
-      '<span class="page-score">' + scoreText + errorText + '</span>';
-    if (existing) {
-      existing.innerHTML = html;
-    } else {
-      var div = document.createElement('div');
-      div.className = 'crawl-progress-item';
-      div.id = 'crawl-progress-' + encodeURIComponent(page.url);
-      div.innerHTML = html;
-      crawlProgressList.appendChild(div);
-    }
-  }
-
-  function renderCrawlTabs() {
-    if (!_crawlSession || !crawlPageTabs) return;
-    var html = '<button class="crawl-page-tab' + (_crawlActivePageTab === 'summary' ? ' active' : '') + '" data-crawl-page="summary">Summary</button>';
-    _crawlSession.pages.forEach(function(page, idx) {
-      html += MilgReport.renderCrawlPageTab(page, idx, _crawlActivePageTab === String(idx));
-    });
-    crawlPageTabs.innerHTML = html;
-  }
-
-  var _spinnerHtml = '<div style="padding:60px;text-align:center">' +
-    '<div style="width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite;margin:0 auto"></div>' +
-    '<div style="color:var(--text-secondary);margin-top:12px;font-size:13px">Loading report\u2026</div>' +
-    '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style></div>';
-
-  function showCrawlPageContent(key) {
-    _crawlActivePageTab = key;
-    // Promote this page's verify to front of queue so it completes first
-    if (key !== 'summary' && window.MilgQueue) {
-      MilgQueue.promote('crawl-verify-' + key);
-    }
-    renderCrawlTabs();
-    var reportContainer = document.getElementById('reportContainer');
-    var reportActions = document.getElementById('reportActions');
-    // Show export/actions only after crawl is complete (not during progress)
-    var crawlDone = _crawlSession && _crawlSession.status === 'complete';
-    if (reportActions) reportActions.style.display = crawlDone ? 'flex' : 'none';
-    if (crawlDone) _toggleViewportExportOption();
-    if (key === 'summary') {
-      var summary = _crawlSession.summary || MilgCrawl.buildSummary(_crawlSession);
-      var ephBanner = document.getElementById('ephemeralBanner');
-      if (ephBanner && crawlDone) ephBanner.style.display = 'flex';
-      crawlPageContent.innerHTML = MilgReport.renderCrawlSummary(summary);
-      crawlPageContent.style.display = '';
-      crawlPageContent.className = 'report-container visible';
-      if (reportContainer) { reportContainer.style.display = 'none'; reportContainer.className = 'report-container'; }
-      // Re-inject pixel verify summary if all pages have been verified
-      if (crawlDone && _crawlSession.pages.some(function(p) { return p.rawData && p.rawData._contrastVerifyResults; })) {
-        var allVerified = _crawlSession.pages.filter(function(p) { return p.status === 'done'; })
-          .every(function(p) { return p.rawData && p.rawData._contrastVerifyResults; });
-        if (allVerified) _updateVerifySummary(_crawlSession.pages.length, _crawlSession.pages.length, _crawlSession);
-      }
-    } else {
-      var idx = parseInt(key);
-      var page = _crawlSession.pages[idx];
-      if (!page || page.status !== 'done') {
-        crawlPageContent.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-secondary)">' +
-          (page && page.status === 'error' ? 'Error: ' + (page.error || 'Analysis failed') : 'Analyzing\u2026') + '</div>';
-        crawlPageContent.style.display = '';
-        crawlPageContent.className = 'report-container visible';
-        if (reportContainer) { reportContainer.style.display = 'none'; reportContainer.className = 'report-container'; }
-        return;
-      }
-
-      crawlPageContent.style.display = 'none';
-      crawlPageContent.className = 'report-container';
-      if (reportContainer) reportContainer.style.display = '';
-
-      // Clear viewport cache when switching crawl pages (viewport indices collide across pages)
-      if (typeof window.__milgClearViewportCache === 'function') window.__milgClearViewportCache();
-
-      // Cache hit: re-run with cached scoring + precomputed verify (fast, preserves overlays)
-      if (_crawlPageReports[idx]) {
-        var cached = _crawlPageReports[idx];
-        _runAnalysis(cached.data || page.rawData, 'crawl-page');
-        return;
-      }
-
-      // Cache miss: show spinner, defer heavy work so spinner paints
-      reportContainer.innerHTML = _spinnerHtml;
-      reportContainer.classList.add('visible');
-      setTimeout(function() {
-        // Guard: user may have switched tabs during the setTimeout
-        if (_crawlActivePageTab !== String(idx)) return;
-        page.rawData.meta = page.rawData.meta || {};
-        var origMethod = page.rawData.meta._inputMethod;
-        _runAnalysis(page.rawData, 'crawl-page');
-        page.rawData.meta._inputMethod = origMethod;
-        // Cache the data for instant restore (runAnalysis uses _cachedReportData + _contrastVerifyResults)
-        _crawlPageReports[idx] = {
-          data: page.rawData
-        };
-      }, 0);
-    }
-  }
-
-  // Load multi-page crawl results into the tabbed view
-  function loadCrawlResults(crawlState, source) {
-    if (!crawlState || !crawlState.results || crawlState.results.length === 0) return false;
-    _showToast('Loaded crawl results' + (source ? ' from ' + source : '') + ' (' + crawlState.results.length + ' pages)');
-    // Honor the audience profile the crawl was scored with: prefer a session-level
-    // profile, else the first page's data.profile, else the current dropdown. Restore
-    // the dropdown so the UI matches, and ensure each page's data carries its profile
-    // before re-scoring (getProfile reads data.profile).
-    var _curProf = document.getElementById('profileSelect') ? document.getElementById('profileSelect').value : 'general';
-    var _impProf = crawlState.profile || (crawlState.results[0].data && crawlState.results[0].data.profile) || _curProf;
-    var _profSel = document.getElementById('profileSelect');
-    if (_profSel && _impProf) _profSel.value = _impProf;
-    _crawlSession = MilgCrawl.createSession(crawlState.startUrl || crawlState.results[0].url, {
-      maxPages: crawlState.results.length, profile: _impProf
-    });
-    crawlState.results.forEach(function(r) {
-      if (r.data && !r.data.profile) r.data.profile = _impProf;
-      var report = MilgScoring.runScoring(r.data);
-      _crawlSession.pages.push({
-        url: r.url, status: 'done', title: (r.data.meta && r.data.meta.title) || '',
-        rawData: r.data, reportData: report, error: null,
-        startedAt: (r.data.meta && r.data.meta.timestamp) || null, completedAt: (r.data.meta && r.data.meta.timestamp) || null
-      });
-    });
-    _crawlSession.status = 'complete';
-    _crawlSession.summary = MilgCrawl.buildSummary(_crawlSession);
-    crawlResults.style.display = '';
-    var reportActions = document.getElementById('reportActions');
-    if (reportActions) reportActions.style.display = '';
-    _toggleViewportExportOption();
-    document.getElementById('inputSection').style.display = 'none';
-    renderCrawlTabs();
-    showCrawlPageContent('summary');
-
-    // Pre-compute pixel verify for each page with screenshots (async, best-effort).
-    // Results are cached on rawData._contrastVerifyResults so tab switches use cache.
-    _preComputePixelVerify();
-
-    return true;
-  }
-
-  function _preComputePixelVerify() {
-    if (!_crawlSession || !window.MilgContrastVerify || !window.MilgQueue) return;
-    var pagesToVerify = _crawlSession.pages.filter(function(p) {
-      return p.status === 'done' && p.rawData && !p.rawData._contrastVerifyResults &&
-        p.rawData.screenshots && p.rawData.screenshots.length && p.rawData.screenshotMeta;
-    });
-    if (pagesToVerify.length === 0) return;
-    var doneCount = 0;
-    var totalCount = pagesToVerify.length;
-
-    // Show pixel verify progress on summary page
-    _updateVerifySummary(0, totalCount, null);
-
-    // Queue all page verifies — active page tab gets highest priority
-    MilgQueue.clear();
-    pagesToVerify.forEach(function(page, pi) {
-      var pageIdx = _crawlSession.pages.indexOf(page);
-      var priority = (_crawlActivePageTab === String(pageIdx)) ? 100 : (totalCount - pi);
-      MilgQueue.enqueue('crawl-verify-' + pageIdx, function(done) {
-        // Skip if already verified by another path
-        if (page.rawData._contrastVerifyResults) { done(null); return; }
-        var report = page.reportData || MilgScoring.runScoring(page.rawData);
-        MilgContrastVerify.verify(report, function(results, bboxEdgeResults) {
-          if (!page.rawData._contrastVerifyResults) {
-            page.rawData._contrastVerifyResults = results;
-            page.rawData._bboxEdgeResults = bboxEdgeResults || [];
-            if (pageIdx >= 0) delete _crawlPageReports[pageIdx];
-          }
-          done(results);
-        });
-      }, function() {
-        doneCount++;
-        _crawlModal('Pixel verify ' + doneCount + '/' + totalCount + ' pages');
-        _updateVerifySummary(doneCount, totalCount, doneCount === totalCount ? _crawlSession : null);
-        if (doneCount === totalCount) setTimeout(_crawlModalClose, 2000);
-      }, priority);
-    });
-  }
-
-  function _updateVerifySummary(done, total, completedSession) {
-    var container = document.getElementById('milg-crawl-verify-summary');
-    if (!container && crawlPageContent) {
-      // Insert verify section near the top of the summary (after Site Overview stats, before Page Scores)
-      container = document.createElement('div');
-      container.id = 'milg-crawl-verify-summary';
-      container.style.marginTop = '24px';
-      var summaryDiv = crawlPageContent.querySelector('.crawl-summary');
-      var firstH3 = summaryDiv ? summaryDiv.querySelector('h3') : null;
-      if (firstH3) {
-        firstH3.parentNode.insertBefore(container, firstH3);
-      } else if (summaryDiv) {
-        summaryDiv.appendChild(container);
-      } else {
-        crawlPageContent.appendChild(container);
-      }
-    }
-    if (!container) return;
-
-    if (!completedSession) {
-      // Still running — show spinner with progress
-      container.innerHTML = '<div class="crawl-summary">' +
-        '<h3 style="display:flex;align-items:center;gap:8px">' +
-        '<span style="display:inline-block;width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite"></span>' +
-        'Pixel Contrast Verification (' + done + '/' + total + ' pages)' +
-        '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style>' +
-        '</h3></div>';
-      return;
-    }
-
-    // All done — build the pixel verify summary across all pages
-    var falsePassTotal = 0, falseFailTotal = 0, verifiedTotal = 0;
-    var pageIssues = []; // [{url, path, falsePass, results}]
-    completedSession.pages.forEach(function(page) {
-      if (!page.rawData || !page.rawData._contrastVerifyResults) return;
-      var results = page.rawData._contrastVerifyResults;
-      var fp = 0, ff = 0, v = 0;
-      results.forEach(function(r) {
-        if (r.crossesBoundary) {
-          if (r.cssPasses && !r.pixelPasses) fp++;
-          else ff++;
-        } else { v++; }
-      });
-      falsePassTotal += fp; falseFailTotal += ff; verifiedTotal += v;
-      if (fp > 0) {
-        var path; try { path = new URL(page.url).pathname; } catch(e) { path = page.url; }
-        pageIssues.push({ url: page.url, path: path, falsePass: fp, results: results });
-      }
-    });
-
-    var isDark = document.body && document.body.classList.contains('dark-ui');
-    var html = '<div class="crawl-summary"><h3>Pixel Contrast Verification</h3>';
-    html += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px">';
-    html += '<div style="padding:8px 16px;border-radius:8px;background:var(--surface);border:1px solid var(--border);font-size:13px">' +
-      '<span style="font-weight:600">' + verifiedTotal + '</span> <span style="color:var(--text-secondary)">verified</span></div>';
-    if (falsePassTotal > 0) {
-      html += '<div style="padding:8px 16px;border-radius:8px;background:' + (isDark ? '#2d0f0f' : '#fef2f2') + ';border:1px solid ' + (isDark ? '#991b1b' : '#fecaca') + ';font-size:13px">' +
-        '<span style="font-weight:700;color:#ef4444">' + falsePassTotal + '</span> <span style="color:#ef4444">hidden failure' + (falsePassTotal > 1 ? 's' : '') + '</span></div>';
-    }
-    if (falseFailTotal > 0) {
-      html += '<div style="padding:8px 16px;border-radius:8px;background:' + (isDark ? '#0c2d1e' : '#f0fdf4') + ';border:1px solid ' + (isDark ? '#166534' : '#bbf7d0') + ';font-size:13px">' +
-        '<span style="font-weight:600;color:#16a34a">' + falseFailTotal + '</span> <span style="color:#16a34a">better than CSS</span></div>';
-    }
-    if (falsePassTotal === 0 && falseFailTotal === 0) {
-      html += '<div style="padding:8px 16px;border-radius:8px;background:' + (isDark ? '#0c2d1e' : '#f0fdf4') + ';border:1px solid ' + (isDark ? '#166534' : '#bbf7d0') + ';font-size:13px">' +
-        '<span style="color:#16a34a">All pixel checks match CSS — no hidden issues</span></div>';
-    }
-    html += '</div>';
-
-    // Per-page breakdown of failures
-    if (pageIssues.length > 0) {
-      html += '<div style="font-size:13px;line-height:1.6">';
-      pageIssues.forEach(function(pi) {
-        html += '<div style="padding:6px 10px;margin-bottom:4px;border-radius:6px;background:var(--surface);border:1px solid var(--border)">';
-        html += '<span style="color:#ef4444;font-weight:600">' + pi.falsePass + ' hidden failure' + (pi.falsePass > 1 ? 's' : '') + '</span>';
-        html += ' on <span style="font-weight:500">' + _esc(pi.path) + '</span>';
-        html += '</div>';
-      });
-      html += '</div>';
-    }
-
-    html += '</div>';
-    container.innerHTML = html;
-  }
-
-  function startCrawl(url) {
-    var maxPages = parseInt(crawlMaxPages.value) || 5;
-    maxPages = Math.min(Math.max(maxPages, 1), CRAWL_HARD_MAX);
-
-    var blacklist = (crawlBlacklist.value || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
-    var deepScan = document.getElementById('deepScanCheck') && document.getElementById('deepScanCheck').checked;
-    var jsCheck = document.getElementById('jsEnabledCheck');
-    var jsAck = document.getElementById('jsRiskAck');
-    var wantJs = jsCheck && jsCheck.checked && jsAck && jsAck.checked;
-    var profile = document.getElementById('profileSelect');
-
-    _crawlSession = MilgCrawl.createSession(url, {
-      maxPages: maxPages,
-      blacklist: blacklist,
-      deepScan: deepScan,
-      jsEnabled: wantJs,
-      profile: profile ? profile.value : 'general'
-    });
-    _crawlPageReports = {};
-    _crawlActivePageTab = 'summary';
-
-    // Show progress
-    _analyzeUrlBtn.disabled = true;
-    _analyzeUrlBtn.textContent = 'Crawling\u2026';
-    cancelCrawlBtn.style.display = '';
-    crawlProgressArea.style.display = '';
-    crawlProgressList.innerHTML = '';
-    crawlProgressFill.style.width = '0%';
-    crawlProgressLabel.textContent = 'Fetching starting page\u2026';
-    crawlProgressCount.textContent = '0 / ' + maxPages;
-    _crawlModalDismissed = false;
-    window._milgFocusModalDismissed = false;
-    _showFocusModal(true); // dismissable
-    _crawlModal('Fetching starting page\u2026');
-
-    // Show crawl results area, hide input section
-    var inputSection = document.getElementById('inputSection');
-    var reportActions = document.getElementById('reportActions');
-    var reportContainer = document.getElementById('reportContainer');
-    if (inputSection) inputSection.style.display = 'none';
-    crawlResults.style.display = '';
-    if (reportContainer) reportContainer.className = 'report-container';
-    // Hide export bar during crawl — show only when crawl completes
-    if (reportActions) reportActions.style.display = 'none';
-    // Scroll to results
-    crawlResults.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-    renderCrawlTabs();
-    showCrawlPageContent('summary');
-
-    var doneCount = 0;
-    var totalPages = 1;
-
-    MilgCrawl.startCrawl(_crawlSession, {
-      fetchPage: function(pageUrl, cb) {
-        MilgProxy.fetchViaProxy(pageUrl, function(html, err) { cb(html, err); });
-      },
-      analyzePage: function(html, pageUrl, opts, cb) {
-        var wantShots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
-        var isDeep = _crawlSession && _crawlSession.options && _crawlSession.options.deepScan && _runDeepScanLoop;
-        var jsOn = _crawlSession && _crawlSession.options && _crawlSession.options.jsEnabled;
-        var analysisOpts = { jsEnabled: jsOn, screenshots: wantShots, exclude: opts.excludeSelector || null };
-        if (isDeep) {
-          _runDeepScanLoop(html, pageUrl, analysisOpts, null, function(primary) {
-            if (primary) {
-              primary.meta.url = pageUrl;
-              primary.meta._inputMethod = 'crawl';
-              if (jsOn) primary.meta._jsEnabled = true;
-              if (opts.profile) primary.profile = opts.profile;
-            }
-            cb(primary);
-          });
-        } else {
-          function _doCrawlAnalysis() {
-            MilgIframe.analyzeHtml(html, {
-              url: pageUrl,
-              jsEnabled: jsOn,
-              screenshots: wantShots,
-              exclude: opts.excludeSelector || null
-            }, function(data) {
-              if (data) {
-                data.meta.url = pageUrl;
-                data.meta._inputMethod = 'crawl';
-                if (jsOn) data.meta._jsEnabled = true;
-                if (opts.profile) data.profile = opts.profile;
-              }
-              cb(data);
-          });
-          }
-          // Prefetch fonts for crawl pages (first page warms cache, subsequent get hits)
-          if (wantShots) {
-            MilgIframe.prefetchFonts(html, pageUrl, _doCrawlAnalysis);
-          } else {
-            _doCrawlAnalysis();
-          }
-        }
-      },
-      scorePage: function(data) { return MilgScoring.runScoring(data); },
-      onDiscovery: function(urls) {
-        totalPages = 1 + urls.length;
-        crawlProgressCount.textContent = '0 / ' + totalPages;
-        crawlProgressLabel.textContent = 'Found ' + urls.length + ' page' + (urls.length !== 1 ? 's' : '') + ' to crawl';
-        _crawlModal('Found ' + urls.length + ' pages to crawl');
-      },
-      onPageStart: function(page) {
-        updateCrawlProgressItem(page);
-        var path = page.url.replace(/^https?:\/\/[^/]+/, '');
-        crawlProgressLabel.textContent = 'Analyzing ' + path + '\u2026';
-        _crawlModal('Page ' + (doneCount + 1) + '/' + totalPages + ': ' + path);
-        renderCrawlTabs();
-      },
-      onPageComplete: function(page) {
-        doneCount++;
-        updateCrawlProgressItem(page);
-        crawlProgressCount.textContent = doneCount + ' / ' + totalPages;
-        crawlProgressFill.style.width = Math.round(doneCount / totalPages * 100) + '%';
-        renderCrawlTabs();
-        if (_crawlActivePageTab === 'summary') showCrawlPageContent('summary');
-        // Pre-compute pixel verify as soon as page completes (async, best-effort)
-        if (page.rawData && page.rawData.screenshots && page.rawData.screenshots.length && page.rawData.screenshotMeta && window.MilgContrastVerify) {
-          var report = page.reportData || MilgScoring.runScoring(page.rawData);
-          MilgContrastVerify.verify(report, function(results, bboxEdgeResults) {
-            page.rawData._contrastVerifyResults = results;
-            page.rawData._bboxEdgeResults = bboxEdgeResults || [];
-          });
-        }
-      },
-      onPageError: function(page) {
-        doneCount++;
-        updateCrawlProgressItem(page);
-        crawlProgressCount.textContent = doneCount + ' / ' + totalPages;
-        crawlProgressFill.style.width = Math.round(doneCount / totalPages * 100) + '%';
-        renderCrawlTabs();
-      },
-      onComplete: function(session) {
-        _analyzeUrlBtn.disabled = false;
-        _analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
-        cancelCrawlBtn.style.display = 'none';
-        crawlProgressLabel.textContent = 'Crawl complete!';
-        crawlProgressFill.style.width = '100%';
-        _crawlModal('Crawl complete! ' + _crawlSession.pages.length + ' pages analyzed');
-        setTimeout(_crawlModalClose, 3000);
-        renderCrawlTabs();
-        showCrawlPageContent('summary');
-      }
-    });
-  }
-
-  function setupCrawlExports(exportSeverityFilter) {
-    var copyMdBtn = document.getElementById('copyMdBtn');
-    var markdownBtn = document.getElementById('markdownBtn');
-    var exportJsonBtn = document.getElementById('exportJsonBtn');
-
-    if (copyMdBtn) {
-      copyMdBtn.addEventListener('click', function(e) {
-        if (!isCrawlActive()) return; // let original handler run
-        e.stopImmediatePropagation();
-        var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
-        var md = MilgCrawl.renderCrawlMarkdown(_crawlSession, filter);
-        navigator.clipboard.writeText(md).then(function() { _showToast('Crawl report copied as Markdown!'); }).catch(function() { _showToast('Copy failed'); });
-      });
-    }
-    if (markdownBtn) {
-      markdownBtn.addEventListener('click', function(e) {
-        if (!isCrawlActive()) return;
-        e.stopImmediatePropagation();
-        var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
-        var md = MilgCrawl.renderCrawlMarkdown(_crawlSession, filter);
-        var blob = new Blob([md], { type: 'text/markdown' });
-        var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-        a.download = 'site-crawl-report.md'; a.click();
-        URL.revokeObjectURL(a.href);
-      });
-    }
-    if (exportJsonBtn) {
-      exportJsonBtn.addEventListener('click', function(e) {
-        if (!isCrawlActive()) return;
-        e.stopImmediatePropagation();
-        var origLabel = exportJsonBtn.innerHTML;
-        exportJsonBtn.disabled = true;
-        exportJsonBtn.innerHTML = '<span style="display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite;vertical-align:middle"></span> <span class="btn-label">Exporting\u2026</span>';
-        requestAnimationFrame(function() { setTimeout(function() {
-          try {
-            var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
-            var _incVp = document.getElementById('crawlIncludeViewports');
-            var json = MilgCrawl.renderCrawlJSON(_crawlSession, filter, !!(_incVp && _incVp.checked));
-            // Compress with gzip
-            if (typeof CompressionStream !== 'undefined') {
-              exportJsonBtn.innerHTML = '<span style="display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite;vertical-align:middle"></span> <span class="btn-label">Compressing\u2026</span>';
-              var blob = new Blob([json]);
-              var cs = new CompressionStream('gzip');
-              new Response(blob.stream().pipeThrough(cs)).blob().then(function(compressed) {
-                var a = document.createElement('a');
-                a.href = URL.createObjectURL(compressed);
-                a.download = 'site-crawl-data.milg'; a.click();
-                URL.revokeObjectURL(a.href);
-                _showToast('Crawl exported (' + Math.round(json.length / 1048576) + ' MB → ' + Math.round(compressed.size / 1024) + ' KB)');
-                exportJsonBtn.disabled = false;
-                exportJsonBtn.innerHTML = origLabel;
-              }).catch(function() {
-                var a = document.createElement('a');
-                a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
-                a.download = 'site-crawl-data.json'; a.click();
-                URL.revokeObjectURL(a.href);
-                _showToast('Crawl exported (' + Math.round(json.length / 1024) + ' KB)');
-                exportJsonBtn.disabled = false;
-                exportJsonBtn.innerHTML = origLabel;
-              });
-            } else {
-              var a = document.createElement('a');
-              a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
-              a.download = 'site-crawl-data.json'; a.click();
-              URL.revokeObjectURL(a.href);
-              _showToast('Crawl exported (' + Math.round(json.length / 1024) + ' KB)');
-              exportJsonBtn.disabled = false;
-              exportJsonBtn.innerHTML = origLabel;
-            }
-          } catch(err) {
-            _showToast('Export failed: ' + err.message);
-            exportJsonBtn.disabled = false;
-            exportJsonBtn.innerHTML = origLabel;
-          }
-        }, 0); });
-      });
-    }
-  }
-
-  function setup(deps) {
-    _showToast = deps.showToast;
-    _runAnalysis = deps.runAnalysis;
-    _restoreCachedAnalysis = deps.restoreCachedAnalysis;
-    _analyzeUrlBtn = deps.analyzeUrlBtn;
-    _runDeepScanLoop = deps.runDeepScanLoop;
-    _showFocusModal = deps.showFocusModal;
-    _updateFocusModal = deps.updateFocusModal;
-    _hideFocusModal = deps.hideFocusModal;
-
-    // Query DOM refs
-    crawlSiteCheck = document.getElementById('crawlSiteCheck');
-    crawlOptions = document.getElementById('crawlOptions');
-    cancelCrawlBtn = document.getElementById('cancelCrawlBtn');
-    crawlMaxPages = document.getElementById('crawlMaxPages');
-    crawlBlacklist = document.getElementById('crawlBlacklist');
-    crawlProgressArea = document.getElementById('crawlProgressArea');
-    crawlProgressLabel = document.getElementById('crawlProgressLabel');
-    crawlProgressCount = document.getElementById('crawlProgressCount');
-    crawlProgressFill = document.getElementById('crawlProgressFill');
-    crawlProgressList = document.getElementById('crawlProgressList');
-    crawlResults = document.getElementById('crawlResults');
-    crawlPageTabs = document.getElementById('crawlPageTabs');
-    crawlPageContent = document.getElementById('crawlPageContent');
-
-    // Crawl site toggle — show/hide crawl options
-    if (crawlSiteCheck && crawlOptions) {
-      crawlSiteCheck.addEventListener('change', function() {
-        crawlOptions.style.display = crawlSiteCheck.checked ? '' : 'none';
-      });
-    }
-
-    // Page limit easter egg — MutationObserver on max attr + input value check
-    var _crawlEasterEggShown = false;
-    if (crawlMaxPages) {
-      var _crawlMaxObserver = new MutationObserver(function(mutations) {
-        mutations.forEach(function(m) {
-          if (m.attributeName === 'max') {
-            var newMax = parseInt(crawlMaxPages.getAttribute('max'));
-            if (newMax > 10 && !_crawlEasterEggShown) {
-              _crawlEasterEggShown = true;
-              _showToast('Nice try! We see you editing the DOM \uD83D\uDE0F Fine, ' + CRAWL_HARD_MAX + ' is the real limit\u2026 but your proxy rate limit isn\u2019t.');
-              crawlMaxPages.setAttribute('max', CRAWL_HARD_MAX);
-            }
-          }
-        });
-      });
-      _crawlMaxObserver.observe(crawlMaxPages, { attributes: true, attributeFilter: ['max'] });
-      // Also catch when someone types >10 directly
-      crawlMaxPages.addEventListener('input', function() {
-        var val = parseInt(crawlMaxPages.value);
-        if (val > 10 && !_crawlEasterEggShown) {
-          _crawlEasterEggShown = true;
-          _showToast('Going beyond 10? Bold move \uD83D\uDE0F We\u2019ll allow up to ' + CRAWL_HARD_MAX + '. You found the secret ceiling!');
-          crawlMaxPages.setAttribute('max', CRAWL_HARD_MAX);
-        }
-      });
-    }
-
-    // Tab click delegation
-    if (crawlPageTabs) {
-      crawlPageTabs.addEventListener('click', function(e) {
-        var tab = e.target.closest('[data-crawl-page]');
-        if (!tab) return;
-        showCrawlPageContent(tab.getAttribute('data-crawl-page'));
-      });
-    }
-
-    // Cancel crawl
-    if (cancelCrawlBtn) {
-      cancelCrawlBtn.addEventListener('click', function() {
-        if (_crawlSession) MilgCrawl.abortCrawl(_crawlSession);
-        _analyzeUrlBtn.disabled = false;
-        _analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
-        cancelCrawlBtn.style.display = 'none';
-        crawlProgressLabel.textContent = 'Crawl cancelled';
-      });
-    }
-
-    // Check for completed snippet crawl on load
-    try {
-      var snippetCrawlData = localStorage.getItem('milg-crawl-complete');
-      if (snippetCrawlData) {
-        localStorage.removeItem('milg-crawl-complete');
-        var crawlState = JSON.parse(snippetCrawlData);
-        if (loadCrawlResults(crawlState, 'console snippet')) {
-          if (crawlSiteCheck) crawlSiteCheck.checked = true;
-          if (crawlOptions) crawlOptions.style.display = '';
-        }
-      }
-    } catch(e) { console.error('Failed to load snippet crawl data:', e); }
-
-    // Crawl export wiring
-    setupCrawlExports(document.getElementById('exportSeverityFilter'));
-  }
-
-  function resetCrawlState() {
-    _crawlSession = null;
-    _crawlPageReports = {};
-    if (crawlResults) crawlResults.style.display = 'none';
-    if (crawlPageContent) { crawlPageContent.style.display = 'none'; crawlPageContent.innerHTML = ''; }
-    if (crawlProgressArea) crawlProgressArea.style.display = 'none';
-  }
-
-  // Re-score all crawl pages (e.g. when profile changes)
-  function rescorePages() {
-    if (!_crawlSession || !_crawlSession.pages || _crawlSession.pages.length === 0) return false;
-    // Invalidate caches — profile change means all scores/reports are stale
-    _crawlPageReports = {};
-    _crawlSession.pages.forEach(function(page) {
-      if (page.status === 'done' && page.rawData) {
-        page.rawData.profile = document.getElementById('profileSelect').value;
-        delete page.rawData._cachedReportData;
-        page.reportData = MilgScoring.runScoring(page.rawData);
-      }
-    });
-    _crawlSession.summary = MilgCrawl.buildSummary(_crawlSession);
-    renderCrawlTabs();
-    showCrawlPageContent(_crawlActivePageTab);
-    return true;
-  }
-
-  return {
-    setup: setup,
-    getCrawlSession: getCrawlSession,
-    setCrawlSession: setCrawlSession,
-    getActiveTab: getActiveTab,
-    isCrawlMode: isCrawlMode,
-    isCrawlActive: isCrawlActive,
-    startCrawl: startCrawl,
-    loadCrawlResults: loadCrawlResults,
-    renderCrawlTabs: renderCrawlTabs,
-    showCrawlPageContent: showCrawlPageContent,
-    resetCrawlState: resetCrawlState,
-    rescorePages: rescorePages
-  };
-})();
 </file>
 
 <file path="docs/analyzer-snippet-screenshots.js">
@@ -44574,7 +44850,7 @@ window.MilgViewer = (function() {
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.25 loaded');
+console.log('[milg] analyzer.js v3.11.26 loaded');
 
 (function() {
   "use strict";
@@ -46518,7 +46794,7 @@ console.log('[milg] analyzer.js v3.11.25 loaded');
   <title>make-it-look-good — Design Analyzer</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='2' y='2' width='12' height='12' rx='2' fill='%232563eb'/><rect x='18' y='2' width='12' height='12' rx='2' fill='%2393c5fd'/><rect x='2' y='18' width='12' height='12' rx='2' fill='%2393c5fd'/><rect x='18' y='18' width='12' height='12' rx='2' fill='%232563eb'/></svg>">
   <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="analyzer.css?v=3.11.25">
+  <link rel="stylesheet" href="analyzer.css?v=3.11.26">
 </head>
 <body class="analyzer-body">
 
@@ -46547,7 +46823,7 @@ console.log('[milg] analyzer.js v3.11.25 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.11.25</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.11.26</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -46965,33 +47241,33 @@ console.log('[milg] analyzer.js v3.11.25 loaded');
   <div class="toast" id="toast" aria-live="polite" aria-atomic="true" role="status"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=3.11.25"></script>
-  <script src="scoring/contrast.js?v=3.11.25"></script>
-  <script src="scoring/typography.js?v=3.11.25"></script>
-  <script src="scoring/spacing.js?v=3.11.25"></script>
-  <script src="scoring/touch.js?v=3.11.25"></script>
-  <script src="scoring/accessibility.js?v=3.11.25"></script>
-  <script src="scoring/responsive.js?v=3.11.25"></script>
-  <script src="scoring/consistency.js?v=3.11.25"></script>
-  <script src="scoring/cognitive.js?v=3.11.25"></script>
-  <script src="scoring/layout.js?v=3.11.25"></script>
-  <script src="scoring/performance.js?v=3.11.25"></script>
-  <script src="scoring/readability.js?v=3.11.25"></script>
-  <script src="scoring/filters.js?v=3.11.25"></script>
-  <script src="scoring/balance.js?v=3.11.25"></script>
+  <script src="scoring/registry.js?v=3.11.26"></script>
+  <script src="scoring/contrast.js?v=3.11.26"></script>
+  <script src="scoring/typography.js?v=3.11.26"></script>
+  <script src="scoring/spacing.js?v=3.11.26"></script>
+  <script src="scoring/touch.js?v=3.11.26"></script>
+  <script src="scoring/accessibility.js?v=3.11.26"></script>
+  <script src="scoring/responsive.js?v=3.11.26"></script>
+  <script src="scoring/consistency.js?v=3.11.26"></script>
+  <script src="scoring/cognitive.js?v=3.11.26"></script>
+  <script src="scoring/layout.js?v=3.11.26"></script>
+  <script src="scoring/performance.js?v=3.11.26"></script>
+  <script src="scoring/readability.js?v=3.11.26"></script>
+  <script src="scoring/filters.js?v=3.11.26"></script>
+  <script src="scoring/balance.js?v=3.11.26"></script>
   <!-- Queue + Report rendering + UI -->
-  <script src="analyzer-queue.js?v=3.11.25"></script>
-  <script src="analyzer-report.js?v=3.11.25"></script>
-  <script src="analyzer-crawl.js?v=3.11.25"></script>
-  <script src="analyzer-extract.js?v=3.11.25"></script>
-  <script src="analyzer-region.js?v=3.11.25"></script>
-  <script src="analyzer-capture.js?v=3.11.25"></script>
-  <script src="analyzer-iframe.js?v=3.11.25"></script>
-  <script src="analyzer-proxy.js?v=3.11.25"></script>
-  <script src="analyzer-crawl-ui.js?v=3.11.25"></script>
-  <script src="analyzer-contrast-verify.js?v=3.11.25"></script>
-  <script src="analyzer-viewer.js?v=3.11.25"></script>
-  <script src="analyzer.js?v=3.11.25"></script>
+  <script src="analyzer-queue.js?v=3.11.26"></script>
+  <script src="analyzer-report.js?v=3.11.26"></script>
+  <script src="analyzer-crawl.js?v=3.11.26"></script>
+  <script src="analyzer-extract.js?v=3.11.26"></script>
+  <script src="analyzer-region.js?v=3.11.26"></script>
+  <script src="analyzer-capture.js?v=3.11.26"></script>
+  <script src="analyzer-iframe.js?v=3.11.26"></script>
+  <script src="analyzer-proxy.js?v=3.11.26"></script>
+  <script src="analyzer-crawl-ui.js?v=3.11.26"></script>
+  <script src="analyzer-contrast-verify.js?v=3.11.26"></script>
+  <script src="analyzer-viewer.js?v=3.11.26"></script>
+  <script src="analyzer.js?v=3.11.26"></script>
 </body>
 </html>
 </file>

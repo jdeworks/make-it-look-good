@@ -71,6 +71,139 @@ window.MilgCrawl = (function() {
     return links;
   }
 
+  // --- Sitemap discovery ---
+  // Best-effort: fetches /sitemap.xml (and robots.txt Sitemap: hints), parses <loc>
+  // entries, follows one level of sitemap-index nesting, returns same-origin URLs.
+  // fetchText(url, cb(text, err)) is injected so this is unit-testable in node and
+  // routes through the proxy in the browser. NEVER throws — returns [] on any failure.
+
+  function _extractLocs(xml) {
+    var locs = [];
+    if (!xml || typeof xml !== 'string') return locs;
+    var re = /<loc>\s*([^<]+?)\s*<\/loc>/gi;
+    var m;
+    while ((m = re.exec(xml)) !== null) {
+      var val = m[1]
+        .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&apos;/g, "'")
+        .trim();
+      if (val) locs.push(val);
+    }
+    return locs;
+  }
+
+  function _isSitemapIndex(xml) {
+    return /<sitemapindex[\s>]/i.test(xml || '');
+  }
+
+  // Parse robots.txt for `Sitemap:` directives → array of sitemap URLs.
+  function _parseRobotsSitemaps(robotsText) {
+    var out = [];
+    if (!robotsText || typeof robotsText !== 'string') return out;
+    var lines = robotsText.split(/\r?\n/);
+    for (var i = 0; i < lines.length; i++) {
+      var mm = /^\s*sitemap\s*:\s*(\S+)/i.exec(lines[i]);
+      if (mm && mm[1]) out.push(mm[1].trim());
+    }
+    return out;
+  }
+
+  // Wrap a callback-style fetchText into a promise; resolve to '' on error so
+  // discovery never rejects.
+  function _fetchTextP(fetchText, url) {
+    return new Promise(function(resolve) {
+      try {
+        var ret = fetchText(url, function(text, err) {
+          resolve(err || !text ? '' : String(text));
+        });
+        // Support fetchText returning a promise/value too (test convenience)
+        if (ret && typeof ret.then === 'function') {
+          ret.then(function(text) { resolve(text == null ? '' : String(text)); },
+                   function() { resolve(''); });
+        }
+      } catch (e) { resolve(''); }
+    });
+  }
+
+  // discoverSitemap(origin, fetchText) → Promise<string[]> of same-origin page URLs.
+  // origin: e.g. 'https://example.com' (origin or full URL — origin is derived).
+  function discoverSitemap(origin, fetchText) {
+    var org;
+    try { org = new URL(origin).origin; } catch (e) { return Promise.resolve([]); }
+
+    // Candidate sitemap URLs: robots.txt hints first, then the conventional default.
+    return _fetchTextP(fetchText, org + '/robots.txt').then(function(robots) {
+      var candidates = _parseRobotsSitemaps(robots).filter(function(u) {
+        try { return new URL(u).origin === org; } catch (e) { return false; }
+      });
+      if (candidates.indexOf(org + '/sitemap.xml') === -1) candidates.push(org + '/sitemap.xml');
+
+      // Fetch each candidate. If it's a sitemap-index, follow one level of children.
+      var seenSitemaps = {};
+      function fetchSitemap(url, allowNest) {
+        if (seenSitemaps[url]) return Promise.resolve([]);
+        seenSitemaps[url] = true;
+        return _fetchTextP(fetchText, url).then(function(xml) {
+          if (!xml) return [];
+          var locs = _extractLocs(xml);
+          if (_isSitemapIndex(xml) && allowNest) {
+            // locs point to child sitemaps — fetch each (one level deep, same origin).
+            var children = locs.filter(function(u) {
+              try { return new URL(u).origin === org; } catch (e) { return false; }
+            }).slice(0, 50);
+            return Promise.all(children.map(function(c) { return fetchSitemap(c, false); }))
+              .then(function(arrs) {
+                return arrs.reduce(function(a, b) { return a.concat(b); }, []);
+              });
+          }
+          return locs;
+        });
+      }
+
+      return Promise.all(candidates.map(function(c) { return fetchSitemap(c, true); }))
+        .then(function(arrs) {
+          var all = arrs.reduce(function(a, b) { return a.concat(b); }, []);
+          var seen = new Set();
+          var out = [];
+          for (var i = 0; i < all.length; i++) {
+            var raw = all[i];
+            var u;
+            try { u = new URL(raw); } catch (e) { continue; }
+            if (u.origin !== org) continue;
+            if (SKIP_EXTENSIONS.test(u.pathname)) continue;
+            var norm = normalizeUrl(raw);
+            if (seen.has(norm)) continue;
+            seen.add(norm);
+            out.push(raw);
+          }
+          return out;
+        });
+    }).catch(function() { return []; });
+  }
+
+  // mergeDiscovered(domLinks, sitemapUrls, blacklist, maxPages) — union by
+  // normalizeUrl, drop blacklisted, cap at maxPages-1 (start page counts as 1).
+  function mergeDiscovered(domLinks, sitemapUrls, blacklist, maxPages) {
+    var seen = new Set();
+    var out = [];
+    var cap = Math.max((maxPages || 1) - 1, 0);
+    var sources = [domLinks || [], sitemapUrls || []];
+    for (var s = 0; s < sources.length; s++) {
+      var list = sources[s];
+      for (var i = 0; i < list.length; i++) {
+        if (out.length >= cap) return out;
+        var url = list[i];
+        if (!url) continue;
+        var norm = normalizeUrl(url);
+        if (seen.has(norm)) continue;
+        if (matchesBlacklist(norm, blacklist)) continue;
+        seen.add(norm);
+        out.push(url);
+      }
+    }
+    return out;
+  }
+
   // --- Session management ---
 
   var _sessionCounter = 0;
@@ -140,34 +273,73 @@ window.MilgCrawl = (function() {
       }
 
       // Discover links from starting page HTML
-      var discovered = discoverLinks(html, startUrl, opts.blacklist, opts.maxPages);
-      session.discoveredUrls = discovered;
-      session.queue = discovered.slice();
-      if (pipeline.onDiscovery) pipeline.onDiscovery(discovered);
+      var domLinks = discoverLinks(html, startUrl, opts.blacklist, opts.maxPages);
 
-      // Analyze starting page
-      startPage.status = 'analyzing';
-      pipeline.analyzePage(html, startUrl, opts, function(data) {
-        if (session._aborted) return;
-        if (data) {
-          startPage.rawData = data;
-          startPage.title = (data.meta && data.meta.title) || '';
-          startPage.reportData = pipeline.scorePage(data);
-          startPage.status = 'done';
-        } else {
-          startPage.status = 'error';
-          startPage.error = 'Analysis failed';
-        }
-        startPage.completedAt = new Date().toISOString();
-        if (startPage.status === 'done') {
-          if (pipeline.onPageComplete) pipeline.onPageComplete(startPage);
-        } else {
-          if (pipeline.onPageError) pipeline.onPageError(startPage);
-        }
+      // Helper: merge DOM links + sitemap URLs, exclude the start page (and its index
+      // variants), apply blacklist, cap at maxPages-1, then queue + analyze.
+      function _finishDiscovery(sitemapUrls) {
+        var startNorms = {};
+        startNorms[normalizeUrl(startUrl)] = 1;
+        try {
+          var bP = new URL(startUrl).pathname, bO = new URL(startUrl).origin;
+          if (bP === '/' || bP === '/index.html' || bP === '/index.htm') {
+            startNorms[normalizeUrl(bO + '/')] = 1;
+            startNorms[normalizeUrl(bO + '/index.html')] = 1;
+            startNorms[normalizeUrl(bO + '/index.htm')] = 1;
+          }
+        } catch (e) {}
+        var cleanSitemap = (sitemapUrls || []).filter(function(u) {
+          return !startNorms[normalizeUrl(u)];
+        });
+        var discovered = mergeDiscovered(domLinks, cleanSitemap, opts.blacklist, opts.maxPages);
+        session.discoveredUrls = discovered;
+        session.queue = discovered.slice();
+        if (pipeline.onDiscovery) pipeline.onDiscovery(discovered);
 
-        // Process remaining queue
-        processQueue(session, pipeline, 0);
-      });
+        // Analyze starting page
+        startPage.status = 'analyzing';
+        pipeline.analyzePage(html, startUrl, opts, function(data) {
+          if (session._aborted) return;
+          if (data) {
+            startPage.rawData = data;
+            startPage.title = (data.meta && data.meta.title) || '';
+            startPage.reportData = pipeline.scorePage(data);
+            startPage.status = 'done';
+          } else {
+            startPage.status = 'error';
+            startPage.error = 'Analysis failed';
+          }
+          startPage.completedAt = new Date().toISOString();
+          if (startPage.status === 'done') {
+            if (pipeline.onPageComplete) pipeline.onPageComplete(startPage);
+          } else {
+            if (pipeline.onPageError) pipeline.onPageError(startPage);
+          }
+
+          // Process remaining queue
+          processQueue(session, pipeline, 0);
+        });
+      }
+
+      // Best-effort sitemap discovery: reuse the crawl's proxy fetch (pipeline.fetchPage)
+      // as fetchText so CORS works. Never blocks/breaks the crawl on failure.
+      var origin;
+      try { origin = new URL(startUrl).origin; } catch (e) { origin = null; }
+      if (origin && pipeline.fetchPage) {
+        var sitemapFetch = function(url, cb) { pipeline.fetchPage(url, cb); };
+        var done = false;
+        var finalize = function(urls) {
+          if (done) return; done = true;
+          if (session._aborted) return;
+          _finishDiscovery(urls || []);
+        };
+        try {
+          discoverSitemap(origin, sitemapFetch).then(function(urls) { finalize(urls); },
+                                                      function() { finalize([]); });
+        } catch (e) { finalize([]); }
+      } else {
+        _finishDiscovery([]);
+      }
     });
   }
 
@@ -626,6 +798,8 @@ window.MilgCrawl = (function() {
     normalizeUrl: normalizeUrl,
     matchesBlacklist: matchesBlacklist,
     discoverLinks: discoverLinks,
+    discoverSitemap: discoverSitemap,
+    mergeDiscovered: mergeDiscovered,
     createSession: createSession,
     startCrawl: startCrawl,
     abortCrawl: abortCrawl,

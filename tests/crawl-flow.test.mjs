@@ -102,6 +102,108 @@ assert(summary.averageScore === 79, 'Average score is (85+72)/2 = 79 (rounded)')
 assert(summary.bestPage.score === 85, 'Best page score is 85');
 assert(summary.worstPage.score === 72, 'Worst page score is 72');
 
+console.log('\n=== Sitemap Discovery Tests ===\n');
+
+assert(typeof MilgCrawl.discoverSitemap === 'function', 'discoverSitemap exists');
+assert(typeof MilgCrawl.mergeDiscovered === 'function', 'mergeDiscovered exists');
+
+// Fake fetchText factory: maps url → text (or throws/garbage). Callback-style.
+function fakeFetch(map) {
+  return function(url, cb) {
+    var v = map[url];
+    if (v === undefined) { cb('', '404'); return; }
+    if (v instanceof Error) { cb('', v.message); return; }
+    cb(v, null);
+  };
+}
+
+// Test 8: basic sitemap with same-origin, cross-origin, and media entries
+const basicSitemap = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://example.com/</loc></url>
+  <url><loc>https://example.com/about</loc></url>
+  <url><loc>https://example.com/products?ref=foo</loc></url>
+  <url><loc>https://other.com/external</loc></url>
+  <url><loc>https://example.com/brochure.pdf</loc></url>
+  <url><loc>https://example.com/logo.png</loc></url>
+</urlset>`;
+
+const r8 = await MilgCrawl.discoverSitemap('https://example.com', fakeFetch({
+  'https://example.com/robots.txt': 'User-agent: *\nDisallow:',
+  'https://example.com/sitemap.xml': basicSitemap
+}));
+assert(r8.some(u => u.includes('/about')), 'sitemap: /about discovered');
+assert(r8.some(u => u.includes('/products')), 'sitemap: /products discovered');
+assert(!r8.some(u => u.includes('other.com')), 'sitemap: cross-origin excluded');
+assert(!r8.some(u => u.includes('.pdf')), 'sitemap: PDF media excluded');
+assert(!r8.some(u => u.includes('.png')), 'sitemap: PNG media excluded');
+
+// Test 9: robots.txt Sitemap: directive points to a non-default sitemap URL
+const r9 = await MilgCrawl.discoverSitemap('https://example.com', fakeFetch({
+  'https://example.com/robots.txt': 'Sitemap: https://example.com/custom-sitemap.xml\n',
+  'https://example.com/custom-sitemap.xml': `<urlset><url><loc>https://example.com/hidden</loc></url></urlset>`
+}));
+assert(r9.some(u => u.includes('/hidden')), 'sitemap: robots.txt Sitemap: directive followed');
+
+// Test 10: sitemap-index pointing to a child sitemap (one level of nesting)
+const indexXml = `<?xml version="1.0"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <sitemap><loc>https://example.com/sitemap-pages.xml</loc></sitemap>
+</sitemapindex>`;
+const childXml = `<urlset>
+  <url><loc>https://example.com/page-a</loc></url>
+  <url><loc>https://example.com/page-b</loc></url>
+</urlset>`;
+const r10 = await MilgCrawl.discoverSitemap('https://example.com', fakeFetch({
+  'https://example.com/robots.txt': '',
+  'https://example.com/sitemap.xml': indexXml,
+  'https://example.com/sitemap-pages.xml': childXml
+}));
+assert(r10.some(u => u.includes('/page-a')), 'sitemap-index: child page-a discovered');
+assert(r10.some(u => u.includes('/page-b')), 'sitemap-index: child page-b discovered');
+assert(!r10.some(u => u.includes('sitemap-pages.xml')), 'sitemap-index: child sitemap URL not treated as a page');
+
+// Test 11: graceful failure — fetchText throws
+const r11 = await MilgCrawl.discoverSitemap('https://example.com', function() { throw new Error('boom'); });
+assert(Array.isArray(r11) && r11.length === 0, 'sitemap: returns [] when fetchText throws');
+
+// Test 12: graceful failure — garbage / non-XML response
+const r12 = await MilgCrawl.discoverSitemap('https://example.com', fakeFetch({
+  'https://example.com/robots.txt': '',
+  'https://example.com/sitemap.xml': 'NOT XML <<< broken &&& {}'
+}));
+assert(Array.isArray(r12) && r12.length === 0, 'sitemap: returns [] on garbage XML');
+
+// Test 13: bad origin string returns []
+const r13 = await MilgCrawl.discoverSitemap('not-a-url', fakeFetch({}));
+assert(Array.isArray(r13) && r13.length === 0, 'sitemap: returns [] for invalid origin');
+
+console.log('\n=== mergeDiscovered Tests ===\n');
+
+// Test 14: dedups DOM links vs sitemap URLs (by normalizeUrl)
+const m14 = MilgCrawl.mergeDiscovered(
+  ['https://example.com/about', 'https://example.com/contact'],
+  ['https://example.com/about/', 'https://example.com/blog'], // /about/ dups /about
+  [], 10);
+assert(m14.length === 3, 'mergeDiscovered: deduped about (3 unique total)');
+assert(m14.filter(u => u.includes('/about')).length === 1, 'mergeDiscovered: only one /about variant kept');
+assert(m14.some(u => u.includes('/blog')), 'mergeDiscovered: sitemap-only /blog included');
+
+// Test 15: respects blacklist
+const m15 = MilgCrawl.mergeDiscovered(
+  ['https://example.com/about'],
+  ['https://example.com/blog/post1', 'https://example.com/pricing'],
+  ['/blog/*'], 10);
+assert(!m15.some(u => u.includes('/blog/')), 'mergeDiscovered: blacklisted /blog/* dropped');
+assert(m15.some(u => u.includes('/pricing')), 'mergeDiscovered: non-blacklisted /pricing kept');
+
+// Test 16: respects maxPages cap (maxPages-1 since start page counts as 1)
+const m16 = MilgCrawl.mergeDiscovered(
+  ['https://example.com/a', 'https://example.com/b'],
+  ['https://example.com/c', 'https://example.com/d', 'https://example.com/e'],
+  [], 3); // cap = 2
+assert(m16.length === 2, 'mergeDiscovered: capped at maxPages-1 (2)');
+
 console.log('\n=== Results ===');
 console.log(`${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);
