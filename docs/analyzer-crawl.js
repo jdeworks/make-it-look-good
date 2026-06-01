@@ -539,7 +539,7 @@ window.MilgCrawl = (function() {
     return lines.join('\n');
   }
 
-  function renderCrawlJSON(session, severityFilter) {
+  function renderCrawlJSON(session, severityFilter, includeViewportData) {
     // Break circular refs and strip debug data — keep screenshots, masks, verify for full export
     // Only strip circular refs and transient state — keep ALL analysis data for full reimport
     var _skipKeys = { deepScan: 1, _cachedReportData: 1, _vpCacheIdx: 1 };
@@ -554,9 +554,14 @@ window.MilgCrawl = (function() {
       // results: re-importable raw extraction data (loadCrawlResults compatible)
       results: session.pages.filter(function(p) { return p.status === 'done' && p.rawData; }).map(function(p) {
         var rawClone = JSON.parse(JSON.stringify(p.rawData, _replacer));
-        // Include deep scan summary (without full viewport data)
+        // Include deep scan summary. Full per-viewport extraction (viewportData) is
+        // large, so it's only kept when includeViewportData is set — that's what lets a
+        // re-imported crawl reconstruct the page×viewport matrix in the LLM pack.
         if (p.rawData.deepScan) {
           rawClone.deepScan = { viewports: p.rawData.deepScan.viewports, darkMode: p.rawData.deepScan.darkMode || null };
+          if (includeViewportData && p.rawData.deepScan.viewportData) {
+            rawClone.deepScan.viewportData = JSON.parse(JSON.stringify(p.rawData.deepScan.viewportData, _replacer));
+          }
         }
         // Pixel verify results are included automatically via the clone
         // (samplePoints and _debug already stripped by replacer)

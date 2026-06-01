@@ -41,6 +41,16 @@ window.MilgCrawlUI = (function() {
 
   function isCrawlMode() { return crawlSiteCheck && crawlSiteCheck.checked; }
   function isCrawlActive() { return _crawlSession && _crawlSession.pages.length > 0 && crawlResults && crawlResults.style.display !== 'none'; }
+  // Show the "Include per-viewport data" export option only for crawls that actually
+  // carry deep-scan viewport data (so re-import can rebuild the page×viewport matrix).
+  function _toggleViewportExportOption() {
+    var lbl = document.getElementById('crawlIncludeViewportsLabel');
+    if (!lbl) return;
+    var hasVp = !!(_crawlSession && _crawlSession.pages && _crawlSession.pages.some(function(p) {
+      return p.rawData && p.rawData.deepScan && p.rawData.deepScan.viewportData && p.rawData.deepScan.viewportData.filter(Boolean).length > 1;
+    }));
+    lbl.style.display = hasVp ? 'inline-flex' : 'none';
+  }
 
   function crawlStatusIcon(status) {
     if (status === 'done') return '<span class="status-icon done"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></span>';
@@ -94,6 +104,7 @@ window.MilgCrawlUI = (function() {
     // Show export/actions only after crawl is complete (not during progress)
     var crawlDone = _crawlSession && _crawlSession.status === 'complete';
     if (reportActions) reportActions.style.display = crawlDone ? 'flex' : 'none';
+    if (crawlDone) _toggleViewportExportOption();
     if (key === 'summary') {
       var summary = _crawlSession.summary || MilgCrawl.buildSummary(_crawlSession);
       var ephBanner = document.getElementById('ephemeralBanner');
@@ -156,11 +167,19 @@ window.MilgCrawlUI = (function() {
   function loadCrawlResults(crawlState, source) {
     if (!crawlState || !crawlState.results || crawlState.results.length === 0) return false;
     _showToast('Loaded crawl results' + (source ? ' from ' + source : '') + ' (' + crawlState.results.length + ' pages)');
+    // Honor the audience profile the crawl was scored with: prefer a session-level
+    // profile, else the first page's data.profile, else the current dropdown. Restore
+    // the dropdown so the UI matches, and ensure each page's data carries its profile
+    // before re-scoring (getProfile reads data.profile).
+    var _curProf = document.getElementById('profileSelect') ? document.getElementById('profileSelect').value : 'general';
+    var _impProf = crawlState.profile || (crawlState.results[0].data && crawlState.results[0].data.profile) || _curProf;
+    var _profSel = document.getElementById('profileSelect');
+    if (_profSel && _impProf) _profSel.value = _impProf;
     _crawlSession = MilgCrawl.createSession(crawlState.startUrl || crawlState.results[0].url, {
-      maxPages: crawlState.results.length,
-      profile: document.getElementById('profileSelect') ? document.getElementById('profileSelect').value : 'general'
+      maxPages: crawlState.results.length, profile: _impProf
     });
     crawlState.results.forEach(function(r) {
+      if (r.data && !r.data.profile) r.data.profile = _impProf;
       var report = MilgScoring.runScoring(r.data);
       _crawlSession.pages.push({
         url: r.url, status: 'done', title: (r.data.meta && r.data.meta.title) || '',
@@ -173,6 +192,7 @@ window.MilgCrawlUI = (function() {
     crawlResults.style.display = '';
     var reportActions = document.getElementById('reportActions');
     if (reportActions) reportActions.style.display = '';
+    _toggleViewportExportOption();
     document.getElementById('inputSection').style.display = 'none';
     renderCrawlTabs();
     showCrawlPageContent('summary');
@@ -492,7 +512,8 @@ window.MilgCrawlUI = (function() {
         requestAnimationFrame(function() { setTimeout(function() {
           try {
             var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
-            var json = MilgCrawl.renderCrawlJSON(_crawlSession, filter);
+            var _incVp = document.getElementById('crawlIncludeViewports');
+            var json = MilgCrawl.renderCrawlJSON(_crawlSession, filter, !!(_incVp && _incVp.checked));
             // Compress with gzip
             if (typeof CompressionStream !== 'undefined') {
               exportJsonBtn.innerHTML = '<span style="display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite;vertical-align:middle"></span> <span class="btn-label">Compressing\u2026</span>';

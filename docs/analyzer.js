@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.23 loaded');
+console.log('[milg] analyzer.js v3.11.24 loaded');
 
 (function() {
   "use strict";
@@ -931,6 +931,8 @@ console.log('[milg] analyzer.js v3.11.23 loaded');
     // Render viewport tabs for deep scan results
     renderViewportTabs(data);
     document.getElementById('reportActions').style.display = 'flex';
+    // The "Include per-viewport data" export option is crawl-only — hide it in single-page mode.
+    var _civ = document.getElementById('crawlIncludeViewportsLabel'); if (_civ) _civ.style.display = 'none';
     // Hide crawl containers when showing single-page results (unless crawl session is active)
     var _isCrawlDriven = MilgCrawlUI.getCrawlSession() && MilgCrawlUI.getCrawlSession().pages && MilgCrawlUI.getCrawlSession().pages.length > 0;
     if (!_isCrawlDriven) {
@@ -1757,6 +1759,13 @@ console.log('[milg] analyzer.js v3.11.23 loaded');
         _impPairs.some(function(p) { return p._maskBmp && p._maskDark > 0; }));
       if (pvCheck) pvCheck.checked = !!data._contrastVerifyResults || _impHasMaskData;
       if (dsCheck) dsCheck.checked = !!(data.deepScan && data.deepScan.viewportData);
+      // Restore the audience profile the analysis was scored with, so re-scoring on
+      // import uses it (not whatever the dropdown happens to show). runAnalysis reads
+      // the dropdown; getProfile(data) reads data.profile — keep both consistent.
+      if (data.profile) {
+        var _profSel = document.getElementById('profileSelect');
+        if (_profSel) _profSel.value = data.profile;
+      }
       runAnalysis(data);
       showToast('Analysis imported: ' + (data.meta.url || 'unknown'));
     }
