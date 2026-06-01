@@ -674,6 +674,54 @@ window.MilgExtract = (function() {
     for (var i = 0; i < allElements.length && transitionSet.size < 20; i++) { var t = getComputedStyle(allElements[i]).transitionDuration; if (t && t !== '0s') transitionSet.add(t); }
     data.interaction.transitions = Array.from(transitionSet);
 
+    // Motion & animation signals (best-effort; fully guarded — the extractor is injected
+    // into arbitrary pages and must never throw). Powers the "Motion & Animation" module.
+    var _anim = { hasReducedMotion: false, keyframeCount: 0, hiddenElements: 0,
+      scrollRevealPatterns: [], animationDurations: [], infiniteCount: 0, willChangeCount: 0, autoplayCount: 0 };
+    try {
+      var _scanRules = function(rules) {
+        for (var r = 0; r < rules.length; r++) {
+          var rule = rules[r];
+          try {
+            if (rule.type === 7) { _anim.keyframeCount++; }
+            else if (rule.type === 4) { // CSSMediaRule
+              var ct = rule.conditionText || (rule.media && rule.media.mediaText) || '';
+              if (ct.indexOf('prefers-reduced-motion') !== -1) _anim.hasReducedMotion = true;
+              if (rule.cssRules) _scanRules(rule.cssRules);
+            } else if (rule.cssRules) { _scanRules(rule.cssRules); }
+          } catch (e) {}
+        }
+      };
+      var _sheets = document.styleSheets || [];
+      for (var _si = 0; _si < _sheets.length; _si++) {
+        try { var _cr = _sheets[_si].cssRules; if (_cr) _scanRules(_cr); } catch (e) { /* cross-origin sheet */ }
+      }
+    } catch (e) {}
+    try {
+      var _animDur = new Set();
+      for (var _ai = 0; _ai < allElements.length && _ai < 5000; _ai++) {
+        var _as; try { _as = getComputedStyle(allElements[_ai]); } catch (e) { continue; }
+        var _hasTrans = _as.transitionDuration && _as.transitionDuration !== '0s';
+        var _hasAnim = _as.animationName && _as.animationName !== 'none';
+        if (parseFloat(_as.opacity) === 0 && (_hasTrans || _hasAnim)) _anim.hiddenElements++;
+        if (_hasAnim) {
+          _anim.autoplayCount++; // a non-none animationName at load ≈ auto-playing (no user trigger)
+          if (_as.animationDuration && _as.animationDuration !== '0s' && _animDur.size < 20) _animDur.add(_as.animationDuration);
+          if ((_as.animationIterationCount || '').indexOf('infinite') !== -1) _anim.infiniteCount++;
+        }
+        if (_as.willChange && _as.willChange !== 'auto') _anim.willChangeCount++;
+      }
+      _anim.animationDurations = Array.from(_animDur);
+    } catch (e) {}
+    try {
+      var _srSel = ['[data-aos]', '.wow', '[data-sr]', '.reveal', '.scroll-reveal', '.animate-on-scroll', '[data-scroll]', '[data-animate]'];
+      for (var _ssi = 0; _ssi < _srSel.length; _ssi++) {
+        var _n = 0; try { _n = document.querySelectorAll(_srSel[_ssi]).length; } catch (e) {}
+        if (_n > 0) _anim.scrollRevealPatterns.push({ selector: _srSel[_ssi], count: _n });
+      }
+    } catch (e) {}
+    data.animation = _anim;
+
     var _semTags = ['header','nav','main','footer','section','article','aside'];
     var _semEls = {};
     _semTags.forEach(function(tag) { _semEls[tag] = 0; });

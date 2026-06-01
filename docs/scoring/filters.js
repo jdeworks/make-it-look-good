@@ -6,27 +6,75 @@
   "use strict";
   var S = window.MilgScoring;
 
-  function scoreFilters(data) {
+  function scoreFilters(data, profile) {
     var findings = [];
     var checks = 0;
     var passed = 0;
     var anim = data.animation || {};
+    profile = profile || {};
+    var hasMotion = (anim.keyframeCount > 0) || (anim.autoplayCount > 0) ||
+      (data.interaction && data.interaction.transitions && data.interaction.transitions.length > 2);
 
-    // prefers-reduced-motion support
+    // prefers-reduced-motion support — an error for audiences that require it.
     checks++;
     if (anim.hasReducedMotion) {
       passed++;
-    } else if (anim.keyframeCount > 0 || (data.interaction && data.interaction.transitions && data.interaction.transitions.length > 2)) {
+    } else if (hasMotion) {
+      var _needsRM = !!profile.requireReducedMotion;
       findings.push({
-        severity: 'warning',
+        severity: _needsRM ? 'error' : 'warning',
         title: 'No prefers-reduced-motion support detected',
-        detail: (anim.keyframeCount || 0) + ' @keyframes rules found. Users with vestibular disorders need the option to reduce motion.',
+        detail: (anim.keyframeCount || 0) + ' @keyframes rule(s) and ' + (anim.autoplayCount || 0) + ' auto-running animation(s) found' +
+          (_needsRM ? ' — this audience profile requires a reduced-motion path.' : '. Users with vestibular disorders need the option to reduce motion.'),
         fix: 'Add @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }',
         presetRef: null,
         source: 'WCAG 2.2 §2.3.3 — https://www.w3.org/TR/WCAG22/#animation-from-interactions'
       });
     } else {
       passed++; // No significant animations, no need for reduced-motion
+    }
+
+    // Infinitely-looping animations — vestibular risk, esp. without a reduced-motion path.
+    if (anim.infiniteCount > 0) {
+      checks++;
+      if (anim.hasReducedMotion) {
+        passed++;
+      } else {
+        findings.push({
+          severity: profile.requireReducedMotion ? 'error' : 'warning',
+          title: anim.infiniteCount + ' infinitely-looping animation(s)',
+          detail: 'Continuous motion (spinners, marquees, looping effects) can trigger vestibular discomfort and distract.',
+          fix: 'Gate looping animations behind @media (prefers-reduced-motion: no-preference), or stop them after a few iterations.',
+          source: 'WCAG 2.2 §2.2.2 — https://www.w3.org/TR/WCAG22/#pause-stop-hide'
+        });
+      }
+    }
+
+    // Sluggish animation durations (> 1s feels slow for UI motion).
+    var _longDur = (anim.animationDurations || []).filter(function(d) {
+      var n = parseFloat(d); if (/ms$/.test(d)) n = n / 1000; return n > 1;
+    });
+    if (_longDur.length > 0) {
+      checks++;
+      findings.push({
+        severity: 'info',
+        title: _longDur.length + ' long animation duration(s) (> 1s): ' + _longDur.slice(0, 4).join(', '),
+        detail: 'UI motion above ~1s feels sluggish; enter transitions read best at 200-300ms.',
+        fix: 'Keep functional UI motion at 150-300ms; reserve longer durations for deliberate, infrequent hero motion.',
+        source: 'Material Design motion — https://m3.material.io/styles/motion/overview'
+      });
+    }
+
+    // will-change overuse (each one is a persistent compositing layer).
+    if (anim.willChangeCount > 8) {
+      checks++;
+      findings.push({
+        severity: 'info',
+        title: anim.willChangeCount + ' elements use will-change (overuse)',
+        detail: 'will-change forces persistent GPU layers; overuse increases memory and can hurt performance.',
+        fix: 'Apply will-change only to elements about to animate, and remove it after.',
+        source: 'MDN — https://developer.mozilla.org/en-US/docs/Web/CSS/will-change'
+      });
     }
 
     // Hidden elements waiting for scroll-reveal

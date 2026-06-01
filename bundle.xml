@@ -79,6 +79,7 @@ docs/
       bbox-test.html
       carousel-vexpand.html
       carousel.html
+      motion-page.html
       parity-page.html
     edge-a11y.html
     edge-contrast.html
@@ -188,6 +189,7 @@ tests/
   export-roundtrips.spec.js
   html-analysis.spec.js
   llm-pack-export.spec.js
+  motion-scoring.spec.js
   README.md
   region-debug.spec.js
   snippet-deepscan-hint.spec.js
@@ -4863,27 +4865,75 @@ function scoreContrast(data) {
   "use strict";
   var S = window.MilgScoring;
 
-  function scoreFilters(data) {
+  function scoreFilters(data, profile) {
     var findings = [];
     var checks = 0;
     var passed = 0;
     var anim = data.animation || {};
+    profile = profile || {};
+    var hasMotion = (anim.keyframeCount > 0) || (anim.autoplayCount > 0) ||
+      (data.interaction && data.interaction.transitions && data.interaction.transitions.length > 2);
 
-    // prefers-reduced-motion support
+    // prefers-reduced-motion support — an error for audiences that require it.
     checks++;
     if (anim.hasReducedMotion) {
       passed++;
-    } else if (anim.keyframeCount > 0 || (data.interaction && data.interaction.transitions && data.interaction.transitions.length > 2)) {
+    } else if (hasMotion) {
+      var _needsRM = !!profile.requireReducedMotion;
       findings.push({
-        severity: 'warning',
+        severity: _needsRM ? 'error' : 'warning',
         title: 'No prefers-reduced-motion support detected',
-        detail: (anim.keyframeCount || 0) + ' @keyframes rules found. Users with vestibular disorders need the option to reduce motion.',
+        detail: (anim.keyframeCount || 0) + ' @keyframes rule(s) and ' + (anim.autoplayCount || 0) + ' auto-running animation(s) found' +
+          (_needsRM ? ' — this audience profile requires a reduced-motion path.' : '. Users with vestibular disorders need the option to reduce motion.'),
         fix: 'Add @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }',
         presetRef: null,
         source: 'WCAG 2.2 §2.3.3 — https://www.w3.org/TR/WCAG22/#animation-from-interactions'
       });
     } else {
       passed++; // No significant animations, no need for reduced-motion
+    }
+
+    // Infinitely-looping animations — vestibular risk, esp. without a reduced-motion path.
+    if (anim.infiniteCount > 0) {
+      checks++;
+      if (anim.hasReducedMotion) {
+        passed++;
+      } else {
+        findings.push({
+          severity: profile.requireReducedMotion ? 'error' : 'warning',
+          title: anim.infiniteCount + ' infinitely-looping animation(s)',
+          detail: 'Continuous motion (spinners, marquees, looping effects) can trigger vestibular discomfort and distract.',
+          fix: 'Gate looping animations behind @media (prefers-reduced-motion: no-preference), or stop them after a few iterations.',
+          source: 'WCAG 2.2 §2.2.2 — https://www.w3.org/TR/WCAG22/#pause-stop-hide'
+        });
+      }
+    }
+
+    // Sluggish animation durations (> 1s feels slow for UI motion).
+    var _longDur = (anim.animationDurations || []).filter(function(d) {
+      var n = parseFloat(d); if (/ms$/.test(d)) n = n / 1000; return n > 1;
+    });
+    if (_longDur.length > 0) {
+      checks++;
+      findings.push({
+        severity: 'info',
+        title: _longDur.length + ' long animation duration(s) (> 1s): ' + _longDur.slice(0, 4).join(', '),
+        detail: 'UI motion above ~1s feels sluggish; enter transitions read best at 200-300ms.',
+        fix: 'Keep functional UI motion at 150-300ms; reserve longer durations for deliberate, infrequent hero motion.',
+        source: 'Material Design motion — https://m3.material.io/styles/motion/overview'
+      });
+    }
+
+    // will-change overuse (each one is a persistent compositing layer).
+    if (anim.willChangeCount > 8) {
+      checks++;
+      findings.push({
+        severity: 'info',
+        title: anim.willChangeCount + ' elements use will-change (overuse)',
+        detail: 'will-change forces persistent GPU layers; overuse increases memory and can hurt performance.',
+        fix: 'Apply will-change only to elements about to animate, and remove it after.',
+        source: 'MDN — https://developer.mozilla.org/en-US/docs/Web/CSS/will-change'
+      });
     }
 
     // Hidden elements waiting for scroll-reveal
@@ -6808,6 +6858,39 @@ function scoreTypography(data) {
 
   S.register("typography", scoreTypography, 15, "Typography", "type");
 })();
+</file>
+
+<file path="docs/tests/fixtures/motion-page.html">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Motion fixture</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 40px; color: #1a1a1a; background: #fff; max-width: 800px; }
+  h1 { font-size: 32px; }
+  p { font-size: 16px; line-height: 1.6; max-width: 60ch; }
+  /* An infinitely-looping animation, auto-running at load — and NO prefers-reduced-motion path. */
+  @keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
+  .spinner { width: 40px; height: 40px; border: 4px solid #2563eb; border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite; }
+  .badge { display: inline-block; padding: 6px 12px; background: #2563eb; color: #fff; border-radius: 6px; animation: pulse 2s ease-in-out infinite; }
+  /* A deliberately long (sluggish) animation. */
+  @keyframes slideIn { from { transform: translateX(-40px); } to { transform: translateX(0); } }
+  .hero { animation: slideIn 1.6s ease-out; will-change: transform; }
+  .btn { padding: 12px 20px; background: #2563eb; color: #fff; border: none; border-radius: 6px; font-size: 16px; min-height: 44px; transition: background 0.2s; }
+  .btn:hover { background: #1d4ed8; }
+</style>
+</head>
+<body>
+  <h1 class="hero">Motion test page</h1>
+  <p>This page has auto-running, infinitely-looping animations and a long slide-in, with no
+     <code>prefers-reduced-motion</code> path — the Motion &amp; Animation scorer should flag it.</p>
+  <div class="spinner" aria-hidden="true"></div>
+  <span class="badge">Live</span>
+  <p><button class="btn">A button with a normal 200ms transition</button></p>
+</body>
+</html>
 </file>
 
 <file path="docs/tests/edge-a11y.html">
@@ -13487,6 +13570,54 @@ window.MilgExtract = (function() {
     var transitionSet = new Set();
     for (var i = 0; i < allElements.length && transitionSet.size < 20; i++) { var t = getComputedStyle(allElements[i]).transitionDuration; if (t && t !== '0s') transitionSet.add(t); }
     data.interaction.transitions = Array.from(transitionSet);
+
+    // Motion & animation signals (best-effort; fully guarded — the extractor is injected
+    // into arbitrary pages and must never throw). Powers the "Motion & Animation" module.
+    var _anim = { hasReducedMotion: false, keyframeCount: 0, hiddenElements: 0,
+      scrollRevealPatterns: [], animationDurations: [], infiniteCount: 0, willChangeCount: 0, autoplayCount: 0 };
+    try {
+      var _scanRules = function(rules) {
+        for (var r = 0; r < rules.length; r++) {
+          var rule = rules[r];
+          try {
+            if (rule.type === 7) { _anim.keyframeCount++; }
+            else if (rule.type === 4) { // CSSMediaRule
+              var ct = rule.conditionText || (rule.media && rule.media.mediaText) || '';
+              if (ct.indexOf('prefers-reduced-motion') !== -1) _anim.hasReducedMotion = true;
+              if (rule.cssRules) _scanRules(rule.cssRules);
+            } else if (rule.cssRules) { _scanRules(rule.cssRules); }
+          } catch (e) {}
+        }
+      };
+      var _sheets = document.styleSheets || [];
+      for (var _si = 0; _si < _sheets.length; _si++) {
+        try { var _cr = _sheets[_si].cssRules; if (_cr) _scanRules(_cr); } catch (e) { /* cross-origin sheet */ }
+      }
+    } catch (e) {}
+    try {
+      var _animDur = new Set();
+      for (var _ai = 0; _ai < allElements.length && _ai < 5000; _ai++) {
+        var _as; try { _as = getComputedStyle(allElements[_ai]); } catch (e) { continue; }
+        var _hasTrans = _as.transitionDuration && _as.transitionDuration !== '0s';
+        var _hasAnim = _as.animationName && _as.animationName !== 'none';
+        if (parseFloat(_as.opacity) === 0 && (_hasTrans || _hasAnim)) _anim.hiddenElements++;
+        if (_hasAnim) {
+          _anim.autoplayCount++; // a non-none animationName at load ≈ auto-playing (no user trigger)
+          if (_as.animationDuration && _as.animationDuration !== '0s' && _animDur.size < 20) _animDur.add(_as.animationDuration);
+          if ((_as.animationIterationCount || '').indexOf('infinite') !== -1) _anim.infiniteCount++;
+        }
+        if (_as.willChange && _as.willChange !== 'auto') _anim.willChangeCount++;
+      }
+      _anim.animationDurations = Array.from(_animDur);
+    } catch (e) {}
+    try {
+      var _srSel = ['[data-aos]', '.wow', '[data-sr]', '.reveal', '.scroll-reveal', '.animate-on-scroll', '[data-scroll]', '[data-animate]'];
+      for (var _ssi = 0; _ssi < _srSel.length; _ssi++) {
+        var _n = 0; try { _n = document.querySelectorAll(_srSel[_ssi]).length; } catch (e) {}
+        if (_n > 0) _anim.scrollRevealPatterns.push({ selector: _srSel[_ssi], count: _n });
+      }
+    } catch (e) {}
+    data.animation = _anim;
 
     var _semTags = ['header','nav','main','footer','section','article','aside'];
     var _semEls = {};
@@ -25132,218 +25263,6 @@ console.log('');
 process.exit(failed > 0 ? 1 : 0);
 </file>
 
-<file path="tests/crawl-flow.test.mjs">
-/**
- * Crawl Multi-Page Flow Tests
- *
- * Tests that:
- * 1. Crawl JSON format is detected correctly (_milgCrawl marker)
- * 2. Multi-page results contain expected structure
- * 3. Single-page data is still accepted as before
- * 4. Link discovery filters correctly (hash, external, extensions, index variants)
- *
- * Run: node tests/crawl-flow.test.mjs
- */
-
-import { readFileSync } from 'fs';
-import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-let passed = 0, failed = 0;
-
-function assert(condition, msg) {
-  if (condition) { passed++; console.log('  ✓ ' + msg); }
-  else { failed++; console.error('  ✗ ' + msg); }
-}
-
-// Load crawl module
-const crawlSrc = readFileSync(resolve(__dirname, '../docs/analyzer-crawl.js'), 'utf-8');
-// Execute in a minimal browser-like context
-const window = { MilgScoring: { runScoring: function(d) { return { overall: 75, grade: 'C', categories: [] }; } } };
-const fn = new Function('window', crawlSrc + '; return window.MilgCrawl;');
-const MilgCrawl = fn(window);
-
-console.log('\n=== Crawl Data Format Tests ===\n');
-
-// Test 1: Crawl JSON marker detection
-const singlePage = { meta: { url: 'https://example.com', title: 'Test' }, colors: { textColors: [], bgColors: [] } };
-const crawlData = { _milgCrawl: true, startUrl: 'https://example.com', results: [
-  { url: 'https://example.com', data: singlePage },
-  { url: 'https://example.com/about', data: { ...singlePage, meta: { ...singlePage.meta, url: 'https://example.com/about' } } }
-]};
-
-assert(crawlData._milgCrawl === true, 'Crawl data has _milgCrawl marker');
-assert(crawlData.results.length === 2, 'Crawl data contains 2 pages');
-assert(crawlData.results[0].url === 'https://example.com', 'First page URL correct');
-assert(crawlData.results[1].url === 'https://example.com/about', 'Second page URL correct');
-
-// Test 2: Single page format detection (no _milgCrawl)
-assert(!singlePage._milgCrawl, 'Single page data has no _milgCrawl marker');
-assert(singlePage.meta && singlePage.colors, 'Single page has meta and colors');
-
-console.log('\n=== Link Discovery Tests ===\n');
-
-// Test 3: URL normalization
-assert(typeof MilgCrawl.normalizeUrl === 'function', 'normalizeUrl exists');
-assert(MilgCrawl.normalizeUrl('https://example.com/page#section') === 'https://example.com/page', 'Hash stripped from URL');
-assert(MilgCrawl.normalizeUrl('https://example.com/page/') === 'https://example.com/page', 'Trailing slash stripped');
-assert(MilgCrawl.normalizeUrl('https://example.com/page?q=1') === 'https://example.com/page', 'Query params stripped');
-
-// Test 4: Blacklist matching
-assert(typeof MilgCrawl.matchesBlacklist === 'function', 'matchesBlacklist exists');
-assert(MilgCrawl.matchesBlacklist('https://example.com/blog/post', ['/blog/*']), 'Wildcard blacklist matches');
-assert(!MilgCrawl.matchesBlacklist('https://example.com/about', ['/blog/*']), 'Wildcard blacklist does not match other paths');
-assert(MilgCrawl.matchesBlacklist('https://example.com/pricing', ['/pricing']), 'Exact blacklist matches');
-
-// Test 5: Link discovery (DOMParser not available in Node — skip if not present)
-try {
-  const htmlWithLinks = `<html><body>
-    <a href="/">Home</a><a href="/about">About</a><a href="#section">Anchor</a>
-    <a href="mailto:test@test.com">Email</a><a href="/file.pdf">PDF</a>
-    <a href="https://other.com/page">External</a><a href="/contact">Contact</a>
-  </body></html>`;
-  const discovered = MilgCrawl.discoverLinks(htmlWithLinks, 'https://example.com/', [], 10);
-  assert(!discovered.some(u => u.includes('#')), 'No hash URLs in discovered links');
-  assert(!discovered.some(u => u.includes('mailto:')), 'No mailto URLs');
-  assert(!discovered.some(u => u.includes('.pdf')), 'No PDF URLs');
-  assert(!discovered.some(u => u.includes('other.com')), 'No external URLs');
-  assert(discovered.some(u => u.includes('/about')), 'Internal /about link discovered');
-  assert(discovered.some(u => u.includes('/contact')), 'Internal /contact link discovered');
-} catch(e) {
-  if (e.message.includes('DOMParser')) {
-    console.log('  ⊘ discoverLinks skipped (DOMParser not available in Node)');
-  } else { throw e; }
-}
-
-console.log('\n=== Session Management Tests ===\n');
-
-// Test 6: Session creation
-const session = MilgCrawl.createSession('https://example.com', { maxPages: 5 });
-assert(session.startUrl === 'https://example.com', 'Session has correct startUrl');
-assert(session.options.maxPages === 5, 'Session has correct maxPages');
-assert(session.status === 'crawling', 'Session starts with crawling status');
-assert(Array.isArray(session.pages), 'Session has pages array');
-
-// Test 7: Summary building
-session.pages.push(
-  { url: 'https://example.com', status: 'done', rawData: singlePage, reportData: { overall: 85, grade: 'B', categories: [] } },
-  { url: 'https://example.com/about', status: 'done', rawData: singlePage, reportData: { overall: 72, grade: 'C', categories: [] } }
-);
-session.status = 'complete';
-const summary = MilgCrawl.buildSummary(session);
-assert(summary.pagesAnalyzed === 2, 'Summary counts 2 pages');
-assert(summary.averageScore === 79, 'Average score is (85+72)/2 = 79 (rounded)');
-assert(summary.bestPage.score === 85, 'Best page score is 85');
-assert(summary.worstPage.score === 72, 'Worst page score is 72');
-
-console.log('\n=== Sitemap Discovery Tests ===\n');
-
-assert(typeof MilgCrawl.discoverSitemap === 'function', 'discoverSitemap exists');
-assert(typeof MilgCrawl.mergeDiscovered === 'function', 'mergeDiscovered exists');
-
-// Fake fetchText factory: maps url → text (or throws/garbage). Callback-style.
-function fakeFetch(map) {
-  return function(url, cb) {
-    var v = map[url];
-    if (v === undefined) { cb('', '404'); return; }
-    if (v instanceof Error) { cb('', v.message); return; }
-    cb(v, null);
-  };
-}
-
-// Test 8: basic sitemap with same-origin, cross-origin, and media entries
-const basicSitemap = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://example.com/</loc></url>
-  <url><loc>https://example.com/about</loc></url>
-  <url><loc>https://example.com/products?ref=foo</loc></url>
-  <url><loc>https://other.com/external</loc></url>
-  <url><loc>https://example.com/brochure.pdf</loc></url>
-  <url><loc>https://example.com/logo.png</loc></url>
-</urlset>`;
-
-const r8 = await MilgCrawl.discoverSitemap('https://example.com', fakeFetch({
-  'https://example.com/robots.txt': 'User-agent: *\nDisallow:',
-  'https://example.com/sitemap.xml': basicSitemap
-}));
-assert(r8.some(u => u.includes('/about')), 'sitemap: /about discovered');
-assert(r8.some(u => u.includes('/products')), 'sitemap: /products discovered');
-assert(!r8.some(u => u.includes('other.com')), 'sitemap: cross-origin excluded');
-assert(!r8.some(u => u.includes('.pdf')), 'sitemap: PDF media excluded');
-assert(!r8.some(u => u.includes('.png')), 'sitemap: PNG media excluded');
-
-// Test 9: robots.txt Sitemap: directive points to a non-default sitemap URL
-const r9 = await MilgCrawl.discoverSitemap('https://example.com', fakeFetch({
-  'https://example.com/robots.txt': 'Sitemap: https://example.com/custom-sitemap.xml\n',
-  'https://example.com/custom-sitemap.xml': `<urlset><url><loc>https://example.com/hidden</loc></url></urlset>`
-}));
-assert(r9.some(u => u.includes('/hidden')), 'sitemap: robots.txt Sitemap: directive followed');
-
-// Test 10: sitemap-index pointing to a child sitemap (one level of nesting)
-const indexXml = `<?xml version="1.0"?>
-<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <sitemap><loc>https://example.com/sitemap-pages.xml</loc></sitemap>
-</sitemapindex>`;
-const childXml = `<urlset>
-  <url><loc>https://example.com/page-a</loc></url>
-  <url><loc>https://example.com/page-b</loc></url>
-</urlset>`;
-const r10 = await MilgCrawl.discoverSitemap('https://example.com', fakeFetch({
-  'https://example.com/robots.txt': '',
-  'https://example.com/sitemap.xml': indexXml,
-  'https://example.com/sitemap-pages.xml': childXml
-}));
-assert(r10.some(u => u.includes('/page-a')), 'sitemap-index: child page-a discovered');
-assert(r10.some(u => u.includes('/page-b')), 'sitemap-index: child page-b discovered');
-assert(!r10.some(u => u.includes('sitemap-pages.xml')), 'sitemap-index: child sitemap URL not treated as a page');
-
-// Test 11: graceful failure — fetchText throws
-const r11 = await MilgCrawl.discoverSitemap('https://example.com', function() { throw new Error('boom'); });
-assert(Array.isArray(r11) && r11.length === 0, 'sitemap: returns [] when fetchText throws');
-
-// Test 12: graceful failure — garbage / non-XML response
-const r12 = await MilgCrawl.discoverSitemap('https://example.com', fakeFetch({
-  'https://example.com/robots.txt': '',
-  'https://example.com/sitemap.xml': 'NOT XML <<< broken &&& {}'
-}));
-assert(Array.isArray(r12) && r12.length === 0, 'sitemap: returns [] on garbage XML');
-
-// Test 13: bad origin string returns []
-const r13 = await MilgCrawl.discoverSitemap('not-a-url', fakeFetch({}));
-assert(Array.isArray(r13) && r13.length === 0, 'sitemap: returns [] for invalid origin');
-
-console.log('\n=== mergeDiscovered Tests ===\n');
-
-// Test 14: dedups DOM links vs sitemap URLs (by normalizeUrl)
-const m14 = MilgCrawl.mergeDiscovered(
-  ['https://example.com/about', 'https://example.com/contact'],
-  ['https://example.com/about/', 'https://example.com/blog'], // /about/ dups /about
-  [], 10);
-assert(m14.length === 3, 'mergeDiscovered: deduped about (3 unique total)');
-assert(m14.filter(u => u.includes('/about')).length === 1, 'mergeDiscovered: only one /about variant kept');
-assert(m14.some(u => u.includes('/blog')), 'mergeDiscovered: sitemap-only /blog included');
-
-// Test 15: respects blacklist
-const m15 = MilgCrawl.mergeDiscovered(
-  ['https://example.com/about'],
-  ['https://example.com/blog/post1', 'https://example.com/pricing'],
-  ['/blog/*'], 10);
-assert(!m15.some(u => u.includes('/blog/')), 'mergeDiscovered: blacklisted /blog/* dropped');
-assert(m15.some(u => u.includes('/pricing')), 'mergeDiscovered: non-blacklisted /pricing kept');
-
-// Test 16: respects maxPages cap (maxPages-1 since start page counts as 1)
-const m16 = MilgCrawl.mergeDiscovered(
-  ['https://example.com/a', 'https://example.com/b'],
-  ['https://example.com/c', 'https://example.com/d', 'https://example.com/e'],
-  [], 3); // cap = 2
-assert(m16.length === 2, 'mergeDiscovered: capped at maxPages-1 (2)');
-
-console.log('\n=== Results ===');
-console.log(`${passed} passed, ${failed} failed\n`);
-process.exit(failed > 0 ? 1 : 0);
-</file>
-
 <file path="tests/e2e-api-data-flow.md">
 # E2E Test: Raw JSON Data → Status Page UI
 
@@ -27023,6 +26942,54 @@ This test case demonstrates several important patterns for handling minimal inpu
 2. **Listen for scope changes.** The user casually said "actually, can you give me a whole set" — this is a 10x scope expansion. Acknowledge it and adjust.
 3. **Derive what you can.** "E-commerce" + "checkout" + "green" gives enough signal to make dozens of informed decisions (audience, tone, accessibility priority, color palette) without asking 20 more questions.
 4. **Offer a system, not just a component.** When someone asks for "a button," giving them a system (with variants, states, and sizes) is more useful than giving them one perfect button they cannot adapt.
+</file>
+
+<file path="tests/motion-scoring.spec.js">
+// @ts-check
+// End-to-end guard for motion extraction + the "Motion & Animation" scoring module (v3.11.27).
+// Before this, data.animation was never populated so the module was inert.
+const { test, expect } = require('@playwright/test');
+const ANALYZER = 'http://localhost:8384/analyzer.html';
+const FIXTURE = 'http://localhost:8384/tests/fixtures/motion-page.html';
+
+test('motion: extraction populates data.animation and the module flags it', async ({ page }) => {
+  test.setTimeout(90000);
+  await page.goto(ANALYZER);
+  await page.check('#screenshotCheck');
+  await page.click('[data-tab="tabUrl"]');
+  await page.fill('#urlInput', FIXTURE);
+  await page.click('#analyzeUrlBtn');
+  await page.waitForSelector('.report-container.visible', { timeout: 90000 });
+  await page.waitForTimeout(1500);
+
+  const out = await page.evaluate(() => {
+    const r = window.__milgLastReport;
+    const anim = r.raw.animation || {};
+    const cat = (r.categories || []).find((c) => c.label === 'Motion & Animation');
+    const titles = cat ? cat.findings.map((f) => f.severity + ':' + f.title) : [];
+    return {
+      keyframeCount: anim.keyframeCount, infiniteCount: anim.infiniteCount,
+      autoplayCount: anim.autoplayCount, hasReducedMotion: anim.hasReducedMotion,
+      animationDurations: anim.animationDurations, willChangeCount: anim.willChangeCount,
+      hasCategory: !!cat, titles,
+    };
+  });
+  console.log('MOTION', JSON.stringify(out, null, 2));
+
+  // Extraction worked.
+  expect(out.keyframeCount).toBeGreaterThanOrEqual(3); // spin, pulse, slideIn
+  expect(out.infiniteCount).toBeGreaterThanOrEqual(2); // spinner + badge
+  expect(out.autoplayCount).toBeGreaterThanOrEqual(2);
+  expect(out.hasReducedMotion).toBe(false);
+  expect(out.willChangeCount).toBeGreaterThanOrEqual(1); // .hero
+  expect(out.animationDurations.length).toBeGreaterThan(0);
+
+  // Module reacted.
+  expect(out.hasCategory).toBe(true);
+  expect(out.titles.join(' | ')).toMatch(/prefers-reduced-motion/i);
+  expect(out.titles.join(' | ')).toMatch(/infinitely-looping/i);
+  expect(out.titles.join(' | ')).toMatch(/long animation duration/i);
+});
 </file>
 
 <file path="tests/README.md">
@@ -30600,6 +30567,218 @@ test('analyzer UI exposes accessible names + live regions', async ({ page }) => 
   expect(a.analysisProgressLive).toBe('polite');
   expect(a.hasProfilesH2).toBe(true);
 });
+</file>
+
+<file path="tests/crawl-flow.test.mjs">
+/**
+ * Crawl Multi-Page Flow Tests
+ *
+ * Tests that:
+ * 1. Crawl JSON format is detected correctly (_milgCrawl marker)
+ * 2. Multi-page results contain expected structure
+ * 3. Single-page data is still accepted as before
+ * 4. Link discovery filters correctly (hash, external, extensions, index variants)
+ *
+ * Run: node tests/crawl-flow.test.mjs
+ */
+
+import { readFileSync } from 'fs';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+let passed = 0, failed = 0;
+
+function assert(condition, msg) {
+  if (condition) { passed++; console.log('  ✓ ' + msg); }
+  else { failed++; console.error('  ✗ ' + msg); }
+}
+
+// Load crawl module
+const crawlSrc = readFileSync(resolve(__dirname, '../docs/analyzer-crawl.js'), 'utf-8');
+// Execute in a minimal browser-like context
+const window = { MilgScoring: { runScoring: function(d) { return { overall: 75, grade: 'C', categories: [] }; } } };
+const fn = new Function('window', crawlSrc + '; return window.MilgCrawl;');
+const MilgCrawl = fn(window);
+
+console.log('\n=== Crawl Data Format Tests ===\n');
+
+// Test 1: Crawl JSON marker detection
+const singlePage = { meta: { url: 'https://example.com', title: 'Test' }, colors: { textColors: [], bgColors: [] } };
+const crawlData = { _milgCrawl: true, startUrl: 'https://example.com', results: [
+  { url: 'https://example.com', data: singlePage },
+  { url: 'https://example.com/about', data: { ...singlePage, meta: { ...singlePage.meta, url: 'https://example.com/about' } } }
+]};
+
+assert(crawlData._milgCrawl === true, 'Crawl data has _milgCrawl marker');
+assert(crawlData.results.length === 2, 'Crawl data contains 2 pages');
+assert(crawlData.results[0].url === 'https://example.com', 'First page URL correct');
+assert(crawlData.results[1].url === 'https://example.com/about', 'Second page URL correct');
+
+// Test 2: Single page format detection (no _milgCrawl)
+assert(!singlePage._milgCrawl, 'Single page data has no _milgCrawl marker');
+assert(singlePage.meta && singlePage.colors, 'Single page has meta and colors');
+
+console.log('\n=== Link Discovery Tests ===\n');
+
+// Test 3: URL normalization
+assert(typeof MilgCrawl.normalizeUrl === 'function', 'normalizeUrl exists');
+assert(MilgCrawl.normalizeUrl('https://example.com/page#section') === 'https://example.com/page', 'Hash stripped from URL');
+assert(MilgCrawl.normalizeUrl('https://example.com/page/') === 'https://example.com/page', 'Trailing slash stripped');
+assert(MilgCrawl.normalizeUrl('https://example.com/page?q=1') === 'https://example.com/page', 'Query params stripped');
+
+// Test 4: Blacklist matching
+assert(typeof MilgCrawl.matchesBlacklist === 'function', 'matchesBlacklist exists');
+assert(MilgCrawl.matchesBlacklist('https://example.com/blog/post', ['/blog/*']), 'Wildcard blacklist matches');
+assert(!MilgCrawl.matchesBlacklist('https://example.com/about', ['/blog/*']), 'Wildcard blacklist does not match other paths');
+assert(MilgCrawl.matchesBlacklist('https://example.com/pricing', ['/pricing']), 'Exact blacklist matches');
+
+// Test 5: Link discovery (DOMParser not available in Node — skip if not present)
+try {
+  const htmlWithLinks = `<html><body>
+    <a href="/">Home</a><a href="/about">About</a><a href="#section">Anchor</a>
+    <a href="mailto:test@test.com">Email</a><a href="/file.pdf">PDF</a>
+    <a href="https://other.com/page">External</a><a href="/contact">Contact</a>
+  </body></html>`;
+  const discovered = MilgCrawl.discoverLinks(htmlWithLinks, 'https://example.com/', [], 10);
+  assert(!discovered.some(u => u.includes('#')), 'No hash URLs in discovered links');
+  assert(!discovered.some(u => u.includes('mailto:')), 'No mailto URLs');
+  assert(!discovered.some(u => u.includes('.pdf')), 'No PDF URLs');
+  assert(!discovered.some(u => u.includes('other.com')), 'No external URLs');
+  assert(discovered.some(u => u.includes('/about')), 'Internal /about link discovered');
+  assert(discovered.some(u => u.includes('/contact')), 'Internal /contact link discovered');
+} catch(e) {
+  if (e.message.includes('DOMParser')) {
+    console.log('  ⊘ discoverLinks skipped (DOMParser not available in Node)');
+  } else { throw e; }
+}
+
+console.log('\n=== Session Management Tests ===\n');
+
+// Test 6: Session creation
+const session = MilgCrawl.createSession('https://example.com', { maxPages: 5 });
+assert(session.startUrl === 'https://example.com', 'Session has correct startUrl');
+assert(session.options.maxPages === 5, 'Session has correct maxPages');
+assert(session.status === 'crawling', 'Session starts with crawling status');
+assert(Array.isArray(session.pages), 'Session has pages array');
+
+// Test 7: Summary building
+session.pages.push(
+  { url: 'https://example.com', status: 'done', rawData: singlePage, reportData: { overall: 85, grade: 'B', categories: [] } },
+  { url: 'https://example.com/about', status: 'done', rawData: singlePage, reportData: { overall: 72, grade: 'C', categories: [] } }
+);
+session.status = 'complete';
+const summary = MilgCrawl.buildSummary(session);
+assert(summary.pagesAnalyzed === 2, 'Summary counts 2 pages');
+assert(summary.averageScore === 79, 'Average score is (85+72)/2 = 79 (rounded)');
+assert(summary.bestPage.score === 85, 'Best page score is 85');
+assert(summary.worstPage.score === 72, 'Worst page score is 72');
+
+console.log('\n=== Sitemap Discovery Tests ===\n');
+
+assert(typeof MilgCrawl.discoverSitemap === 'function', 'discoverSitemap exists');
+assert(typeof MilgCrawl.mergeDiscovered === 'function', 'mergeDiscovered exists');
+
+// Fake fetchText factory: maps url → text (or throws/garbage). Callback-style.
+function fakeFetch(map) {
+  return function(url, cb) {
+    var v = map[url];
+    if (v === undefined) { cb('', '404'); return; }
+    if (v instanceof Error) { cb('', v.message); return; }
+    cb(v, null);
+  };
+}
+
+// Test 8: basic sitemap with same-origin, cross-origin, and media entries
+const basicSitemap = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://example.com/</loc></url>
+  <url><loc>https://example.com/about</loc></url>
+  <url><loc>https://example.com/products?ref=foo</loc></url>
+  <url><loc>https://other.com/external</loc></url>
+  <url><loc>https://example.com/brochure.pdf</loc></url>
+  <url><loc>https://example.com/logo.png</loc></url>
+</urlset>`;
+
+const r8 = await MilgCrawl.discoverSitemap('https://example.com', fakeFetch({
+  'https://example.com/robots.txt': 'User-agent: *\nDisallow:',
+  'https://example.com/sitemap.xml': basicSitemap
+}));
+assert(r8.some(u => u.includes('/about')), 'sitemap: /about discovered');
+assert(r8.some(u => u.includes('/products')), 'sitemap: /products discovered');
+assert(!r8.some(u => u.includes('other.com')), 'sitemap: cross-origin excluded');
+assert(!r8.some(u => u.includes('.pdf')), 'sitemap: PDF media excluded');
+assert(!r8.some(u => u.includes('.png')), 'sitemap: PNG media excluded');
+
+// Test 9: robots.txt Sitemap: directive points to a non-default sitemap URL
+const r9 = await MilgCrawl.discoverSitemap('https://example.com', fakeFetch({
+  'https://example.com/robots.txt': 'Sitemap: https://example.com/custom-sitemap.xml\n',
+  'https://example.com/custom-sitemap.xml': `<urlset><url><loc>https://example.com/hidden</loc></url></urlset>`
+}));
+assert(r9.some(u => u.includes('/hidden')), 'sitemap: robots.txt Sitemap: directive followed');
+
+// Test 10: sitemap-index pointing to a child sitemap (one level of nesting)
+const indexXml = `<?xml version="1.0"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <sitemap><loc>https://example.com/sitemap-pages.xml</loc></sitemap>
+</sitemapindex>`;
+const childXml = `<urlset>
+  <url><loc>https://example.com/page-a</loc></url>
+  <url><loc>https://example.com/page-b</loc></url>
+</urlset>`;
+const r10 = await MilgCrawl.discoverSitemap('https://example.com', fakeFetch({
+  'https://example.com/robots.txt': '',
+  'https://example.com/sitemap.xml': indexXml,
+  'https://example.com/sitemap-pages.xml': childXml
+}));
+assert(r10.some(u => u.includes('/page-a')), 'sitemap-index: child page-a discovered');
+assert(r10.some(u => u.includes('/page-b')), 'sitemap-index: child page-b discovered');
+assert(!r10.some(u => u.includes('sitemap-pages.xml')), 'sitemap-index: child sitemap URL not treated as a page');
+
+// Test 11: graceful failure — fetchText throws
+const r11 = await MilgCrawl.discoverSitemap('https://example.com', function() { throw new Error('boom'); });
+assert(Array.isArray(r11) && r11.length === 0, 'sitemap: returns [] when fetchText throws');
+
+// Test 12: graceful failure — garbage / non-XML response
+const r12 = await MilgCrawl.discoverSitemap('https://example.com', fakeFetch({
+  'https://example.com/robots.txt': '',
+  'https://example.com/sitemap.xml': 'NOT XML <<< broken &&& {}'
+}));
+assert(Array.isArray(r12) && r12.length === 0, 'sitemap: returns [] on garbage XML');
+
+// Test 13: bad origin string returns []
+const r13 = await MilgCrawl.discoverSitemap('not-a-url', fakeFetch({}));
+assert(Array.isArray(r13) && r13.length === 0, 'sitemap: returns [] for invalid origin');
+
+console.log('\n=== mergeDiscovered Tests ===\n');
+
+// Test 14: dedups DOM links vs sitemap URLs (by normalizeUrl)
+const m14 = MilgCrawl.mergeDiscovered(
+  ['https://example.com/about', 'https://example.com/contact'],
+  ['https://example.com/about/', 'https://example.com/blog'], // /about/ dups /about
+  [], 10);
+assert(m14.length === 3, 'mergeDiscovered: deduped about (3 unique total)');
+assert(m14.filter(u => u.includes('/about')).length === 1, 'mergeDiscovered: only one /about variant kept');
+assert(m14.some(u => u.includes('/blog')), 'mergeDiscovered: sitemap-only /blog included');
+
+// Test 15: respects blacklist
+const m15 = MilgCrawl.mergeDiscovered(
+  ['https://example.com/about'],
+  ['https://example.com/blog/post1', 'https://example.com/pricing'],
+  ['/blog/*'], 10);
+assert(!m15.some(u => u.includes('/blog/')), 'mergeDiscovered: blacklisted /blog/* dropped');
+assert(m15.some(u => u.includes('/pricing')), 'mergeDiscovered: non-blacklisted /pricing kept');
+
+// Test 16: respects maxPages cap (maxPages-1 since start page counts as 1)
+const m16 = MilgCrawl.mergeDiscovered(
+  ['https://example.com/a', 'https://example.com/b'],
+  ['https://example.com/c', 'https://example.com/d', 'https://example.com/e'],
+  [], 3); // cap = 2
+assert(m16.length === 2, 'mergeDiscovered: capped at maxPages-1 (2)');
+
+console.log('\n=== Results ===');
+console.log(`${passed} passed, ${failed} failed\n`);
+process.exit(failed > 0 ? 1 : 0);
 </file>
 
 <file path="tests/cross-mode-parity.spec.js">
@@ -38632,6 +38811,703 @@ window.MilgContrastVerify = (function() {
 })();
 </file>
 
+<file path="docs/analyzer-crawl-ui.js">
+// make-it-look-good — Crawl UI Wiring
+// Manages multi-page site crawl progress, tabs, and results display.
+// Depends on: analyzer-crawl.js (MilgCrawl), analyzer-report.js (MilgReport),
+//             analyzer-iframe.js (MilgIframe), analyzer-proxy.js (MilgProxy)
+
+window.MilgCrawlUI = (function() {
+  "use strict";
+
+  var _crawlSession = null;
+  var _crawlPageReports = {}; // pageIndex → rendered HTML cache
+  var _crawlActivePageTab = 'summary';
+  var CRAWL_HARD_MAX = 25;
+
+  // Dependencies injected via setup()
+  var _showToast, _runAnalysis, _restoreCachedAnalysis, _analyzeUrlBtn, _runDeepScanLoop;
+  var _showFocusModal, _updateFocusModal, _hideFocusModal;
+
+  // DOM refs queried during setup
+  var crawlSiteCheck, crawlOptions, cancelCrawlBtn, crawlMaxPages, crawlBlacklist;
+  var crawlProgressArea, crawlProgressLabel, crawlProgressCount, crawlProgressFill, crawlProgressList;
+  var crawlResults, crawlPageTabs, crawlPageContent;
+
+  function _esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+  // Use the shared focus modal for crawl progress (same as single-URL deep scan).
+  // The modal has a close button so users can dismiss it and browse results.
+  var _crawlModalDismissed = false;
+  function _crawlModal(msg) {
+    if (_crawlModalDismissed) return;
+    if (_showFocusModal) _showFocusModal();
+    if (_updateFocusModal) _updateFocusModal(msg + '\n');
+  }
+  function _crawlModalClose() {
+    _crawlModalDismissed = false;
+    if (_hideFocusModal) _hideFocusModal();
+  }
+
+  function getCrawlSession() { return _crawlSession; }
+  function setCrawlSession(s) { _crawlSession = s; }
+  function getActiveTab() { return _crawlActivePageTab; }
+
+  function isCrawlMode() { return crawlSiteCheck && crawlSiteCheck.checked; }
+  function isCrawlActive() { return _crawlSession && _crawlSession.pages.length > 0 && crawlResults && crawlResults.style.display !== 'none'; }
+  // Show the "Include per-viewport data" export option only for crawls that actually
+  // carry deep-scan viewport data (so re-import can rebuild the page×viewport matrix).
+  function _toggleViewportExportOption() {
+    var lbl = document.getElementById('crawlIncludeViewportsLabel');
+    if (!lbl) return;
+    var hasVp = !!(_crawlSession && _crawlSession.pages && _crawlSession.pages.some(function(p) {
+      return p.rawData && p.rawData.deepScan && p.rawData.deepScan.viewportData && p.rawData.deepScan.viewportData.filter(Boolean).length > 1;
+    }));
+    lbl.style.display = hasVp ? 'inline-flex' : 'none';
+  }
+
+  function crawlStatusIcon(status) {
+    if (status === 'done') return '<span class="status-icon done"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></span>';
+    if (status === 'error') return '<span class="status-icon error"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>';
+    if (status === 'fetching' || status === 'analyzing') return '<span class="status-icon active"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/></svg></span>';
+    return '<span class="status-icon pending"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-dasharray="20" stroke-dashoffset="10"/></svg></span>';
+  }
+
+  function updateCrawlProgressItem(page) {
+    var existing = document.getElementById('crawl-progress-' + encodeURIComponent(page.url));
+    var path; try { path = new URL(page.url).pathname; } catch(e) { path = page.url; }
+    var scoreText = page.status === 'done' && page.reportData ? ' ' + page.reportData.overall + '/100' : '';
+    var errorText = page.status === 'error' ? ' <span style="color:#dc2626;font-size:12px">' + (page.error || 'Failed').substring(0, 40) + '</span>' : '';
+    var html = crawlStatusIcon(page.status) +
+      '<span class="page-url" title="' + page.url + '">' + path + '</span>' +
+      '<span class="page-score">' + scoreText + errorText + '</span>';
+    if (existing) {
+      existing.innerHTML = html;
+    } else {
+      var div = document.createElement('div');
+      div.className = 'crawl-progress-item';
+      div.id = 'crawl-progress-' + encodeURIComponent(page.url);
+      div.innerHTML = html;
+      crawlProgressList.appendChild(div);
+    }
+  }
+
+  function renderCrawlTabs() {
+    if (!_crawlSession || !crawlPageTabs) return;
+    var html = '<button class="crawl-page-tab' + (_crawlActivePageTab === 'summary' ? ' active' : '') + '" data-crawl-page="summary">Summary</button>';
+    _crawlSession.pages.forEach(function(page, idx) {
+      html += MilgReport.renderCrawlPageTab(page, idx, _crawlActivePageTab === String(idx));
+    });
+    crawlPageTabs.innerHTML = html;
+  }
+
+  var _spinnerHtml = '<div style="padding:60px;text-align:center">' +
+    '<div style="width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite;margin:0 auto"></div>' +
+    '<div style="color:var(--text-secondary);margin-top:12px;font-size:13px">Loading report\u2026</div>' +
+    '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style></div>';
+
+  function showCrawlPageContent(key) {
+    _crawlActivePageTab = key;
+    // Promote this page's verify to front of queue so it completes first
+    if (key !== 'summary' && window.MilgQueue) {
+      MilgQueue.promote('crawl-verify-' + key);
+    }
+    renderCrawlTabs();
+    var reportContainer = document.getElementById('reportContainer');
+    var reportActions = document.getElementById('reportActions');
+    // Show export/actions only after crawl is complete (not during progress)
+    var crawlDone = _crawlSession && _crawlSession.status === 'complete';
+    if (reportActions) reportActions.style.display = crawlDone ? 'flex' : 'none';
+    if (crawlDone) _toggleViewportExportOption();
+    if (key === 'summary') {
+      var summary = _crawlSession.summary || MilgCrawl.buildSummary(_crawlSession);
+      var ephBanner = document.getElementById('ephemeralBanner');
+      if (ephBanner && crawlDone) ephBanner.style.display = 'flex';
+      crawlPageContent.innerHTML = MilgReport.renderCrawlSummary(summary);
+      crawlPageContent.style.display = '';
+      crawlPageContent.className = 'report-container visible';
+      if (reportContainer) { reportContainer.style.display = 'none'; reportContainer.className = 'report-container'; }
+      // Re-inject pixel verify summary if all pages have been verified
+      if (crawlDone && _crawlSession.pages.some(function(p) { return p.rawData && p.rawData._contrastVerifyResults; })) {
+        var allVerified = _crawlSession.pages.filter(function(p) { return p.status === 'done'; })
+          .every(function(p) { return p.rawData && p.rawData._contrastVerifyResults; });
+        if (allVerified) _updateVerifySummary(_crawlSession.pages.length, _crawlSession.pages.length, _crawlSession);
+      }
+    } else {
+      var idx = parseInt(key);
+      var page = _crawlSession.pages[idx];
+      if (!page || page.status !== 'done') {
+        crawlPageContent.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-secondary)">' +
+          (page && page.status === 'error' ? 'Error: ' + (page.error || 'Analysis failed') : 'Analyzing\u2026') + '</div>';
+        crawlPageContent.style.display = '';
+        crawlPageContent.className = 'report-container visible';
+        if (reportContainer) { reportContainer.style.display = 'none'; reportContainer.className = 'report-container'; }
+        return;
+      }
+
+      crawlPageContent.style.display = 'none';
+      crawlPageContent.className = 'report-container';
+      if (reportContainer) reportContainer.style.display = '';
+
+      // Clear viewport cache when switching crawl pages (viewport indices collide across pages)
+      if (typeof window.__milgClearViewportCache === 'function') window.__milgClearViewportCache();
+
+      // Cache hit: re-run with cached scoring + precomputed verify (fast, preserves overlays)
+      if (_crawlPageReports[idx]) {
+        var cached = _crawlPageReports[idx];
+        _runAnalysis(cached.data || page.rawData, 'crawl-page');
+        return;
+      }
+
+      // Cache miss: show spinner, defer heavy work so spinner paints
+      reportContainer.innerHTML = _spinnerHtml;
+      reportContainer.classList.add('visible');
+      setTimeout(function() {
+        // Guard: user may have switched tabs during the setTimeout
+        if (_crawlActivePageTab !== String(idx)) return;
+        page.rawData.meta = page.rawData.meta || {};
+        var origMethod = page.rawData.meta._inputMethod;
+        _runAnalysis(page.rawData, 'crawl-page');
+        page.rawData.meta._inputMethod = origMethod;
+        // Cache the data for instant restore (runAnalysis uses _cachedReportData + _contrastVerifyResults)
+        _crawlPageReports[idx] = {
+          data: page.rawData
+        };
+      }, 0);
+    }
+  }
+
+  // Load multi-page crawl results into the tabbed view
+  function loadCrawlResults(crawlState, source) {
+    if (!crawlState || !crawlState.results || crawlState.results.length === 0) return false;
+    _showToast('Loaded crawl results' + (source ? ' from ' + source : '') + ' (' + crawlState.results.length + ' pages)');
+    // Honor the audience profile the crawl was scored with: prefer a session-level
+    // profile, else the first page's data.profile, else the current dropdown. Restore
+    // the dropdown so the UI matches, and ensure each page's data carries its profile
+    // before re-scoring (getProfile reads data.profile).
+    var _curProf = document.getElementById('profileSelect') ? document.getElementById('profileSelect').value : 'general';
+    var _impProf = crawlState.profile || (crawlState.results[0].data && crawlState.results[0].data.profile) || _curProf;
+    var _profSel = document.getElementById('profileSelect');
+    if (_profSel && _impProf) _profSel.value = _impProf;
+    _crawlSession = MilgCrawl.createSession(crawlState.startUrl || crawlState.results[0].url, {
+      maxPages: crawlState.results.length, profile: _impProf
+    });
+    crawlState.results.forEach(function(r) {
+      if (r.data && !r.data.profile) r.data.profile = _impProf;
+      var report = MilgScoring.runScoring(r.data);
+      _crawlSession.pages.push({
+        url: r.url, status: 'done', title: (r.data.meta && r.data.meta.title) || '',
+        rawData: r.data, reportData: report, error: null,
+        startedAt: (r.data.meta && r.data.meta.timestamp) || null, completedAt: (r.data.meta && r.data.meta.timestamp) || null
+      });
+    });
+    _crawlSession.status = 'complete';
+    _crawlSession.summary = MilgCrawl.buildSummary(_crawlSession);
+    crawlResults.style.display = '';
+    var reportActions = document.getElementById('reportActions');
+    if (reportActions) reportActions.style.display = '';
+    _toggleViewportExportOption();
+    document.getElementById('inputSection').style.display = 'none';
+    renderCrawlTabs();
+    showCrawlPageContent('summary');
+
+    // Pre-compute pixel verify for each page with screenshots (async, best-effort).
+    // Results are cached on rawData._contrastVerifyResults so tab switches use cache.
+    _preComputePixelVerify();
+
+    return true;
+  }
+
+  function _preComputePixelVerify() {
+    if (!_crawlSession || !window.MilgContrastVerify || !window.MilgQueue) return;
+    var pagesToVerify = _crawlSession.pages.filter(function(p) {
+      return p.status === 'done' && p.rawData && !p.rawData._contrastVerifyResults &&
+        p.rawData.screenshots && p.rawData.screenshots.length && p.rawData.screenshotMeta;
+    });
+    if (pagesToVerify.length === 0) return;
+    var doneCount = 0;
+    var totalCount = pagesToVerify.length;
+
+    // Show pixel verify progress on summary page
+    _updateVerifySummary(0, totalCount, null);
+
+    // Queue all page verifies — active page tab gets highest priority
+    MilgQueue.clear();
+    pagesToVerify.forEach(function(page, pi) {
+      var pageIdx = _crawlSession.pages.indexOf(page);
+      var priority = (_crawlActivePageTab === String(pageIdx)) ? 100 : (totalCount - pi);
+      MilgQueue.enqueue('crawl-verify-' + pageIdx, function(done) {
+        // Skip if already verified by another path
+        if (page.rawData._contrastVerifyResults) { done(null); return; }
+        var report = page.reportData || MilgScoring.runScoring(page.rawData);
+        MilgContrastVerify.verify(report, function(results, bboxEdgeResults) {
+          if (!page.rawData._contrastVerifyResults) {
+            page.rawData._contrastVerifyResults = results;
+            page.rawData._bboxEdgeResults = bboxEdgeResults || [];
+            if (pageIdx >= 0) delete _crawlPageReports[pageIdx];
+          }
+          done(results);
+        });
+      }, function() {
+        doneCount++;
+        _crawlModal('Pixel verify ' + doneCount + '/' + totalCount + ' pages');
+        _updateVerifySummary(doneCount, totalCount, doneCount === totalCount ? _crawlSession : null);
+        if (doneCount === totalCount) setTimeout(_crawlModalClose, 2000);
+      }, priority);
+    });
+  }
+
+  function _updateVerifySummary(done, total, completedSession) {
+    var container = document.getElementById('milg-crawl-verify-summary');
+    if (!container && crawlPageContent) {
+      // Insert verify section near the top of the summary (after Site Overview stats, before Page Scores)
+      container = document.createElement('div');
+      container.id = 'milg-crawl-verify-summary';
+      container.style.marginTop = '24px';
+      var summaryDiv = crawlPageContent.querySelector('.crawl-summary');
+      var firstH3 = summaryDiv ? summaryDiv.querySelector('h3') : null;
+      if (firstH3) {
+        firstH3.parentNode.insertBefore(container, firstH3);
+      } else if (summaryDiv) {
+        summaryDiv.appendChild(container);
+      } else {
+        crawlPageContent.appendChild(container);
+      }
+    }
+    if (!container) return;
+
+    if (!completedSession) {
+      // Still running — show spinner with progress
+      container.innerHTML = '<div class="crawl-summary">' +
+        '<h3 style="display:flex;align-items:center;gap:8px">' +
+        '<span style="display:inline-block;width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite"></span>' +
+        'Pixel Contrast Verification (' + done + '/' + total + ' pages)' +
+        '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style>' +
+        '</h3></div>';
+      return;
+    }
+
+    // All done — build the pixel verify summary across all pages
+    var falsePassTotal = 0, falseFailTotal = 0, verifiedTotal = 0;
+    var pageIssues = []; // [{url, path, falsePass, results}]
+    completedSession.pages.forEach(function(page) {
+      if (!page.rawData || !page.rawData._contrastVerifyResults) return;
+      var results = page.rawData._contrastVerifyResults;
+      var fp = 0, ff = 0, v = 0;
+      results.forEach(function(r) {
+        if (r.crossesBoundary) {
+          if (r.cssPasses && !r.pixelPasses) fp++;
+          else ff++;
+        } else { v++; }
+      });
+      falsePassTotal += fp; falseFailTotal += ff; verifiedTotal += v;
+      if (fp > 0) {
+        var path; try { path = new URL(page.url).pathname; } catch(e) { path = page.url; }
+        pageIssues.push({ url: page.url, path: path, falsePass: fp, results: results });
+      }
+    });
+
+    var isDark = document.body && document.body.classList.contains('dark-ui');
+    var html = '<div class="crawl-summary"><h3>Pixel Contrast Verification</h3>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px">';
+    html += '<div style="padding:8px 16px;border-radius:8px;background:var(--surface);border:1px solid var(--border);font-size:13px">' +
+      '<span style="font-weight:600">' + verifiedTotal + '</span> <span style="color:var(--text-secondary)">verified</span></div>';
+    if (falsePassTotal > 0) {
+      html += '<div style="padding:8px 16px;border-radius:8px;background:' + (isDark ? '#2d0f0f' : '#fef2f2') + ';border:1px solid ' + (isDark ? '#991b1b' : '#fecaca') + ';font-size:13px">' +
+        '<span style="font-weight:700;color:#ef4444">' + falsePassTotal + '</span> <span style="color:#ef4444">hidden failure' + (falsePassTotal > 1 ? 's' : '') + '</span></div>';
+    }
+    if (falseFailTotal > 0) {
+      html += '<div style="padding:8px 16px;border-radius:8px;background:' + (isDark ? '#0c2d1e' : '#f0fdf4') + ';border:1px solid ' + (isDark ? '#166534' : '#bbf7d0') + ';font-size:13px">' +
+        '<span style="font-weight:600;color:#16a34a">' + falseFailTotal + '</span> <span style="color:#16a34a">better than CSS</span></div>';
+    }
+    if (falsePassTotal === 0 && falseFailTotal === 0) {
+      html += '<div style="padding:8px 16px;border-radius:8px;background:' + (isDark ? '#0c2d1e' : '#f0fdf4') + ';border:1px solid ' + (isDark ? '#166534' : '#bbf7d0') + ';font-size:13px">' +
+        '<span style="color:#16a34a">All pixel checks match CSS — no hidden issues</span></div>';
+    }
+    html += '</div>';
+
+    // Per-page breakdown of failures
+    if (pageIssues.length > 0) {
+      html += '<div style="font-size:13px;line-height:1.6">';
+      pageIssues.forEach(function(pi) {
+        html += '<div style="padding:6px 10px;margin-bottom:4px;border-radius:6px;background:var(--surface);border:1px solid var(--border)">';
+        html += '<span style="color:#ef4444;font-weight:600">' + pi.falsePass + ' hidden failure' + (pi.falsePass > 1 ? 's' : '') + '</span>';
+        html += ' on <span style="font-weight:500">' + _esc(pi.path) + '</span>';
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+
+    html += '</div>';
+    container.innerHTML = html;
+  }
+
+  function startCrawl(url) {
+    var maxPages = parseInt(crawlMaxPages.value) || 5;
+    maxPages = Math.min(Math.max(maxPages, 1), CRAWL_HARD_MAX);
+
+    var blacklist = (crawlBlacklist.value || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+    var deepScan = document.getElementById('deepScanCheck') && document.getElementById('deepScanCheck').checked;
+    var jsCheck = document.getElementById('jsEnabledCheck');
+    var jsAck = document.getElementById('jsRiskAck');
+    var wantJs = jsCheck && jsCheck.checked && jsAck && jsAck.checked;
+    var profile = document.getElementById('profileSelect');
+
+    _crawlSession = MilgCrawl.createSession(url, {
+      maxPages: maxPages,
+      blacklist: blacklist,
+      deepScan: deepScan,
+      jsEnabled: wantJs,
+      profile: profile ? profile.value : 'general'
+    });
+    _crawlPageReports = {};
+    _crawlActivePageTab = 'summary';
+
+    // Show progress
+    _analyzeUrlBtn.disabled = true;
+    _analyzeUrlBtn.textContent = 'Crawling\u2026';
+    cancelCrawlBtn.style.display = '';
+    crawlProgressArea.style.display = '';
+    crawlProgressList.innerHTML = '';
+    crawlProgressFill.style.width = '0%';
+    crawlProgressLabel.textContent = 'Fetching starting page\u2026';
+    crawlProgressCount.textContent = '0 / ' + maxPages;
+    _crawlModalDismissed = false;
+    window._milgFocusModalDismissed = false;
+    _showFocusModal(true); // dismissable
+    _crawlModal('Fetching starting page\u2026');
+
+    // Show crawl results area, hide input section
+    var inputSection = document.getElementById('inputSection');
+    var reportActions = document.getElementById('reportActions');
+    var reportContainer = document.getElementById('reportContainer');
+    if (inputSection) inputSection.style.display = 'none';
+    crawlResults.style.display = '';
+    if (reportContainer) reportContainer.className = 'report-container';
+    // Hide export bar during crawl — show only when crawl completes
+    if (reportActions) reportActions.style.display = 'none';
+    // Scroll to results
+    crawlResults.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    renderCrawlTabs();
+    showCrawlPageContent('summary');
+
+    var doneCount = 0;
+    var totalPages = 1;
+
+    MilgCrawl.startCrawl(_crawlSession, {
+      fetchPage: function(pageUrl, cb) {
+        MilgProxy.fetchViaProxy(pageUrl, function(html, err) { cb(html, err); });
+      },
+      analyzePage: function(html, pageUrl, opts, cb) {
+        var wantShots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
+        var isDeep = _crawlSession && _crawlSession.options && _crawlSession.options.deepScan && _runDeepScanLoop;
+        var jsOn = _crawlSession && _crawlSession.options && _crawlSession.options.jsEnabled;
+        var analysisOpts = { jsEnabled: jsOn, screenshots: wantShots, exclude: opts.excludeSelector || null };
+        if (isDeep) {
+          _runDeepScanLoop(html, pageUrl, analysisOpts, null, function(primary) {
+            if (primary) {
+              primary.meta.url = pageUrl;
+              primary.meta._inputMethod = 'crawl';
+              if (jsOn) primary.meta._jsEnabled = true;
+              if (opts.profile) primary.profile = opts.profile;
+            }
+            cb(primary);
+          });
+        } else {
+          function _doCrawlAnalysis() {
+            MilgIframe.analyzeHtml(html, {
+              url: pageUrl,
+              jsEnabled: jsOn,
+              screenshots: wantShots,
+              exclude: opts.excludeSelector || null
+            }, function(data) {
+              if (data) {
+                data.meta.url = pageUrl;
+                data.meta._inputMethod = 'crawl';
+                if (jsOn) data.meta._jsEnabled = true;
+                if (opts.profile) data.profile = opts.profile;
+              }
+              cb(data);
+          });
+          }
+          // Prefetch fonts for crawl pages (first page warms cache, subsequent get hits)
+          if (wantShots) {
+            MilgIframe.prefetchFonts(html, pageUrl, _doCrawlAnalysis);
+          } else {
+            _doCrawlAnalysis();
+          }
+        }
+      },
+      scorePage: function(data) { return MilgScoring.runScoring(data); },
+      onDiscovery: function(urls) {
+        totalPages = 1 + urls.length;
+        crawlProgressCount.textContent = '0 / ' + totalPages;
+        crawlProgressLabel.textContent = 'Found ' + urls.length + ' page' + (urls.length !== 1 ? 's' : '') + ' to crawl';
+        _crawlModal('Found ' + urls.length + ' pages to crawl');
+      },
+      onPageStart: function(page) {
+        updateCrawlProgressItem(page);
+        var path = page.url.replace(/^https?:\/\/[^/]+/, '');
+        crawlProgressLabel.textContent = 'Analyzing ' + path + '\u2026';
+        _crawlModal('Page ' + (doneCount + 1) + '/' + totalPages + ': ' + path);
+        renderCrawlTabs();
+      },
+      onPageComplete: function(page) {
+        doneCount++;
+        updateCrawlProgressItem(page);
+        crawlProgressCount.textContent = doneCount + ' / ' + totalPages;
+        crawlProgressFill.style.width = Math.round(doneCount / totalPages * 100) + '%';
+        renderCrawlTabs();
+        if (_crawlActivePageTab === 'summary') showCrawlPageContent('summary');
+        // Pre-compute pixel verify as soon as page completes (async, best-effort)
+        if (page.rawData && page.rawData.screenshots && page.rawData.screenshots.length && page.rawData.screenshotMeta && window.MilgContrastVerify) {
+          var report = page.reportData || MilgScoring.runScoring(page.rawData);
+          MilgContrastVerify.verify(report, function(results, bboxEdgeResults) {
+            page.rawData._contrastVerifyResults = results;
+            page.rawData._bboxEdgeResults = bboxEdgeResults || [];
+          });
+        }
+      },
+      onPageError: function(page) {
+        doneCount++;
+        updateCrawlProgressItem(page);
+        crawlProgressCount.textContent = doneCount + ' / ' + totalPages;
+        crawlProgressFill.style.width = Math.round(doneCount / totalPages * 100) + '%';
+        renderCrawlTabs();
+      },
+      onComplete: function(session) {
+        _analyzeUrlBtn.disabled = false;
+        _analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
+        cancelCrawlBtn.style.display = 'none';
+        crawlProgressLabel.textContent = 'Crawl complete!';
+        crawlProgressFill.style.width = '100%';
+        _crawlModal('Crawl complete! ' + _crawlSession.pages.length + ' pages analyzed');
+        setTimeout(_crawlModalClose, 3000);
+        renderCrawlTabs();
+        showCrawlPageContent('summary');
+      }
+    });
+  }
+
+  function setupCrawlExports(exportSeverityFilter) {
+    var copyMdBtn = document.getElementById('copyMdBtn');
+    var markdownBtn = document.getElementById('markdownBtn');
+    var exportJsonBtn = document.getElementById('exportJsonBtn');
+
+    if (copyMdBtn) {
+      copyMdBtn.addEventListener('click', function(e) {
+        if (!isCrawlActive()) return; // let original handler run
+        e.stopImmediatePropagation();
+        var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
+        var md = MilgCrawl.renderCrawlMarkdown(_crawlSession, filter);
+        navigator.clipboard.writeText(md).then(function() { _showToast('Crawl report copied as Markdown!'); }).catch(function() { _showToast('Copy failed'); });
+      });
+    }
+    if (markdownBtn) {
+      markdownBtn.addEventListener('click', function(e) {
+        if (!isCrawlActive()) return;
+        e.stopImmediatePropagation();
+        var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
+        var md = MilgCrawl.renderCrawlMarkdown(_crawlSession, filter);
+        var blob = new Blob([md], { type: 'text/markdown' });
+        var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+        a.download = 'site-crawl-report.md'; a.click();
+        URL.revokeObjectURL(a.href);
+      });
+    }
+    if (exportJsonBtn) {
+      exportJsonBtn.addEventListener('click', function(e) {
+        if (!isCrawlActive()) return;
+        e.stopImmediatePropagation();
+        var origLabel = exportJsonBtn.innerHTML;
+        exportJsonBtn.disabled = true;
+        exportJsonBtn.innerHTML = '<span style="display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite;vertical-align:middle"></span> <span class="btn-label">Exporting\u2026</span>';
+        requestAnimationFrame(function() { setTimeout(function() {
+          try {
+            var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
+            var _incVp = document.getElementById('crawlIncludeViewports');
+            var json = MilgCrawl.renderCrawlJSON(_crawlSession, filter, !!(_incVp && _incVp.checked));
+            // Compress with gzip
+            if (typeof CompressionStream !== 'undefined') {
+              exportJsonBtn.innerHTML = '<span style="display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite;vertical-align:middle"></span> <span class="btn-label">Compressing\u2026</span>';
+              var blob = new Blob([json]);
+              var cs = new CompressionStream('gzip');
+              new Response(blob.stream().pipeThrough(cs)).blob().then(function(compressed) {
+                var a = document.createElement('a');
+                a.href = URL.createObjectURL(compressed);
+                a.download = 'site-crawl-data.milg'; a.click();
+                URL.revokeObjectURL(a.href);
+                _showToast('Crawl exported (' + Math.round(json.length / 1048576) + ' MB → ' + Math.round(compressed.size / 1024) + ' KB)');
+                exportJsonBtn.disabled = false;
+                exportJsonBtn.innerHTML = origLabel;
+              }).catch(function() {
+                var a = document.createElement('a');
+                a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+                a.download = 'site-crawl-data.json'; a.click();
+                URL.revokeObjectURL(a.href);
+                _showToast('Crawl exported (' + Math.round(json.length / 1024) + ' KB)');
+                exportJsonBtn.disabled = false;
+                exportJsonBtn.innerHTML = origLabel;
+              });
+            } else {
+              var a = document.createElement('a');
+              a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+              a.download = 'site-crawl-data.json'; a.click();
+              URL.revokeObjectURL(a.href);
+              _showToast('Crawl exported (' + Math.round(json.length / 1024) + ' KB)');
+              exportJsonBtn.disabled = false;
+              exportJsonBtn.innerHTML = origLabel;
+            }
+          } catch(err) {
+            _showToast('Export failed: ' + err.message);
+            exportJsonBtn.disabled = false;
+            exportJsonBtn.innerHTML = origLabel;
+          }
+        }, 0); });
+      });
+    }
+  }
+
+  function setup(deps) {
+    _showToast = deps.showToast;
+    _runAnalysis = deps.runAnalysis;
+    _restoreCachedAnalysis = deps.restoreCachedAnalysis;
+    _analyzeUrlBtn = deps.analyzeUrlBtn;
+    _runDeepScanLoop = deps.runDeepScanLoop;
+    _showFocusModal = deps.showFocusModal;
+    _updateFocusModal = deps.updateFocusModal;
+    _hideFocusModal = deps.hideFocusModal;
+
+    // Query DOM refs
+    crawlSiteCheck = document.getElementById('crawlSiteCheck');
+    crawlOptions = document.getElementById('crawlOptions');
+    cancelCrawlBtn = document.getElementById('cancelCrawlBtn');
+    crawlMaxPages = document.getElementById('crawlMaxPages');
+    crawlBlacklist = document.getElementById('crawlBlacklist');
+    crawlProgressArea = document.getElementById('crawlProgressArea');
+    crawlProgressLabel = document.getElementById('crawlProgressLabel');
+    crawlProgressCount = document.getElementById('crawlProgressCount');
+    crawlProgressFill = document.getElementById('crawlProgressFill');
+    crawlProgressList = document.getElementById('crawlProgressList');
+    crawlResults = document.getElementById('crawlResults');
+    crawlPageTabs = document.getElementById('crawlPageTabs');
+    crawlPageContent = document.getElementById('crawlPageContent');
+
+    // Crawl site toggle — show/hide crawl options
+    if (crawlSiteCheck && crawlOptions) {
+      crawlSiteCheck.addEventListener('change', function() {
+        crawlOptions.style.display = crawlSiteCheck.checked ? '' : 'none';
+      });
+    }
+
+    // Page limit easter egg — MutationObserver on max attr + input value check
+    var _crawlEasterEggShown = false;
+    if (crawlMaxPages) {
+      var _crawlMaxObserver = new MutationObserver(function(mutations) {
+        mutations.forEach(function(m) {
+          if (m.attributeName === 'max') {
+            var newMax = parseInt(crawlMaxPages.getAttribute('max'));
+            if (newMax > 10 && !_crawlEasterEggShown) {
+              _crawlEasterEggShown = true;
+              _showToast('Nice try! We see you editing the DOM \uD83D\uDE0F Fine, ' + CRAWL_HARD_MAX + ' is the real limit\u2026 but your proxy rate limit isn\u2019t.');
+              crawlMaxPages.setAttribute('max', CRAWL_HARD_MAX);
+            }
+          }
+        });
+      });
+      _crawlMaxObserver.observe(crawlMaxPages, { attributes: true, attributeFilter: ['max'] });
+      // Also catch when someone types >10 directly
+      crawlMaxPages.addEventListener('input', function() {
+        var val = parseInt(crawlMaxPages.value);
+        if (val > 10 && !_crawlEasterEggShown) {
+          _crawlEasterEggShown = true;
+          _showToast('Going beyond 10? Bold move \uD83D\uDE0F We\u2019ll allow up to ' + CRAWL_HARD_MAX + '. You found the secret ceiling!');
+          crawlMaxPages.setAttribute('max', CRAWL_HARD_MAX);
+        }
+      });
+    }
+
+    // Tab click delegation
+    if (crawlPageTabs) {
+      crawlPageTabs.addEventListener('click', function(e) {
+        var tab = e.target.closest('[data-crawl-page]');
+        if (!tab) return;
+        showCrawlPageContent(tab.getAttribute('data-crawl-page'));
+      });
+    }
+
+    // Cancel crawl
+    if (cancelCrawlBtn) {
+      cancelCrawlBtn.addEventListener('click', function() {
+        if (_crawlSession) MilgCrawl.abortCrawl(_crawlSession);
+        _analyzeUrlBtn.disabled = false;
+        _analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
+        cancelCrawlBtn.style.display = 'none';
+        crawlProgressLabel.textContent = 'Crawl cancelled';
+      });
+    }
+
+    // Check for completed snippet crawl on load
+    try {
+      var snippetCrawlData = localStorage.getItem('milg-crawl-complete');
+      if (snippetCrawlData) {
+        localStorage.removeItem('milg-crawl-complete');
+        var crawlState = JSON.parse(snippetCrawlData);
+        if (loadCrawlResults(crawlState, 'console snippet')) {
+          if (crawlSiteCheck) crawlSiteCheck.checked = true;
+          if (crawlOptions) crawlOptions.style.display = '';
+        }
+      }
+    } catch(e) { console.error('Failed to load snippet crawl data:', e); }
+
+    // Crawl export wiring
+    setupCrawlExports(document.getElementById('exportSeverityFilter'));
+  }
+
+  function resetCrawlState() {
+    _crawlSession = null;
+    _crawlPageReports = {};
+    if (crawlResults) crawlResults.style.display = 'none';
+    if (crawlPageContent) { crawlPageContent.style.display = 'none'; crawlPageContent.innerHTML = ''; }
+    if (crawlProgressArea) crawlProgressArea.style.display = 'none';
+  }
+
+  // Re-score all crawl pages (e.g. when profile changes)
+  function rescorePages() {
+    if (!_crawlSession || !_crawlSession.pages || _crawlSession.pages.length === 0) return false;
+    // Invalidate caches — profile change means all scores/reports are stale
+    _crawlPageReports = {};
+    _crawlSession.pages.forEach(function(page) {
+      if (page.status === 'done' && page.rawData) {
+        page.rawData.profile = document.getElementById('profileSelect').value;
+        delete page.rawData._cachedReportData;
+        page.reportData = MilgScoring.runScoring(page.rawData);
+      }
+    });
+    _crawlSession.summary = MilgCrawl.buildSummary(_crawlSession);
+    renderCrawlTabs();
+    showCrawlPageContent(_crawlActivePageTab);
+    return true;
+  }
+
+  return {
+    setup: setup,
+    getCrawlSession: getCrawlSession,
+    setCrawlSession: setCrawlSession,
+    getActiveTab: getActiveTab,
+    isCrawlMode: isCrawlMode,
+    isCrawlActive: isCrawlActive,
+    startCrawl: startCrawl,
+    loadCrawlResults: loadCrawlResults,
+    renderCrawlTabs: renderCrawlTabs,
+    showCrawlPageContent: showCrawlPageContent,
+    resetCrawlState: resetCrawlState,
+    rescorePages: rescorePages
+  };
+})();
+</file>
+
 <file path="docs/analyzer-crawl.js">
 // Site Crawl Module — multi-page analysis with progressive results
 // Provides: link discovery, session management, summary building, export helpers
@@ -39442,703 +40318,6 @@ window.MilgCrawl = (function() {
     filterFindings: filterFindings,
     renderCrawlMarkdown: renderCrawlMarkdown,
     renderCrawlJSON: renderCrawlJSON
-  };
-})();
-</file>
-
-<file path="docs/analyzer-crawl-ui.js">
-// make-it-look-good — Crawl UI Wiring
-// Manages multi-page site crawl progress, tabs, and results display.
-// Depends on: analyzer-crawl.js (MilgCrawl), analyzer-report.js (MilgReport),
-//             analyzer-iframe.js (MilgIframe), analyzer-proxy.js (MilgProxy)
-
-window.MilgCrawlUI = (function() {
-  "use strict";
-
-  var _crawlSession = null;
-  var _crawlPageReports = {}; // pageIndex → rendered HTML cache
-  var _crawlActivePageTab = 'summary';
-  var CRAWL_HARD_MAX = 25;
-
-  // Dependencies injected via setup()
-  var _showToast, _runAnalysis, _restoreCachedAnalysis, _analyzeUrlBtn, _runDeepScanLoop;
-  var _showFocusModal, _updateFocusModal, _hideFocusModal;
-
-  // DOM refs queried during setup
-  var crawlSiteCheck, crawlOptions, cancelCrawlBtn, crawlMaxPages, crawlBlacklist;
-  var crawlProgressArea, crawlProgressLabel, crawlProgressCount, crawlProgressFill, crawlProgressList;
-  var crawlResults, crawlPageTabs, crawlPageContent;
-
-  function _esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
-
-  // Use the shared focus modal for crawl progress (same as single-URL deep scan).
-  // The modal has a close button so users can dismiss it and browse results.
-  var _crawlModalDismissed = false;
-  function _crawlModal(msg) {
-    if (_crawlModalDismissed) return;
-    if (_showFocusModal) _showFocusModal();
-    if (_updateFocusModal) _updateFocusModal(msg + '\n');
-  }
-  function _crawlModalClose() {
-    _crawlModalDismissed = false;
-    if (_hideFocusModal) _hideFocusModal();
-  }
-
-  function getCrawlSession() { return _crawlSession; }
-  function setCrawlSession(s) { _crawlSession = s; }
-  function getActiveTab() { return _crawlActivePageTab; }
-
-  function isCrawlMode() { return crawlSiteCheck && crawlSiteCheck.checked; }
-  function isCrawlActive() { return _crawlSession && _crawlSession.pages.length > 0 && crawlResults && crawlResults.style.display !== 'none'; }
-  // Show the "Include per-viewport data" export option only for crawls that actually
-  // carry deep-scan viewport data (so re-import can rebuild the page×viewport matrix).
-  function _toggleViewportExportOption() {
-    var lbl = document.getElementById('crawlIncludeViewportsLabel');
-    if (!lbl) return;
-    var hasVp = !!(_crawlSession && _crawlSession.pages && _crawlSession.pages.some(function(p) {
-      return p.rawData && p.rawData.deepScan && p.rawData.deepScan.viewportData && p.rawData.deepScan.viewportData.filter(Boolean).length > 1;
-    }));
-    lbl.style.display = hasVp ? 'inline-flex' : 'none';
-  }
-
-  function crawlStatusIcon(status) {
-    if (status === 'done') return '<span class="status-icon done"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></span>';
-    if (status === 'error') return '<span class="status-icon error"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>';
-    if (status === 'fetching' || status === 'analyzing') return '<span class="status-icon active"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/></svg></span>';
-    return '<span class="status-icon pending"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-dasharray="20" stroke-dashoffset="10"/></svg></span>';
-  }
-
-  function updateCrawlProgressItem(page) {
-    var existing = document.getElementById('crawl-progress-' + encodeURIComponent(page.url));
-    var path; try { path = new URL(page.url).pathname; } catch(e) { path = page.url; }
-    var scoreText = page.status === 'done' && page.reportData ? ' ' + page.reportData.overall + '/100' : '';
-    var errorText = page.status === 'error' ? ' <span style="color:#dc2626;font-size:12px">' + (page.error || 'Failed').substring(0, 40) + '</span>' : '';
-    var html = crawlStatusIcon(page.status) +
-      '<span class="page-url" title="' + page.url + '">' + path + '</span>' +
-      '<span class="page-score">' + scoreText + errorText + '</span>';
-    if (existing) {
-      existing.innerHTML = html;
-    } else {
-      var div = document.createElement('div');
-      div.className = 'crawl-progress-item';
-      div.id = 'crawl-progress-' + encodeURIComponent(page.url);
-      div.innerHTML = html;
-      crawlProgressList.appendChild(div);
-    }
-  }
-
-  function renderCrawlTabs() {
-    if (!_crawlSession || !crawlPageTabs) return;
-    var html = '<button class="crawl-page-tab' + (_crawlActivePageTab === 'summary' ? ' active' : '') + '" data-crawl-page="summary">Summary</button>';
-    _crawlSession.pages.forEach(function(page, idx) {
-      html += MilgReport.renderCrawlPageTab(page, idx, _crawlActivePageTab === String(idx));
-    });
-    crawlPageTabs.innerHTML = html;
-  }
-
-  var _spinnerHtml = '<div style="padding:60px;text-align:center">' +
-    '<div style="width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite;margin:0 auto"></div>' +
-    '<div style="color:var(--text-secondary);margin-top:12px;font-size:13px">Loading report\u2026</div>' +
-    '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style></div>';
-
-  function showCrawlPageContent(key) {
-    _crawlActivePageTab = key;
-    // Promote this page's verify to front of queue so it completes first
-    if (key !== 'summary' && window.MilgQueue) {
-      MilgQueue.promote('crawl-verify-' + key);
-    }
-    renderCrawlTabs();
-    var reportContainer = document.getElementById('reportContainer');
-    var reportActions = document.getElementById('reportActions');
-    // Show export/actions only after crawl is complete (not during progress)
-    var crawlDone = _crawlSession && _crawlSession.status === 'complete';
-    if (reportActions) reportActions.style.display = crawlDone ? 'flex' : 'none';
-    if (crawlDone) _toggleViewportExportOption();
-    if (key === 'summary') {
-      var summary = _crawlSession.summary || MilgCrawl.buildSummary(_crawlSession);
-      var ephBanner = document.getElementById('ephemeralBanner');
-      if (ephBanner && crawlDone) ephBanner.style.display = 'flex';
-      crawlPageContent.innerHTML = MilgReport.renderCrawlSummary(summary);
-      crawlPageContent.style.display = '';
-      crawlPageContent.className = 'report-container visible';
-      if (reportContainer) { reportContainer.style.display = 'none'; reportContainer.className = 'report-container'; }
-      // Re-inject pixel verify summary if all pages have been verified
-      if (crawlDone && _crawlSession.pages.some(function(p) { return p.rawData && p.rawData._contrastVerifyResults; })) {
-        var allVerified = _crawlSession.pages.filter(function(p) { return p.status === 'done'; })
-          .every(function(p) { return p.rawData && p.rawData._contrastVerifyResults; });
-        if (allVerified) _updateVerifySummary(_crawlSession.pages.length, _crawlSession.pages.length, _crawlSession);
-      }
-    } else {
-      var idx = parseInt(key);
-      var page = _crawlSession.pages[idx];
-      if (!page || page.status !== 'done') {
-        crawlPageContent.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-secondary)">' +
-          (page && page.status === 'error' ? 'Error: ' + (page.error || 'Analysis failed') : 'Analyzing\u2026') + '</div>';
-        crawlPageContent.style.display = '';
-        crawlPageContent.className = 'report-container visible';
-        if (reportContainer) { reportContainer.style.display = 'none'; reportContainer.className = 'report-container'; }
-        return;
-      }
-
-      crawlPageContent.style.display = 'none';
-      crawlPageContent.className = 'report-container';
-      if (reportContainer) reportContainer.style.display = '';
-
-      // Clear viewport cache when switching crawl pages (viewport indices collide across pages)
-      if (typeof window.__milgClearViewportCache === 'function') window.__milgClearViewportCache();
-
-      // Cache hit: re-run with cached scoring + precomputed verify (fast, preserves overlays)
-      if (_crawlPageReports[idx]) {
-        var cached = _crawlPageReports[idx];
-        _runAnalysis(cached.data || page.rawData, 'crawl-page');
-        return;
-      }
-
-      // Cache miss: show spinner, defer heavy work so spinner paints
-      reportContainer.innerHTML = _spinnerHtml;
-      reportContainer.classList.add('visible');
-      setTimeout(function() {
-        // Guard: user may have switched tabs during the setTimeout
-        if (_crawlActivePageTab !== String(idx)) return;
-        page.rawData.meta = page.rawData.meta || {};
-        var origMethod = page.rawData.meta._inputMethod;
-        _runAnalysis(page.rawData, 'crawl-page');
-        page.rawData.meta._inputMethod = origMethod;
-        // Cache the data for instant restore (runAnalysis uses _cachedReportData + _contrastVerifyResults)
-        _crawlPageReports[idx] = {
-          data: page.rawData
-        };
-      }, 0);
-    }
-  }
-
-  // Load multi-page crawl results into the tabbed view
-  function loadCrawlResults(crawlState, source) {
-    if (!crawlState || !crawlState.results || crawlState.results.length === 0) return false;
-    _showToast('Loaded crawl results' + (source ? ' from ' + source : '') + ' (' + crawlState.results.length + ' pages)');
-    // Honor the audience profile the crawl was scored with: prefer a session-level
-    // profile, else the first page's data.profile, else the current dropdown. Restore
-    // the dropdown so the UI matches, and ensure each page's data carries its profile
-    // before re-scoring (getProfile reads data.profile).
-    var _curProf = document.getElementById('profileSelect') ? document.getElementById('profileSelect').value : 'general';
-    var _impProf = crawlState.profile || (crawlState.results[0].data && crawlState.results[0].data.profile) || _curProf;
-    var _profSel = document.getElementById('profileSelect');
-    if (_profSel && _impProf) _profSel.value = _impProf;
-    _crawlSession = MilgCrawl.createSession(crawlState.startUrl || crawlState.results[0].url, {
-      maxPages: crawlState.results.length, profile: _impProf
-    });
-    crawlState.results.forEach(function(r) {
-      if (r.data && !r.data.profile) r.data.profile = _impProf;
-      var report = MilgScoring.runScoring(r.data);
-      _crawlSession.pages.push({
-        url: r.url, status: 'done', title: (r.data.meta && r.data.meta.title) || '',
-        rawData: r.data, reportData: report, error: null,
-        startedAt: (r.data.meta && r.data.meta.timestamp) || null, completedAt: (r.data.meta && r.data.meta.timestamp) || null
-      });
-    });
-    _crawlSession.status = 'complete';
-    _crawlSession.summary = MilgCrawl.buildSummary(_crawlSession);
-    crawlResults.style.display = '';
-    var reportActions = document.getElementById('reportActions');
-    if (reportActions) reportActions.style.display = '';
-    _toggleViewportExportOption();
-    document.getElementById('inputSection').style.display = 'none';
-    renderCrawlTabs();
-    showCrawlPageContent('summary');
-
-    // Pre-compute pixel verify for each page with screenshots (async, best-effort).
-    // Results are cached on rawData._contrastVerifyResults so tab switches use cache.
-    _preComputePixelVerify();
-
-    return true;
-  }
-
-  function _preComputePixelVerify() {
-    if (!_crawlSession || !window.MilgContrastVerify || !window.MilgQueue) return;
-    var pagesToVerify = _crawlSession.pages.filter(function(p) {
-      return p.status === 'done' && p.rawData && !p.rawData._contrastVerifyResults &&
-        p.rawData.screenshots && p.rawData.screenshots.length && p.rawData.screenshotMeta;
-    });
-    if (pagesToVerify.length === 0) return;
-    var doneCount = 0;
-    var totalCount = pagesToVerify.length;
-
-    // Show pixel verify progress on summary page
-    _updateVerifySummary(0, totalCount, null);
-
-    // Queue all page verifies — active page tab gets highest priority
-    MilgQueue.clear();
-    pagesToVerify.forEach(function(page, pi) {
-      var pageIdx = _crawlSession.pages.indexOf(page);
-      var priority = (_crawlActivePageTab === String(pageIdx)) ? 100 : (totalCount - pi);
-      MilgQueue.enqueue('crawl-verify-' + pageIdx, function(done) {
-        // Skip if already verified by another path
-        if (page.rawData._contrastVerifyResults) { done(null); return; }
-        var report = page.reportData || MilgScoring.runScoring(page.rawData);
-        MilgContrastVerify.verify(report, function(results, bboxEdgeResults) {
-          if (!page.rawData._contrastVerifyResults) {
-            page.rawData._contrastVerifyResults = results;
-            page.rawData._bboxEdgeResults = bboxEdgeResults || [];
-            if (pageIdx >= 0) delete _crawlPageReports[pageIdx];
-          }
-          done(results);
-        });
-      }, function() {
-        doneCount++;
-        _crawlModal('Pixel verify ' + doneCount + '/' + totalCount + ' pages');
-        _updateVerifySummary(doneCount, totalCount, doneCount === totalCount ? _crawlSession : null);
-        if (doneCount === totalCount) setTimeout(_crawlModalClose, 2000);
-      }, priority);
-    });
-  }
-
-  function _updateVerifySummary(done, total, completedSession) {
-    var container = document.getElementById('milg-crawl-verify-summary');
-    if (!container && crawlPageContent) {
-      // Insert verify section near the top of the summary (after Site Overview stats, before Page Scores)
-      container = document.createElement('div');
-      container.id = 'milg-crawl-verify-summary';
-      container.style.marginTop = '24px';
-      var summaryDiv = crawlPageContent.querySelector('.crawl-summary');
-      var firstH3 = summaryDiv ? summaryDiv.querySelector('h3') : null;
-      if (firstH3) {
-        firstH3.parentNode.insertBefore(container, firstH3);
-      } else if (summaryDiv) {
-        summaryDiv.appendChild(container);
-      } else {
-        crawlPageContent.appendChild(container);
-      }
-    }
-    if (!container) return;
-
-    if (!completedSession) {
-      // Still running — show spinner with progress
-      container.innerHTML = '<div class="crawl-summary">' +
-        '<h3 style="display:flex;align-items:center;gap:8px">' +
-        '<span style="display:inline-block;width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite"></span>' +
-        'Pixel Contrast Verification (' + done + '/' + total + ' pages)' +
-        '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style>' +
-        '</h3></div>';
-      return;
-    }
-
-    // All done — build the pixel verify summary across all pages
-    var falsePassTotal = 0, falseFailTotal = 0, verifiedTotal = 0;
-    var pageIssues = []; // [{url, path, falsePass, results}]
-    completedSession.pages.forEach(function(page) {
-      if (!page.rawData || !page.rawData._contrastVerifyResults) return;
-      var results = page.rawData._contrastVerifyResults;
-      var fp = 0, ff = 0, v = 0;
-      results.forEach(function(r) {
-        if (r.crossesBoundary) {
-          if (r.cssPasses && !r.pixelPasses) fp++;
-          else ff++;
-        } else { v++; }
-      });
-      falsePassTotal += fp; falseFailTotal += ff; verifiedTotal += v;
-      if (fp > 0) {
-        var path; try { path = new URL(page.url).pathname; } catch(e) { path = page.url; }
-        pageIssues.push({ url: page.url, path: path, falsePass: fp, results: results });
-      }
-    });
-
-    var isDark = document.body && document.body.classList.contains('dark-ui');
-    var html = '<div class="crawl-summary"><h3>Pixel Contrast Verification</h3>';
-    html += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px">';
-    html += '<div style="padding:8px 16px;border-radius:8px;background:var(--surface);border:1px solid var(--border);font-size:13px">' +
-      '<span style="font-weight:600">' + verifiedTotal + '</span> <span style="color:var(--text-secondary)">verified</span></div>';
-    if (falsePassTotal > 0) {
-      html += '<div style="padding:8px 16px;border-radius:8px;background:' + (isDark ? '#2d0f0f' : '#fef2f2') + ';border:1px solid ' + (isDark ? '#991b1b' : '#fecaca') + ';font-size:13px">' +
-        '<span style="font-weight:700;color:#ef4444">' + falsePassTotal + '</span> <span style="color:#ef4444">hidden failure' + (falsePassTotal > 1 ? 's' : '') + '</span></div>';
-    }
-    if (falseFailTotal > 0) {
-      html += '<div style="padding:8px 16px;border-radius:8px;background:' + (isDark ? '#0c2d1e' : '#f0fdf4') + ';border:1px solid ' + (isDark ? '#166534' : '#bbf7d0') + ';font-size:13px">' +
-        '<span style="font-weight:600;color:#16a34a">' + falseFailTotal + '</span> <span style="color:#16a34a">better than CSS</span></div>';
-    }
-    if (falsePassTotal === 0 && falseFailTotal === 0) {
-      html += '<div style="padding:8px 16px;border-radius:8px;background:' + (isDark ? '#0c2d1e' : '#f0fdf4') + ';border:1px solid ' + (isDark ? '#166534' : '#bbf7d0') + ';font-size:13px">' +
-        '<span style="color:#16a34a">All pixel checks match CSS — no hidden issues</span></div>';
-    }
-    html += '</div>';
-
-    // Per-page breakdown of failures
-    if (pageIssues.length > 0) {
-      html += '<div style="font-size:13px;line-height:1.6">';
-      pageIssues.forEach(function(pi) {
-        html += '<div style="padding:6px 10px;margin-bottom:4px;border-radius:6px;background:var(--surface);border:1px solid var(--border)">';
-        html += '<span style="color:#ef4444;font-weight:600">' + pi.falsePass + ' hidden failure' + (pi.falsePass > 1 ? 's' : '') + '</span>';
-        html += ' on <span style="font-weight:500">' + _esc(pi.path) + '</span>';
-        html += '</div>';
-      });
-      html += '</div>';
-    }
-
-    html += '</div>';
-    container.innerHTML = html;
-  }
-
-  function startCrawl(url) {
-    var maxPages = parseInt(crawlMaxPages.value) || 5;
-    maxPages = Math.min(Math.max(maxPages, 1), CRAWL_HARD_MAX);
-
-    var blacklist = (crawlBlacklist.value || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
-    var deepScan = document.getElementById('deepScanCheck') && document.getElementById('deepScanCheck').checked;
-    var jsCheck = document.getElementById('jsEnabledCheck');
-    var jsAck = document.getElementById('jsRiskAck');
-    var wantJs = jsCheck && jsCheck.checked && jsAck && jsAck.checked;
-    var profile = document.getElementById('profileSelect');
-
-    _crawlSession = MilgCrawl.createSession(url, {
-      maxPages: maxPages,
-      blacklist: blacklist,
-      deepScan: deepScan,
-      jsEnabled: wantJs,
-      profile: profile ? profile.value : 'general'
-    });
-    _crawlPageReports = {};
-    _crawlActivePageTab = 'summary';
-
-    // Show progress
-    _analyzeUrlBtn.disabled = true;
-    _analyzeUrlBtn.textContent = 'Crawling\u2026';
-    cancelCrawlBtn.style.display = '';
-    crawlProgressArea.style.display = '';
-    crawlProgressList.innerHTML = '';
-    crawlProgressFill.style.width = '0%';
-    crawlProgressLabel.textContent = 'Fetching starting page\u2026';
-    crawlProgressCount.textContent = '0 / ' + maxPages;
-    _crawlModalDismissed = false;
-    window._milgFocusModalDismissed = false;
-    _showFocusModal(true); // dismissable
-    _crawlModal('Fetching starting page\u2026');
-
-    // Show crawl results area, hide input section
-    var inputSection = document.getElementById('inputSection');
-    var reportActions = document.getElementById('reportActions');
-    var reportContainer = document.getElementById('reportContainer');
-    if (inputSection) inputSection.style.display = 'none';
-    crawlResults.style.display = '';
-    if (reportContainer) reportContainer.className = 'report-container';
-    // Hide export bar during crawl — show only when crawl completes
-    if (reportActions) reportActions.style.display = 'none';
-    // Scroll to results
-    crawlResults.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-    renderCrawlTabs();
-    showCrawlPageContent('summary');
-
-    var doneCount = 0;
-    var totalPages = 1;
-
-    MilgCrawl.startCrawl(_crawlSession, {
-      fetchPage: function(pageUrl, cb) {
-        MilgProxy.fetchViaProxy(pageUrl, function(html, err) { cb(html, err); });
-      },
-      analyzePage: function(html, pageUrl, opts, cb) {
-        var wantShots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
-        var isDeep = _crawlSession && _crawlSession.options && _crawlSession.options.deepScan && _runDeepScanLoop;
-        var jsOn = _crawlSession && _crawlSession.options && _crawlSession.options.jsEnabled;
-        var analysisOpts = { jsEnabled: jsOn, screenshots: wantShots, exclude: opts.excludeSelector || null };
-        if (isDeep) {
-          _runDeepScanLoop(html, pageUrl, analysisOpts, null, function(primary) {
-            if (primary) {
-              primary.meta.url = pageUrl;
-              primary.meta._inputMethod = 'crawl';
-              if (jsOn) primary.meta._jsEnabled = true;
-              if (opts.profile) primary.profile = opts.profile;
-            }
-            cb(primary);
-          });
-        } else {
-          function _doCrawlAnalysis() {
-            MilgIframe.analyzeHtml(html, {
-              url: pageUrl,
-              jsEnabled: jsOn,
-              screenshots: wantShots,
-              exclude: opts.excludeSelector || null
-            }, function(data) {
-              if (data) {
-                data.meta.url = pageUrl;
-                data.meta._inputMethod = 'crawl';
-                if (jsOn) data.meta._jsEnabled = true;
-                if (opts.profile) data.profile = opts.profile;
-              }
-              cb(data);
-          });
-          }
-          // Prefetch fonts for crawl pages (first page warms cache, subsequent get hits)
-          if (wantShots) {
-            MilgIframe.prefetchFonts(html, pageUrl, _doCrawlAnalysis);
-          } else {
-            _doCrawlAnalysis();
-          }
-        }
-      },
-      scorePage: function(data) { return MilgScoring.runScoring(data); },
-      onDiscovery: function(urls) {
-        totalPages = 1 + urls.length;
-        crawlProgressCount.textContent = '0 / ' + totalPages;
-        crawlProgressLabel.textContent = 'Found ' + urls.length + ' page' + (urls.length !== 1 ? 's' : '') + ' to crawl';
-        _crawlModal('Found ' + urls.length + ' pages to crawl');
-      },
-      onPageStart: function(page) {
-        updateCrawlProgressItem(page);
-        var path = page.url.replace(/^https?:\/\/[^/]+/, '');
-        crawlProgressLabel.textContent = 'Analyzing ' + path + '\u2026';
-        _crawlModal('Page ' + (doneCount + 1) + '/' + totalPages + ': ' + path);
-        renderCrawlTabs();
-      },
-      onPageComplete: function(page) {
-        doneCount++;
-        updateCrawlProgressItem(page);
-        crawlProgressCount.textContent = doneCount + ' / ' + totalPages;
-        crawlProgressFill.style.width = Math.round(doneCount / totalPages * 100) + '%';
-        renderCrawlTabs();
-        if (_crawlActivePageTab === 'summary') showCrawlPageContent('summary');
-        // Pre-compute pixel verify as soon as page completes (async, best-effort)
-        if (page.rawData && page.rawData.screenshots && page.rawData.screenshots.length && page.rawData.screenshotMeta && window.MilgContrastVerify) {
-          var report = page.reportData || MilgScoring.runScoring(page.rawData);
-          MilgContrastVerify.verify(report, function(results, bboxEdgeResults) {
-            page.rawData._contrastVerifyResults = results;
-            page.rawData._bboxEdgeResults = bboxEdgeResults || [];
-          });
-        }
-      },
-      onPageError: function(page) {
-        doneCount++;
-        updateCrawlProgressItem(page);
-        crawlProgressCount.textContent = doneCount + ' / ' + totalPages;
-        crawlProgressFill.style.width = Math.round(doneCount / totalPages * 100) + '%';
-        renderCrawlTabs();
-      },
-      onComplete: function(session) {
-        _analyzeUrlBtn.disabled = false;
-        _analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
-        cancelCrawlBtn.style.display = 'none';
-        crawlProgressLabel.textContent = 'Crawl complete!';
-        crawlProgressFill.style.width = '100%';
-        _crawlModal('Crawl complete! ' + _crawlSession.pages.length + ' pages analyzed');
-        setTimeout(_crawlModalClose, 3000);
-        renderCrawlTabs();
-        showCrawlPageContent('summary');
-      }
-    });
-  }
-
-  function setupCrawlExports(exportSeverityFilter) {
-    var copyMdBtn = document.getElementById('copyMdBtn');
-    var markdownBtn = document.getElementById('markdownBtn');
-    var exportJsonBtn = document.getElementById('exportJsonBtn');
-
-    if (copyMdBtn) {
-      copyMdBtn.addEventListener('click', function(e) {
-        if (!isCrawlActive()) return; // let original handler run
-        e.stopImmediatePropagation();
-        var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
-        var md = MilgCrawl.renderCrawlMarkdown(_crawlSession, filter);
-        navigator.clipboard.writeText(md).then(function() { _showToast('Crawl report copied as Markdown!'); }).catch(function() { _showToast('Copy failed'); });
-      });
-    }
-    if (markdownBtn) {
-      markdownBtn.addEventListener('click', function(e) {
-        if (!isCrawlActive()) return;
-        e.stopImmediatePropagation();
-        var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
-        var md = MilgCrawl.renderCrawlMarkdown(_crawlSession, filter);
-        var blob = new Blob([md], { type: 'text/markdown' });
-        var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-        a.download = 'site-crawl-report.md'; a.click();
-        URL.revokeObjectURL(a.href);
-      });
-    }
-    if (exportJsonBtn) {
-      exportJsonBtn.addEventListener('click', function(e) {
-        if (!isCrawlActive()) return;
-        e.stopImmediatePropagation();
-        var origLabel = exportJsonBtn.innerHTML;
-        exportJsonBtn.disabled = true;
-        exportJsonBtn.innerHTML = '<span style="display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite;vertical-align:middle"></span> <span class="btn-label">Exporting\u2026</span>';
-        requestAnimationFrame(function() { setTimeout(function() {
-          try {
-            var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
-            var _incVp = document.getElementById('crawlIncludeViewports');
-            var json = MilgCrawl.renderCrawlJSON(_crawlSession, filter, !!(_incVp && _incVp.checked));
-            // Compress with gzip
-            if (typeof CompressionStream !== 'undefined') {
-              exportJsonBtn.innerHTML = '<span style="display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite;vertical-align:middle"></span> <span class="btn-label">Compressing\u2026</span>';
-              var blob = new Blob([json]);
-              var cs = new CompressionStream('gzip');
-              new Response(blob.stream().pipeThrough(cs)).blob().then(function(compressed) {
-                var a = document.createElement('a');
-                a.href = URL.createObjectURL(compressed);
-                a.download = 'site-crawl-data.milg'; a.click();
-                URL.revokeObjectURL(a.href);
-                _showToast('Crawl exported (' + Math.round(json.length / 1048576) + ' MB → ' + Math.round(compressed.size / 1024) + ' KB)');
-                exportJsonBtn.disabled = false;
-                exportJsonBtn.innerHTML = origLabel;
-              }).catch(function() {
-                var a = document.createElement('a');
-                a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
-                a.download = 'site-crawl-data.json'; a.click();
-                URL.revokeObjectURL(a.href);
-                _showToast('Crawl exported (' + Math.round(json.length / 1024) + ' KB)');
-                exportJsonBtn.disabled = false;
-                exportJsonBtn.innerHTML = origLabel;
-              });
-            } else {
-              var a = document.createElement('a');
-              a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
-              a.download = 'site-crawl-data.json'; a.click();
-              URL.revokeObjectURL(a.href);
-              _showToast('Crawl exported (' + Math.round(json.length / 1024) + ' KB)');
-              exportJsonBtn.disabled = false;
-              exportJsonBtn.innerHTML = origLabel;
-            }
-          } catch(err) {
-            _showToast('Export failed: ' + err.message);
-            exportJsonBtn.disabled = false;
-            exportJsonBtn.innerHTML = origLabel;
-          }
-        }, 0); });
-      });
-    }
-  }
-
-  function setup(deps) {
-    _showToast = deps.showToast;
-    _runAnalysis = deps.runAnalysis;
-    _restoreCachedAnalysis = deps.restoreCachedAnalysis;
-    _analyzeUrlBtn = deps.analyzeUrlBtn;
-    _runDeepScanLoop = deps.runDeepScanLoop;
-    _showFocusModal = deps.showFocusModal;
-    _updateFocusModal = deps.updateFocusModal;
-    _hideFocusModal = deps.hideFocusModal;
-
-    // Query DOM refs
-    crawlSiteCheck = document.getElementById('crawlSiteCheck');
-    crawlOptions = document.getElementById('crawlOptions');
-    cancelCrawlBtn = document.getElementById('cancelCrawlBtn');
-    crawlMaxPages = document.getElementById('crawlMaxPages');
-    crawlBlacklist = document.getElementById('crawlBlacklist');
-    crawlProgressArea = document.getElementById('crawlProgressArea');
-    crawlProgressLabel = document.getElementById('crawlProgressLabel');
-    crawlProgressCount = document.getElementById('crawlProgressCount');
-    crawlProgressFill = document.getElementById('crawlProgressFill');
-    crawlProgressList = document.getElementById('crawlProgressList');
-    crawlResults = document.getElementById('crawlResults');
-    crawlPageTabs = document.getElementById('crawlPageTabs');
-    crawlPageContent = document.getElementById('crawlPageContent');
-
-    // Crawl site toggle — show/hide crawl options
-    if (crawlSiteCheck && crawlOptions) {
-      crawlSiteCheck.addEventListener('change', function() {
-        crawlOptions.style.display = crawlSiteCheck.checked ? '' : 'none';
-      });
-    }
-
-    // Page limit easter egg — MutationObserver on max attr + input value check
-    var _crawlEasterEggShown = false;
-    if (crawlMaxPages) {
-      var _crawlMaxObserver = new MutationObserver(function(mutations) {
-        mutations.forEach(function(m) {
-          if (m.attributeName === 'max') {
-            var newMax = parseInt(crawlMaxPages.getAttribute('max'));
-            if (newMax > 10 && !_crawlEasterEggShown) {
-              _crawlEasterEggShown = true;
-              _showToast('Nice try! We see you editing the DOM \uD83D\uDE0F Fine, ' + CRAWL_HARD_MAX + ' is the real limit\u2026 but your proxy rate limit isn\u2019t.');
-              crawlMaxPages.setAttribute('max', CRAWL_HARD_MAX);
-            }
-          }
-        });
-      });
-      _crawlMaxObserver.observe(crawlMaxPages, { attributes: true, attributeFilter: ['max'] });
-      // Also catch when someone types >10 directly
-      crawlMaxPages.addEventListener('input', function() {
-        var val = parseInt(crawlMaxPages.value);
-        if (val > 10 && !_crawlEasterEggShown) {
-          _crawlEasterEggShown = true;
-          _showToast('Going beyond 10? Bold move \uD83D\uDE0F We\u2019ll allow up to ' + CRAWL_HARD_MAX + '. You found the secret ceiling!');
-          crawlMaxPages.setAttribute('max', CRAWL_HARD_MAX);
-        }
-      });
-    }
-
-    // Tab click delegation
-    if (crawlPageTabs) {
-      crawlPageTabs.addEventListener('click', function(e) {
-        var tab = e.target.closest('[data-crawl-page]');
-        if (!tab) return;
-        showCrawlPageContent(tab.getAttribute('data-crawl-page'));
-      });
-    }
-
-    // Cancel crawl
-    if (cancelCrawlBtn) {
-      cancelCrawlBtn.addEventListener('click', function() {
-        if (_crawlSession) MilgCrawl.abortCrawl(_crawlSession);
-        _analyzeUrlBtn.disabled = false;
-        _analyzeUrlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
-        cancelCrawlBtn.style.display = 'none';
-        crawlProgressLabel.textContent = 'Crawl cancelled';
-      });
-    }
-
-    // Check for completed snippet crawl on load
-    try {
-      var snippetCrawlData = localStorage.getItem('milg-crawl-complete');
-      if (snippetCrawlData) {
-        localStorage.removeItem('milg-crawl-complete');
-        var crawlState = JSON.parse(snippetCrawlData);
-        if (loadCrawlResults(crawlState, 'console snippet')) {
-          if (crawlSiteCheck) crawlSiteCheck.checked = true;
-          if (crawlOptions) crawlOptions.style.display = '';
-        }
-      }
-    } catch(e) { console.error('Failed to load snippet crawl data:', e); }
-
-    // Crawl export wiring
-    setupCrawlExports(document.getElementById('exportSeverityFilter'));
-  }
-
-  function resetCrawlState() {
-    _crawlSession = null;
-    _crawlPageReports = {};
-    if (crawlResults) crawlResults.style.display = 'none';
-    if (crawlPageContent) { crawlPageContent.style.display = 'none'; crawlPageContent.innerHTML = ''; }
-    if (crawlProgressArea) crawlProgressArea.style.display = 'none';
-  }
-
-  // Re-score all crawl pages (e.g. when profile changes)
-  function rescorePages() {
-    if (!_crawlSession || !_crawlSession.pages || _crawlSession.pages.length === 0) return false;
-    // Invalidate caches — profile change means all scores/reports are stale
-    _crawlPageReports = {};
-    _crawlSession.pages.forEach(function(page) {
-      if (page.status === 'done' && page.rawData) {
-        page.rawData.profile = document.getElementById('profileSelect').value;
-        delete page.rawData._cachedReportData;
-        page.reportData = MilgScoring.runScoring(page.rawData);
-      }
-    });
-    _crawlSession.summary = MilgCrawl.buildSummary(_crawlSession);
-    renderCrawlTabs();
-    showCrawlPageContent(_crawlActivePageTab);
-    return true;
-  }
-
-  return {
-    setup: setup,
-    getCrawlSession: getCrawlSession,
-    setCrawlSession: setCrawlSession,
-    getActiveTab: getActiveTab,
-    isCrawlMode: isCrawlMode,
-    isCrawlActive: isCrawlActive,
-    startCrawl: startCrawl,
-    loadCrawlResults: loadCrawlResults,
-    renderCrawlTabs: renderCrawlTabs,
-    showCrawlPageContent: showCrawlPageContent,
-    resetCrawlState: resetCrawlState,
-    rescorePages: rescorePages
   };
 })();
 </file>
@@ -44850,7 +45029,7 @@ window.MilgViewer = (function() {
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.26 loaded');
+console.log('[milg] analyzer.js v3.11.27 loaded');
 
 (function() {
   "use strict";
@@ -46794,7 +46973,7 @@ console.log('[milg] analyzer.js v3.11.26 loaded');
   <title>make-it-look-good — Design Analyzer</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='2' y='2' width='12' height='12' rx='2' fill='%232563eb'/><rect x='18' y='2' width='12' height='12' rx='2' fill='%2393c5fd'/><rect x='2' y='18' width='12' height='12' rx='2' fill='%2393c5fd'/><rect x='18' y='18' width='12' height='12' rx='2' fill='%232563eb'/></svg>">
   <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="analyzer.css?v=3.11.26">
+  <link rel="stylesheet" href="analyzer.css?v=3.11.27">
 </head>
 <body class="analyzer-body">
 
@@ -46823,7 +47002,7 @@ console.log('[milg] analyzer.js v3.11.26 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.11.26</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.11.27</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -47241,33 +47420,33 @@ console.log('[milg] analyzer.js v3.11.26 loaded');
   <div class="toast" id="toast" aria-live="polite" aria-atomic="true" role="status"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=3.11.26"></script>
-  <script src="scoring/contrast.js?v=3.11.26"></script>
-  <script src="scoring/typography.js?v=3.11.26"></script>
-  <script src="scoring/spacing.js?v=3.11.26"></script>
-  <script src="scoring/touch.js?v=3.11.26"></script>
-  <script src="scoring/accessibility.js?v=3.11.26"></script>
-  <script src="scoring/responsive.js?v=3.11.26"></script>
-  <script src="scoring/consistency.js?v=3.11.26"></script>
-  <script src="scoring/cognitive.js?v=3.11.26"></script>
-  <script src="scoring/layout.js?v=3.11.26"></script>
-  <script src="scoring/performance.js?v=3.11.26"></script>
-  <script src="scoring/readability.js?v=3.11.26"></script>
-  <script src="scoring/filters.js?v=3.11.26"></script>
-  <script src="scoring/balance.js?v=3.11.26"></script>
+  <script src="scoring/registry.js?v=3.11.27"></script>
+  <script src="scoring/contrast.js?v=3.11.27"></script>
+  <script src="scoring/typography.js?v=3.11.27"></script>
+  <script src="scoring/spacing.js?v=3.11.27"></script>
+  <script src="scoring/touch.js?v=3.11.27"></script>
+  <script src="scoring/accessibility.js?v=3.11.27"></script>
+  <script src="scoring/responsive.js?v=3.11.27"></script>
+  <script src="scoring/consistency.js?v=3.11.27"></script>
+  <script src="scoring/cognitive.js?v=3.11.27"></script>
+  <script src="scoring/layout.js?v=3.11.27"></script>
+  <script src="scoring/performance.js?v=3.11.27"></script>
+  <script src="scoring/readability.js?v=3.11.27"></script>
+  <script src="scoring/filters.js?v=3.11.27"></script>
+  <script src="scoring/balance.js?v=3.11.27"></script>
   <!-- Queue + Report rendering + UI -->
-  <script src="analyzer-queue.js?v=3.11.26"></script>
-  <script src="analyzer-report.js?v=3.11.26"></script>
-  <script src="analyzer-crawl.js?v=3.11.26"></script>
-  <script src="analyzer-extract.js?v=3.11.26"></script>
-  <script src="analyzer-region.js?v=3.11.26"></script>
-  <script src="analyzer-capture.js?v=3.11.26"></script>
-  <script src="analyzer-iframe.js?v=3.11.26"></script>
-  <script src="analyzer-proxy.js?v=3.11.26"></script>
-  <script src="analyzer-crawl-ui.js?v=3.11.26"></script>
-  <script src="analyzer-contrast-verify.js?v=3.11.26"></script>
-  <script src="analyzer-viewer.js?v=3.11.26"></script>
-  <script src="analyzer.js?v=3.11.26"></script>
+  <script src="analyzer-queue.js?v=3.11.27"></script>
+  <script src="analyzer-report.js?v=3.11.27"></script>
+  <script src="analyzer-crawl.js?v=3.11.27"></script>
+  <script src="analyzer-extract.js?v=3.11.27"></script>
+  <script src="analyzer-region.js?v=3.11.27"></script>
+  <script src="analyzer-capture.js?v=3.11.27"></script>
+  <script src="analyzer-iframe.js?v=3.11.27"></script>
+  <script src="analyzer-proxy.js?v=3.11.27"></script>
+  <script src="analyzer-crawl-ui.js?v=3.11.27"></script>
+  <script src="analyzer-contrast-verify.js?v=3.11.27"></script>
+  <script src="analyzer-viewer.js?v=3.11.27"></script>
+  <script src="analyzer.js?v=3.11.27"></script>
 </body>
 </html>
 </file>
