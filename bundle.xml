@@ -191,6 +191,7 @@ tests/
   test-case-2-review.md
   test-case-3-review.md
   verify-debug-overlay.spec.js
+  verify-rightclick-live.spec.js
   viewer-overlay-alignment.spec.js
 typography/
   font-pairing.md
@@ -25995,6 +25996,201 @@ const tokens = {
 - `components/modals-and-dialogs.md` — confirmation dialogs for destructive actions
 </file>
 
+<file path="tests/verify-rightclick-live.spec.js">
+// @ts-check
+// Regression guard for the verify-box right-click behaviour using REAL mouse clicks
+// (page.mouse.click with button:'right'), exercising real hit-testing + filter state.
+//
+// Why this exists separately from verify-debug-overlay.spec.js: that spec dispatches a
+// contextmenu event STRAIGHT on the rect element, which bypasses (a) browser hit-testing
+// (so it can't catch a box scrolled out of view or covered by another element) and
+// (b) filter state (so it can't catch that the mask cycle only lives on the Pixel-Verified
+// overlay). v3.11.20 traced a "right-click doesn't cycle the mask" report to exactly that
+// gap: the user was right-clicking *finding* boxes (a findings filter), where right-click
+// opens the copy-debug menu — the none->mask->zones cycle only exists on rect[data-verify].
+//
+// These tests therefore assert, with a genuine right-click:
+//   1. URL-mode MAIN verify box cycles none->mask->zones->none,
+//   2. URL-mode REGION verify box (separate _rvCycleDebug path) cycles too,
+//   3. under a FINDINGS filter, right-click opens the copy-debug menu, NOT the cycle,
+//   4. the v3.11.20 discoverability aids are present (button pulse + verify-overlay hint).
+const { test, expect } = require('@playwright/test');
+
+const BASE_URL = 'http://localhost:8384';
+const ANALYZER_URL = `${BASE_URL}/analyzer.html`;
+const FIXTURE_URL = `${BASE_URL}/tests/fixtures/parity-page.html`;
+
+// Tag the first verify rect carrying _debug inside `root` (a DOM scope), scroll it into
+// view, and return its on-screen centre. `root` is evaluated in the page.
+async function tagAndLocate(page, rootSelector) {
+  const ok = await page.evaluate((sel) => {
+    const scope = sel ? document.querySelector(sel) : document;
+    if (!scope) return false;
+    const svg = sel ? scope.querySelector('svg') : document.querySelector('svg.milg-viewer-svg');
+    const rects = svg ? Array.from(svg.querySelectorAll('rect[data-verify]')) : [];
+    const wd = rects.find((r) => r._debug);
+    if (!wd) return false;
+    document.querySelectorAll('rect[data-repro]').forEach((r) => r.removeAttribute('data-repro'));
+    wd.setAttribute('data-repro', '1');
+    wd.scrollIntoView({ block: 'center', inline: 'center' });
+    return true;
+  }, rootSelector);
+  if (!ok) return null;
+  await page.waitForTimeout(300);
+  return page.evaluate(() => {
+    const wd = document.querySelector('rect[data-repro]');
+    const r = wd.getBoundingClientRect();
+    const el = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return { cx: r.left + r.width / 2, cy: r.top + r.height / 2, hitsRect: el === wd };
+  });
+}
+
+const readState = (page) => page.evaluate(() => {
+  const wd = document.querySelector('rect[data-repro]');
+  const svg = wd.ownerSVGElement;
+  return { mode: wd._debugMode || 'none', overlays: svg.querySelectorAll('.milg-debug-overlay').length };
+});
+
+test.describe.configure({ mode: 'serial' });
+
+test.describe('Verify-box right-click (real mouse)', () => {
+  /** @type {import('@playwright/test').Page} */
+  let page;
+
+  test.beforeAll(async ({ browser }) => {
+    page = await browser.newPage();
+    page.setDefaultTimeout(15000);
+    await page.goto(ANALYZER_URL);
+    await page.check('#screenshotCheck');
+    await page.check('#pixelVerifyCheck');
+    await page.click('[data-tab="tabUrl"]');
+    await page.fill('#urlInput', FIXTURE_URL);
+    await page.click('#analyzeUrlBtn');
+    await page.waitForSelector('.report-container.visible', { timeout: 90000 });
+    await page.waitForTimeout(3000);
+    await page.locator('.report-screenshots img').first().click();
+    await page.waitForSelector('.milg-viewer-overlay.visible', { timeout: 10000 });
+  });
+
+  test.afterAll(async () => { await page.close(); });
+
+  test('discoverability: Pixel Verified button pulses + tooltip', async () => {
+    const btn = await page.evaluate(() => {
+      const b = document.querySelector('.milg-viewer-filter-btn[data-filter-type="verify"][data-filter-value="all"]');
+      if (!b) return null;
+      return { hl: b.classList.contains('milg-viewer-verify-hl'),
+        anim: getComputedStyle(b).animationName, title: b.getAttribute('title') || '' };
+    });
+    expect(btn, 'Pixel Verified button should exist (verify ran)').not.toBeNull();
+    expect(btn.hl, 'button carries the highlight class').toBe(true);
+    expect(btn.anim).toContain('milg-verify-pulse');
+    expect(btn.title.toLowerCase()).toContain('right-click');
+  });
+
+  test('MAIN verify box: real right-click cycles none->mask->zones->none', async () => {
+    await page.locator('.milg-viewer-filter-btn[data-filter-type="verify"][data-filter-value="all"]').click();
+    await page.waitForTimeout(400);
+
+    // The verify overlay shows the right-click hint.
+    const hint = await page.evaluate(() => {
+      const h = document.querySelector('.milg-viewer-content .milg-viewer-hint');
+      return h ? h.textContent : null;
+    });
+    expect(hint, 'verify overlay shows a hint').toBeTruthy();
+    expect(hint).toMatch(/right-click/i);
+    expect(hint).toMatch(/mask/i);
+
+    const loc = await tagAndLocate(page, null);
+    expect(loc, 'a main verify box with _debug exists').not.toBeNull();
+    expect(loc.hitsRect, 'the box centre is actually the topmost element (real hit-test)').toBe(true);
+
+    await page.mouse.click(loc.cx, loc.cy, { button: 'right' });
+    await page.waitForTimeout(150);
+    let s = await readState(page);
+    expect(s.mode).toBe('mask');
+    expect(s.overlays).toBeGreaterThan(0);
+
+    await page.mouse.click(loc.cx, loc.cy, { button: 'right' });
+    await page.waitForTimeout(150);
+    s = await readState(page);
+    expect(s.mode).toBe('zones');
+    expect(s.overlays).toBeGreaterThan(0);
+
+    await page.mouse.click(loc.cx, loc.cy, { button: 'right' });
+    await page.waitForTimeout(150);
+    s = await readState(page);
+    expect(s.mode).toBe('none');
+    expect(s.overlays).toBe(0);
+  });
+
+  test('REGION verify box: real right-click cycles (separate _rvCycleDebug path)', async () => {
+    // Verify filter is already active from the previous test; ensure region overlays exist.
+    const hasRegion = await page.evaluate(() => {
+      const secs = Array.from(document.querySelectorAll('.milg-viewer-region-section'));
+      return secs.some((s) => { const svg = s.querySelector('svg'); return svg && Array.from(svg.querySelectorAll('rect[data-verify]')).some((r) => r._debug); });
+    });
+    test.skip(!hasRegion, 'fixture produced no region verify box with _debug');
+
+    const loc = await tagAndLocate(page, '.milg-viewer-region-section');
+    expect(loc, 'a region verify box with _debug exists').not.toBeNull();
+    expect(loc.hitsRect, 'region box centre is the topmost element').toBe(true);
+
+    const seq = [];
+    for (let i = 0; i < 3; i++) {
+      await page.mouse.click(loc.cx, loc.cy, { button: 'right' });
+      await page.waitForTimeout(150);
+      seq.push(await readState(page));
+    }
+    expect(seq[0].mode).toBe('mask');
+    expect(seq[0].overlays).toBeGreaterThan(0);
+    expect(seq[1].mode).toBe('zones');
+    expect(seq[1].overlays).toBeGreaterThan(0);
+    expect(seq[2].mode).toBe('none');
+    expect(seq[2].overlays).toBe(0);
+  });
+
+  test('FINDINGS filter: real right-click opens the copy-debug menu, not the cycle', async () => {
+    // Switch to a findings filter — this must clear the verify hint and show finding boxes.
+    await page.locator('.milg-viewer-filter-btn[data-filter-type="category"]').first().click();
+    await page.waitForTimeout(400);
+
+    const clearedHint = await page.evaluate(() => {
+      const h = document.querySelector('.milg-viewer-content .milg-viewer-hint');
+      return !h || !/right-click/i.test(h.textContent || '');
+    });
+    expect(clearedHint, 'verify hint is removed under a findings filter').toBe(true);
+
+    const loc = await page.evaluate(() => {
+      const svg = document.querySelector('svg.milg-viewer-svg');
+      const r = svg && svg.querySelector('rect[data-finding]');
+      if (!r) return null;
+      r.scrollIntoView({ block: 'center' });
+      const b = r.getBoundingClientRect();
+      return { cx: b.left + b.width / 2, cy: b.top + b.height / 2 };
+    });
+    expect(loc, 'a finding box exists under the findings filter').not.toBeNull();
+    await page.waitForTimeout(300);
+
+    // Re-read centre after scroll.
+    const c = await page.evaluate(() => {
+      const r = document.querySelector('svg.milg-viewer-svg rect[data-finding]').getBoundingClientRect();
+      return { cx: r.left + r.width / 2, cy: r.top + r.height / 2 };
+    });
+    await page.mouse.click(c.cx, c.cy, { button: 'right' });
+    await page.waitForTimeout(200);
+
+    const menu = await page.evaluate(() => {
+      const p = document.querySelector('.milg-viewer-overlap-picker');
+      const overlays = document.querySelectorAll('svg.milg-viewer-svg .milg-debug-overlay').length;
+      return { menu: !!p, header: p ? p.querySelector('.milg-viewer-overlap-header').textContent : null, maskOverlays: overlays };
+    });
+    expect(menu.menu, 'right-click on a finding box opens the copy-debug picker').toBe(true);
+    expect(menu.header).toMatch(/copy debug/i);
+    expect(menu.maskOverlays, 'no mask overlay is drawn on the findings overlay').toBe(0);
+  });
+});
+</file>
+
 <file path="typography/font-pairing.md">
 # Font Pairing
 
@@ -32024,6 +32220,873 @@ run();
 })();
 </file>
 
+<file path="tests/region-debug.spec.js">
+// @ts-check
+// Diagnostic test: captures region screenshot data from fink-translate.com
+// and writes debug artifacts to test-results/region-debug/
+const { test, expect } = require('@playwright/test');
+const fs = require('fs');
+const path = require('path');
+
+const ANALYZER_URL = 'http://localhost:8384/analyzer.html';
+const OUT_DIR = path.join(__dirname, '..', 'test-results', 'region-debug');
+
+test.describe('Region Screenshot Debug', () => {
+
+  test('diagnose fink-translate carousel regions', async ({ page }) => {
+    test.setTimeout(420000);
+    fs.mkdirSync(OUT_DIR, { recursive: true });
+
+    const consoleLogs = [];
+    page.on('console', msg => {
+      const text = msg.text();
+      consoleLogs.push(text);
+      // Print region/clipped related logs immediately
+      if (text.includes('region') || text.includes('Region') || text.includes('clipp') || text.includes('milg-viewer'))
+        console.log('[BROWSER]', text);
+    });
+
+    // 1. Run URL analysis
+    await page.goto(ANALYZER_URL);
+    await page.check('#screenshotCheck');
+    await page.click('[data-tab="tabUrl"]');
+    await page.fill('#urlInput', 'https://www.fink-translate.com/');
+    await page.click('#analyzeUrlBtn');
+    await page.waitForSelector('.report-container.visible', { timeout: 360000 });
+
+    // 2. Extract raw report data
+    const reportDump = await page.evaluate(() => {
+      const report = window.__milgLastReport;
+      if (!report || !report.raw) return { error: 'no report data' };
+      const raw = report.raw;
+
+      // Region screenshots
+      const regions = (raw.regionScreenshots || []).map((rgn, i) => ({
+        index: i,
+        hasScreenshot: !!rgn.screenshot,
+        screenshotLen: rgn.screenshot ? rgn.screenshot.length : 0,
+        screenshotMeta: rgn.screenshotMeta || null,
+        pairIndices: rgn.pairIndices || [],
+        localBboxes: rgn.localBboxes || {},
+        containerRect: rgn.containerRect || null,
+        hasExtractedData: !!rgn.extractedData,
+        extractedPairCount: rgn.extractedData && rgn.extractedData.colors ? (rgn.extractedData.colors.contrastPairs || []).length : 0,
+        hasRegionReport: !!rgn.regionReport,
+        regionScore: rgn.regionReport ? rgn.regionReport.overall : null,
+      }));
+
+      // Clipped pairs
+      const pairs = raw.colors ? raw.colors.contrastPairs || [] : [];
+      const clippedPairs = pairs.map((p, i) => ({
+        index: i,
+        isClipped: !!p._isClipped,
+        bbox: p.bbox,
+        selector: p.selector ? p.selector.substring(0, 80) : null,
+        text: p.text ? p.text.substring(0, 40) : null,
+        ratio: p.ratio,
+        passes: p.passes,
+      })).filter(p => p.isClipped);
+
+      // All pairs with bboxes (for bbox identity check)
+      const allPairsWithBbox = pairs.filter(p => p.bbox).length;
+
+      // screenshotMeta vs cleanMeta
+      const screenshotMeta = raw.screenshotMeta || null;
+      const cleanMeta = raw.screenshotCleanMeta || null;
+      const hasCleanScreenshot = !!raw.screenshotClean;
+      const hasExpandedScreenshot = !!raw.screenshotFull;
+
+      return {
+        regionCount: regions.length,
+        regions,
+        clippedPairCount: clippedPairs.length,
+        clippedPairs,
+        totalPairs: pairs.length,
+        allPairsWithBbox,
+        screenshotMeta,
+        cleanMeta,
+        hasCleanScreenshot,
+        hasExpandedScreenshot,
+      };
+    });
+
+    // Write the report dump
+    fs.writeFileSync(path.join(OUT_DIR, 'report-dump.json'), JSON.stringify(reportDump, null, 2));
+    console.log('\n=== REPORT DUMP ===');
+    console.log('Region count:', reportDump.regionCount);
+    console.log('Clipped pairs:', reportDump.clippedPairCount, '/', reportDump.totalPairs);
+    console.log('Has clean screenshot:', reportDump.hasCleanScreenshot);
+    console.log('Has expanded screenshot:', reportDump.hasExpandedScreenshot);
+    console.log('Clean meta:', JSON.stringify(reportDump.cleanMeta));
+    console.log('Screenshot meta:', JSON.stringify(reportDump.screenshotMeta));
+    if (reportDump.regions) {
+      reportDump.regions.forEach(r => {
+        console.log(`Region ${r.index}: screenshot=${r.screenshotLen}bytes, meta=${JSON.stringify(r.screenshotMeta)}, containerRect=${JSON.stringify(r.containerRect)}, pairIndices=[${r.pairIndices.join(',')}]`);
+      });
+    }
+    if (reportDump.clippedPairs) {
+      reportDump.clippedPairs.forEach(p => {
+        console.log(`Clipped pair ${p.index}: bbox=${JSON.stringify(p.bbox)} text="${p.text}" ratio=${p.ratio} passes=${p.passes}`);
+      });
+    }
+
+    // 3. Save region screenshot images
+    const regionImages = await page.evaluate(() => {
+      const report = window.__milgLastReport;
+      if (!report || !report.raw || !report.raw.regionScreenshots) return [];
+      return report.raw.regionScreenshots.map((rgn, i) => ({
+        index: i,
+        dataUri: rgn.screenshot || null,
+      }));
+    });
+    regionImages.forEach(ri => {
+      if (ri.dataUri) {
+        const match = ri.dataUri.match(/^data:image\/\w+;base64,(.+)$/);
+        if (match) {
+          fs.writeFileSync(path.join(OUT_DIR, `region-${ri.index}.webp`), Buffer.from(match[1], 'base64'));
+          console.log(`Saved region-${ri.index}.webp`);
+        }
+      }
+    });
+
+    // 4. Save clean screenshot
+    const cleanScreenshot = await page.evaluate(() => {
+      const report = window.__milgLastReport;
+      if (!report || !report.raw) return null;
+      return report.raw.screenshotClean || null;
+    });
+    if (cleanScreenshot) {
+      const match = cleanScreenshot.match(/^data:image\/\w+;base64,(.+)$/);
+      if (match) {
+        fs.writeFileSync(path.join(OUT_DIR, 'clean-screenshot.webp'), Buffer.from(match[1], 'base64'));
+        console.log('Saved clean-screenshot.webp');
+      }
+    }
+
+    // 5. Open viewer and check what renders
+    const screenshotDetails = page.locator('details.report-screenshots');
+    if (await screenshotDetails.count() > 0) {
+      await screenshotDetails.locator('summary').click();
+      const screenshotImg = page.locator('.screenshot-img').first();
+      await screenshotImg.waitFor({ state: 'visible', timeout: 5000 });
+      await screenshotImg.click();
+      await page.waitForSelector('.milg-viewer-overlay.visible', { timeout: 10000 });
+
+      // Click "All" filter
+      const allBtn = page.locator('.milg-viewer-filter-btn[data-filter-value="all"]');
+      if (await allBtn.count() > 0) {
+        await allBtn.click();
+        await page.waitForTimeout(500);
+      }
+
+      // Check SVG overlay state
+      const svgState = await page.evaluate(() => {
+        const svg = document.querySelector('svg.milg-viewer-svg');
+        if (!svg) return { error: 'no SVG found' };
+        const rects = svg.querySelectorAll('rect');
+        const regionIndicators = svg.querySelectorAll('rect[data-region]');
+        const texts = svg.querySelectorAll('text');
+        return {
+          totalRects: rects.length,
+          regionIndicatorCount: regionIndicators.length,
+          regionIndicators: Array.from(regionIndicators).map(r => ({
+            class: r.getAttribute('class'),
+            x: r.getAttribute('x'),
+            y: r.getAttribute('y'),
+            width: r.getAttribute('width'),
+            height: r.getAttribute('height'),
+            stroke: r.getAttribute('stroke'),
+          })),
+          textCount: texts.length,
+          texts: Array.from(texts).map(t => ({
+            x: t.getAttribute('x'),
+            y: t.getAttribute('y'),
+            fontSize: t.getAttribute('font-size'),
+            content: t.textContent.substring(0, 50),
+          })),
+          viewBox: svg.getAttribute('viewBox'),
+          svgWidth: svg.getBoundingClientRect().width,
+          svgHeight: svg.getBoundingClientRect().height,
+        };
+      });
+
+      fs.writeFileSync(path.join(OUT_DIR, 'svg-state.json'), JSON.stringify(svgState, null, 2));
+      console.log('\n=== SVG OVERLAY STATE ===');
+      console.log('viewBox:', svgState.viewBox);
+      console.log('SVG display size:', svgState.svgWidth, 'x', svgState.svgHeight);
+      console.log('Total rects:', svgState.totalRects);
+      console.log('Region indicators:', svgState.regionIndicatorCount);
+      if (svgState.regionIndicators) {
+        svgState.regionIndicators.forEach(ind => {
+          console.log('  Indicator:', JSON.stringify(ind));
+        });
+      }
+      console.log('Texts:', svgState.textCount);
+      if (svgState.texts) {
+        svgState.texts.forEach(t => console.log('  Text:', JSON.stringify(t)));
+      }
+
+      // Check region sections in DOM
+      const regionSections = await page.evaluate(() => {
+        const sections = document.querySelectorAll('.milg-viewer-region-section');
+        return Array.from(sections).map((s, i) => {
+          const img = s.querySelector('img');
+          const rgnSvg = s.querySelector('svg');
+          const rects = rgnSvg ? rgnSvg.querySelectorAll('rect') : [];
+          return {
+            id: s.id,
+            width: s.getBoundingClientRect().width,
+            height: s.getBoundingClientRect().height,
+            imgNaturalWidth: img ? img.naturalWidth : null,
+            imgNaturalHeight: img ? img.naturalHeight : null,
+            imgDisplayWidth: img ? img.getBoundingClientRect().width : null,
+            imgDisplayHeight: img ? img.getBoundingClientRect().height : null,
+            imgStyleWidth: img ? img.style.width : null,
+            svgViewBox: rgnSvg ? rgnSvg.getAttribute('viewBox') : null,
+            svgRectCount: rects.length,
+          };
+        });
+      });
+
+      console.log('\n=== REGION SECTIONS IN DOM ===');
+      regionSections.forEach(s => {
+        console.log(`${s.id}: section=${Math.round(s.width)}x${Math.round(s.height)}px, img=${Math.round(s.imgDisplayWidth)}x${Math.round(s.imgDisplayHeight)}px (natural: ${s.imgNaturalWidth}x${s.imgNaturalHeight}), style.width=${s.imgStyleWidth}, svgViewBox=${s.svgViewBox}, rects=${s.svgRectCount}`);
+      });
+
+      // Take a screenshot of the viewer top
+      await page.screenshot({ path: path.join(OUT_DIR, 'viewer-with-overlays.png'), fullPage: false });
+      console.log('Saved viewer-with-overlays.png');
+
+      // Scroll the viewer content to show the container indicator area
+      const indicatorRect = page.locator('svg.milg-viewer-svg rect[data-region="0"]');
+      if (await indicatorRect.count() > 0) {
+        await indicatorRect.scrollIntoViewIfNeeded();
+        await page.waitForTimeout(300);
+        await page.screenshot({ path: path.join(OUT_DIR, 'viewer-indicator-area.png'), fullPage: false });
+        console.log('Saved viewer-indicator-area.png');
+      }
+
+      // Scroll to first region section and screenshot
+      const firstRegion = page.locator('.milg-viewer-region-section').first();
+      if (await firstRegion.count() > 0) {
+        await firstRegion.scrollIntoViewIfNeeded();
+        await page.waitForTimeout(300);
+        await page.screenshot({ path: path.join(OUT_DIR, 'viewer-region-section.png'), fullPage: false });
+        console.log('Saved viewer-region-section.png');
+      }
+
+      // Grab console logs with milg-viewer prefix
+      const viewerLogs = consoleLogs.filter(l => l.includes('[milg-viewer]'));
+      console.log('\n=== VIEWER CONSOLE LOGS ===');
+      viewerLogs.forEach(l => console.log(l));
+    }
+
+    // Write all console logs
+    fs.writeFileSync(path.join(OUT_DIR, 'console-logs.txt'), consoleLogs.join('\n'));
+
+    // Assertions (loose — this is a diagnostic test)
+    expect(reportDump.regionCount).toBeGreaterThanOrEqual(0);
+    expect(reportDump.hasCleanScreenshot).toBe(true);
+  });
+});
+</file>
+
+<file path="docs/analyzer-capture.js">
+// make-it-look-good — Full-Page Capture & Mask Module
+// Shared logic for the iframe full-page screenshot + multi-layer text mask pipeline.
+// Extracted from analyzer-iframe.js buildScreenshotScript (Stage 6b refactor).
+// Used by analyzer-iframe.js (URL/paste analysis). Snippet/crawl adoption is a later stage.
+//
+// Exposes window.MilgCapture
+//
+// The core capture+mask function is mode-agnostic and serialized via .toString()
+// for injection into the analysis iframe (same discipline as MilgRegion.getRegionFn()).
+// Mode-specific PRE prep and image preload are passed in as opts.preHook / opts.preloadFn.
+
+window.MilgCapture = (function() {
+  "use strict";
+
+  // --- Mode-specific PRE hook (iframe/URL mode) ---
+  // Height-unlock → multi-viewport pre-scroll → reset → force-reveal animated
+  // elements → fast-forward CSS animations → overflow:visible. Calls done() when
+  // the page is settled and ready for capture. Serialized + injected; must be
+  // self-contained (no outer-scope refs beyond its args + DOM/window globals).
+  // _prog: progress reporter. done: continuation.
+  function _iframePreHook(_prog, done) {
+    var vh = window.innerHeight || 900;
+    // Unlock height to get true scrollHeight (sites with html,body{height:100%} clamp it)
+    // Set overflow:auto explicitly so the inner document is scrollable for IntersectionObservers
+    document.documentElement.style.cssText += "height:auto !important;overflow-y:auto !important;";
+    document.body.style.cssText += "height:auto !important;";
+    void document.body.offsetHeight; // force reflow
+    var totalH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+    var captureH = Math.min(totalH, vh * 10);
+    _prog("Pre-scrolling page to load content...");
+    console.log("[iframe-ss] Phase 1: Pre-scrolling " + captureH + "px (" + Math.ceil(captureH / vh) + " steps, vh=" + vh + ") ...");
+    // Phase 1: Pre-scroll to trigger IntersectionObservers, lazy images, fade-in animations
+    var _positions = []; for (var p = 0; p < captureH; p += vh) _positions.push(p);
+    var _pi = 0;
+    function _scrollNext() {
+      if (_pi >= _positions.length) {
+        console.log("[iframe-ss] Phase 1 done (scrollY=" + window.scrollY + "). Waiting for content...");
+        setTimeout(_startCapture, 800); return; // 800ms for lazy content + animations to start
+      }
+      window.scrollTo(0, _positions[_pi]);
+      // Also scroll documentElement directly (some browsers need this in iframes)
+      document.documentElement.scrollTop = _positions[_pi];
+      try { window.dispatchEvent(new Event("scroll")); } catch (e) {}
+      console.log("[iframe-ss] scroll to " + _positions[_pi] + " → actual=" + window.scrollY);
+      _pi++; setTimeout(_scrollNext, 200); // 200ms per step (more time for observers)
+    }
+    _scrollNext();
+    // Phase 2: Reset scroll, force-reveal hidden animated content, prep for capture
+    function _startCapture() {
+      document.documentElement.style.scrollBehavior = "auto";
+      document.body.style.scrollBehavior = "auto";
+      window.scrollTo(0, 0); document.documentElement.scrollTop = 0; document.body.scrollTop = 0;
+      document.querySelectorAll("*").forEach(function(el) {
+        if (el.scrollTop > 0) {
+          var s = getComputedStyle(el);
+          if (s.overflow === "auto" || s.overflow === "scroll" || s.overflowY === "auto" || s.overflowY === "scroll") {
+            el.style.scrollBehavior = "auto"; el.scrollTop = 0;
+          }
+        }
+      });
+      // Force-finalize scroll-triggered animations:
+      // IntersectionObserver doesn't fire in offscreen iframes (browser optimization).
+      // Find all elements with opacity:0 that have transitions/animations and force them visible.
+      var _revealed = 0;
+      document.querySelectorAll("*").forEach(function(el) {
+        var cs = getComputedStyle(el);
+        if (cs.opacity === "0" && el.tagName !== "SCRIPT" && el.tagName !== "STYLE") {
+          var hasTrans = cs.transition && cs.transition.indexOf("opacity") !== -1;
+          var hasAnim = cs.animationName && cs.animationName !== "none";
+          var hasTransform = cs.transform && cs.transform !== "none";
+          var cls = (el.className && typeof el.className === "string") ? el.className.toLowerCase() : "";
+          var isScrollAnim = hasTrans || hasAnim || /fade|reveal|animate|aos|scroll|slide|appear/.test(cls);
+          if (isScrollAnim) {
+            el.style.cssText += ";opacity:1 !important;transform:none !important;transition:none !important;animation:none !important;";
+            _revealed++;
+          }
+        }
+      });
+      if (_revealed > 0) 0 && console.log("[iframe-ss] Force-revealed " + _revealed + " scroll-animated elements (IO disabled in offscreen iframes)");
+      // Also inject a style to fast-forward any remaining CSS animations
+      var _ffStyle = document.createElement("style");
+      _ffStyle.textContent = "*,*::before,*::after{animation-delay:0s !important;animation-duration:0.01s !important;transition-duration:0s !important;transition-delay:0s !important;}";
+      document.head.appendChild(_ffStyle);
+      void document.body.offsetHeight;
+      // Switch to overflow:visible for capture
+      document.documentElement.style.cssText += "overflow:visible !important;";
+      document.body.style.cssText += "overflow:visible !important;";
+      // Overflow expansion for carousels is deferred — happens AFTER clean screenshot capture
+      void document.body.offsetHeight;
+      _prog("Waiting for animations to settle...");
+      0 && console.log("[iframe-ss] Phase 2: Waiting for animations to finalize...");
+      setTimeout(function() {
+        if (typeof window.__milgReReadBboxes === "function") {
+          var res = window.__milgReReadBboxes();
+          0 && console.log("[iframe-ss] Re-read bboxes: " + res);
+        }
+        done();
+      }, 1500);
+    }
+  }
+
+  // --- Mode-specific image preload (iframe/URL mode) ---
+  // Preloads cross-origin <img>, <source srcset>, and CSS background-image URLs
+  // through the CORS proxy → data URI before capture so domToCanvas can rasterize
+  // them. proxyUrl empty → no-op. Serialized + injected.
+  function _iframePreloadFn(_prog, proxyUrl, done) {
+    var _imgPx = proxyUrl || "";
+    function _preloadImages(cb) {
+      if (!_imgPx) { cb(); return; }
+      var imgs = document.querySelectorAll("img");
+      var srcs = document.querySelectorAll("source[srcset]");
+      var jobs = [];
+      imgs.forEach(function(i) {
+        if (!i.src || i.src.indexOf("data:") === 0 || i.src.indexOf("blob:") === 0) return;
+        if (i.src.indexOf(location.origin) === 0) return;
+        var _rawSrc = i.getAttribute("src");
+        if (_rawSrc && _rawSrc.charAt(0) === "#") return;
+        var _cleanUrl = i.src.split("#")[0]; if (!_cleanUrl) return;
+        jobs.push({ el: i, url: _cleanUrl, attr: "src" });
+      });
+      srcs.forEach(function(s) {
+        var ss = s.getAttribute("srcset"); if (!ss) return;
+        if (ss.charAt(0) === "#") return;
+        var u = ss.split(",")[0].trim().split(/\s+/)[0];
+        if (!u || u.indexOf("data:") === 0 || u.indexOf("blob:") === 0) return;
+        if (u.indexOf(location.origin) === 0) return;
+        var _cleanU = u.split("#")[0]; if (!_cleanU) return;
+        jobs.push({ el: s, url: _cleanU, attr: "srcset" });
+      });
+      if (jobs.length === 0) { cb(); return; }
+      _prog("Preloading " + jobs.length + " images via proxy...");
+      console.log("[iframe-ss] Preloading " + jobs.length + " cross-origin images via proxy");
+      var done2 = 0;
+      jobs.forEach(function(j) {
+        var pxUrl = _imgPx + "?url=" + encodeURIComponent(j.url);
+        fetch(pxUrl).then(function(r) {
+          if (!r.ok) throw new Error(r.status); return r.blob();
+        }).then(function(blob) {
+          return new Promise(function(res) {
+            var fr = new FileReader(); fr.onload = function() { res(fr.result); }; fr.onerror = function() { res(null); }; fr.readAsDataURL(blob);
+          });
+        }).then(function(dataUri) {
+          if (dataUri) {
+            if (j.attr === "src") j.el.src = dataUri;
+            else if (j.attr === "srcset") j.el.setAttribute("srcset", dataUri);
+          }
+        }).catch(function(e) {
+          console.warn("[iframe-ss] Image preload failed:", j.url, e && e.message || "");
+        }).finally(function() {
+          done2++; if (done2 >= jobs.length) cb();
+        });
+      });
+    }
+    function _preloadBgImages(cb) {
+      if (!_imgPx) { cb(); return; }
+      var jobs = [];
+      document.querySelectorAll("*").forEach(function(el) {
+        var bg = getComputedStyle(el).backgroundImage;
+        if (!bg || bg === "none") return;
+        var m = bg.match(/url\("?(https?:\/\/[^"\)]+)"?\)/);
+        if (!m || !m[1] || m[1].indexOf(location.origin) === 0) return;
+        var _bgUrl = m[1].split("#")[0]; if (!_bgUrl) return;
+        jobs.push({ el: el, url: _bgUrl, fullBg: bg });
+      });
+      if (jobs.length === 0) { cb(); return; }
+      console.log("[iframe-ss] Preloading " + jobs.length + " background images via proxy");
+      var done2 = 0;
+      jobs.forEach(function(j) {
+        fetch(_imgPx + "?url=" + encodeURIComponent(j.url)).then(function(r) {
+          if (!r.ok) throw new Error(r.status); return r.blob();
+        }).then(function(blob) {
+          return new Promise(function(res) { var fr = new FileReader(); fr.onload = function() { res(fr.result); }; fr.onerror = function() { res(null); }; fr.readAsDataURL(blob); });
+        }).then(function(d) {
+          if (d) j.el.style.backgroundImage = j.fullBg.replace(j.url, d);
+        }).catch(function() {}).finally(function() { done2++; if (done2 >= jobs.length) cb(); });
+      });
+    }
+    _preloadImages(function() { _preloadBgImages(function() { done(); }); });
+  }
+
+  // --- Serializable capture + mask CORE ---
+  // Returned by getCaptureFn(). Injected into the analysis iframe via .toString().
+  // MUST be self-contained — no references to outer module scope (the helpers
+  // _iframePreHook / _iframePreloadFn are passed in as SOURCE STRINGS via opts and
+  // rebuilt inside; the region fn is also passed as a source string via opts).
+  //
+  // scale, quality: numbers. prog: progress reporter fn. opts: {
+  //   msgType:     postMessage type string (used by failure-path postMessages)
+  //   cdnUrl:      modern-screenshot CDN script URL
+  //   proxyUrl:    CORS proxy URL for image preload (passed to preloadFn)
+  //   expand:      bool — do the carousel-expanded second screenshot (iframe: true)
+  //   preHookSrc:  source string of preHook(prog, done) — mode-specific PRE prep
+  //   preloadSrc:  source string of preloadFn(prog, proxyUrl, done) — image preload
+  //   regionFnSrc: source string of MilgRegion.getRegionFn() — region screenshots
+  //   sendFn:      OPTIONAL live function sendFn(payload, isFinal) — pluggable output
+  //                sink. Used when the core runs in the SAME realm as the caller
+  //                (snippet mode: getCaptureFn() is called directly, not serialized),
+  //                so the sink may close over caller locals (its `data` object etc.).
+  //   sendFnSrc:   OPTIONAL source string of sendFn(payload, isFinal) — same contract,
+  //                for callers that serialize the whole core (none today). If neither
+  //                sendFn nor sendFnSrc is given the default is parent.postMessage —
+  //                i.e. the original iframe behavior.
+  //                `payload` always carries `.type` (msgType) so a postMessage sink
+  //                is a pass-through; `isFinal` marks the terminal full-result message.
+  // }
+  function _captureFn(scale, quality, prog, opts) {
+    return function(callback) {
+      var _sc = scale;
+      var _q = quality;
+      var _prog = prog;
+      var _msgType = opts.msgType;
+      var _cdn = opts.cdnUrl;
+      var _proxyUrl = opts.proxyUrl || "";
+      var _expand = !!opts.expand;
+      var _mid = window.__milgIframeId || "";
+      var vh = window.innerHeight || 900;
+      var fullH = 0;
+
+      // Rebuild mode-specific hooks from source strings (serialization-safe).
+      var _preHook = (0, eval)("(" + opts.preHookSrc + ")");
+      var _preloadFn = (0, eval)("(" + opts.preloadSrc + ")");
+      var _regionFn = (0, eval)("(" + opts.regionFnSrc + ")");
+
+      // Pluggable output sink. Default = original iframe behavior (postMessage to
+      // parent). The snippet supplies opts.sendFnSrc to route results into its
+      // `data` object + finalize, since it has no parent window to message.
+      var _sendFn = (typeof opts.sendFn === "function")
+        ? opts.sendFn
+        : opts.sendFnSrc
+        ? (0, eval)("(" + opts.sendFnSrc + ")")
+        : function(payload, isFinal) {
+            // Default sink = postMessage to parent (iframe/URL mode). For the final
+            // full-result message, keep the 3-tier size-limit retry (drop updatedData,
+            // then drop screenshots) that the iframe path has always relied on.
+            try { parent.postMessage(payload, "*"); } catch (e) {
+              if (!isFinal) return;
+              console.warn("[milg-warn] postMessage failed (" + e.message + "), retrying without updatedData");
+              payload.updatedData = null;
+              try { parent.postMessage(payload, "*"); } catch (e2) {
+                console.warn("[milg-warn] Retry failed, dropping screenshots");
+                payload.screenshots = []; payload.screenshotFull = null;
+                try { parent.postMessage(payload, "*"); } catch (e3) {}
+              }
+            }
+          };
+
+      // PRE: mode-specific prep (height-unlock/pre-scroll/force-reveal/anim/overflow).
+      _preHook(_prog, function() {
+        fullH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+        console.log("[iframe-ss] scrollHeight=" + fullH + " vh=" + vh);
+        var s = document.createElement("script");
+        s.src = _cdn;
+        s.onload = function() {
+          var ms = window.modernScreenshot;
+          if (!ms || !ms.domToCanvas) { _sendFn({ type: _msgType, screenshots: [], _iframeId: _mid }, true); return; }
+
+          // Preload images via proxy → data URI, then capture
+          _preloadFn(_prog, _proxyUrl, function() {
+            // Phase A: Clean screenshot (page as-rendered, before overflow expansion)
+            _prog("Capturing clean screenshot...");
+            console.log("[iframe-ss] Capturing clean screenshot at " + _sc + "x...");
+            ms.domToCanvas(document.documentElement, { scale: _sc, timeout: 45000 }).then(function(_cleanCanvas) {
+              var _cleanUri; try { _cleanUri = _cleanCanvas.toDataURL("image/webp", _q); } catch (e) { _cleanUri = ""; }
+              var _cleanW = _cleanCanvas.width, _cleanH = _cleanCanvas.height;
+              console.log("[iframe-ss] Clean screenshot: " + _cleanW + "x" + _cleanH);
+
+              // Inject and run region screenshot function (serialized to avoid escaping issues).
+              var _cp2 = window.__milgData && window.__milgData.colors ? window.__milgData.colors.contrastPairs || [] : [];
+              var _buildRegionScreenshots = _regionFn(_sc, _q, _prog, _cp2);
+              _buildRegionScreenshots(function(_regionResults) {
+                window.__milgRegionScreenshots = _regionResults;
+
+                // Save clean-screenshot bbox coordinates before Phase B expansion.
+                var _savedBboxes = [];
+                if (window.__milgBboxRefs) {
+                  window.__milgBboxRefs.forEach(function(ref) {
+                    if (ref.obj && ref.obj[ref.key]) {
+                      var b = ref.obj[ref.key];
+                      _savedBboxes.push({ obj: ref.obj, key: ref.key, left: b.left, top: b.top, width: b.width, height: b.height, _rcid: b._rcid });
+                    }
+                  });
+                }
+
+                // Phase B: Expand overflow:hidden containers with transformed descendants (carousels/sliders)
+                var _expanded = 0;
+                if (_expand) {
+                  document.querySelectorAll("*").forEach(function(container) {
+                    var cs = getComputedStyle(container);
+                    var ov = cs.overflow || "", ovx = cs.overflowX || "", ovy = cs.overflowY || "";
+                    var isClipping = ov === "hidden" || ov === "clip" || ovx === "hidden" || ovx === "clip" || ovy === "hidden" || ovy === "clip";
+                    if (!isClipping) return;
+                    var cr = container.getBoundingClientRect();
+                    if (cr.width < 100 || cr.height < 30) return;
+                    var transEls = [];
+                    container.querySelectorAll("*").forEach(function(desc) {
+                      var ct = getComputedStyle(desc).transform;
+                      if (!ct || ct === "none") return;
+                      var _m = ct.match(/matrix\(([^)]+)\)/);
+                      if (!_m) return;
+                      var _p = _m[1].split(",");
+                      var _tx = Math.abs(parseFloat(_p[4]) || 0);
+                      var _ty = Math.abs(parseFloat(_p[5]) || 0);
+                      if (_tx > 5 || _ty > 5) transEls.push(desc);
+                    });
+                    if (transEls.length === 0) return;
+                    container.style.cssText += ";overflow:visible !important;";
+                    transEls.forEach(function(el) { el.style.cssText += ";transform:none !important;"; });
+                    _expanded++;
+                  });
+                  if (_expanded > 0) console.log("[iframe-ss] Expanded " + _expanded + " overflow:hidden containers with transformed descendants");
+                  void document.body.offsetHeight;
+                  // Re-read bboxes after expansion so they match the expanded layout
+                  if (_expanded > 0 && typeof window.__milgReReadBboxes === "function") {
+                    var _res2 = window.__milgReReadBboxes();
+                    console.log("[iframe-ss] Re-read bboxes after expansion: " + _res2);
+                  }
+                  // Recalculate doc height after expansion (may have grown)
+                  fullH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+                }
+
+                // Phase C: Expanded screenshot (all carousel content visible, bboxes aligned)
+                _prog("Capturing expanded screenshot...");
+                console.log("[iframe-ss] Capturing expanded screenshot at " + _sc + "x...");
+                ms.domToCanvas(document.documentElement, { scale: _sc, timeout: 45000 }).then(function(fc) {
+                  console.log("[iframe-ss] Expanded screenshot: " + fc.width + "x" + fc.height);
+                  var fullUri; try { fullUri = fc.toDataURL("image/webp", _q); } catch (e) { console.warn("[milg-warn] WebP conversion failed:", e.message); fullUri = ""; }
+                  var _cw = fc.width, _ch = fc.height;
+                  // Restore clean-screenshot bbox coordinates so updatedData matches the displayed image
+                  _savedBboxes.forEach(function(s2) { var nb = { left: s2.left, top: s2.top, width: s2.width, height: s2.height }; if (s2._rcid) nb._rcid = s2._rcid; s2.obj[s2.key] = nb; });
+
+                  var _maskResults = {}; // Defined HERE so _sendFinal can access it (same scope)
+                  function _sendFinal() {
+                    var _raw = window.__milgData || null;
+                    // Build a lean updatedData with ONLY re-read bboxes (not full extraction + screenshots).
+                    var updatedData = null;
+                    if (_raw) {
+                      updatedData = {
+                        colors: { contrastPairs: _raw.colors ? _raw.colors.contrastPairs : [] },
+                        typography: { fontSizes: _raw.typography ? _raw.typography.fontSizes : [], headings: _raw.typography ? _raw.typography.headings : [], maxLineLength: _raw.typography ? _raw.typography.maxLineLength : null },
+                        interaction: { touchTargets: _raw.interaction ? _raw.interaction.touchTargets : [] },
+                        layout: { offscreenElements: _raw.layout ? _raw.layout.offscreenElements : [], hiddenPanelIssues: _raw.layout ? _raw.layout.hiddenPanelIssues : [], alignmentElements: _raw.layout ? _raw.layout.alignmentElements : [], borderRadii: _raw.layout ? _raw.layout.borderRadii : [] }
+                      };
+                    }
+                    // Explicitly copy mask results onto updatedData pairs (don't rely on object identity)
+                    if (updatedData && updatedData.colors && updatedData.colors.contrastPairs && typeof _maskResults !== "undefined") {
+                      Object.keys(_maskResults).forEach(function(idx) {
+                        var i = parseInt(idx, 10); var mr = _maskResults[idx];
+                        if (updatedData.colors.contrastPairs[i] && mr) {
+                          updatedData.colors.contrastPairs[i]._maskBmp = mr.bmp;
+                          updatedData.colors.contrastPairs[i]._maskPacked = !!mr.packed;
+                          updatedData.colors.contrastPairs[i]._maskW = mr.w;
+                          updatedData.colors.contrastPairs[i]._maskH = mr.h;
+                          updatedData.colors.contrastPairs[i]._maskLayer = mr.layer;
+                          updatedData.colors.contrastPairs[i]._maskDark = mr.dark;
+                        }
+                      });
+                    }
+                    var msg = {
+                      type: _msgType, _iframeId: _mid,
+                      screenshots: fullUri ? [fullUri] : [],
+                      screenshotFull: fullUri || null,
+                      screenshotClean: _cleanUri || null,
+                      textMask: null, // legacy combined-mask field; per-pair _maskBmp is the live mask source
+                      screenshotMeta: {
+                        scale: _sc, viewportHeight: vh, sectionCount: 1,
+                        canvasWidth: _cw, canvasHeight: _ch,
+                        docHeightAtCapture: fullH,
+                        calibrationOffsetY: 0, calibrationSamples: []
+                      },
+                      screenshotCleanMeta: { canvasWidth: _cleanW, canvasHeight: _cleanH },
+                      regionScreenshots: window.__milgRegionScreenshots || [],
+                      updatedData: updatedData
+                    };
+                    var _udPairs = updatedData && updatedData.colors ? updatedData.colors.contrastPairs || [] : [];
+                    var _maskCount = _udPairs.filter(function(p) { return !!p._maskBmp; }).length;
+                    var _rcidCount = _udPairs.filter(function(p) { return !!p._regionContainerId; }).length;
+                    var _clipCount = _udPairs.filter(function(p) { return !!p._isClipped; }).length;
+                    console.log("[D] iframe→parent pairs=" + _udPairs.length + " rcid=" + _rcidCount + " clipped=" + _clipCount + " masks=" + _maskCount);
+                    _sendFn(msg, true);
+                  }
+
+                  // Wait for fonts, then inline them as @font-face data URIs before mask capture.
+                  (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(function() {
+                    var _cssFontCount = 0; try { Array.from(document.styleSheets).forEach(function(ss2) { try { Array.from(ss2.cssRules).forEach(function(r) { if (r instanceof CSSFontFaceRule) _cssFontCount++; }); } catch (e) {} }); } catch (e) {}
+                    console.log("[iframe-ss] Font prep: " + document.fonts.size + " API fonts, " + _cssFontCount + " CSS @font-face rules");
+                    // Step 2: Layered text masks with transition kill
+                    _prog("Building text masks...");
+                    console.log("[iframe-ss] Step 2: Layered masks (fonts: " + document.fonts.size + " loaded)...");
+                    // Phase A: Kill ALL transitions on every element BEFORE any color changes
+                    document.querySelectorAll("*").forEach(function(el) { el.style.setProperty("transition-duration", "0s", "important"); el.style.setProperty("transition", "none", "important"); });
+                    void document.body.offsetHeight;
+                    // Phase A2: Neutralize absolute/fixed overlays that sit on top of text.
+                    var _neutralized = 0;
+                    document.querySelectorAll("*").forEach(function(el) {
+                      var cs = getComputedStyle(el);
+                      if (cs.position === "absolute" || cs.position === "fixed") {
+                        if (!el.textContent.trim()) {
+                          el.style.setProperty("display", "none", "important"); _neutralized++;
+                        } else if (cs.pointerEvents === "none") {
+                          el.style.setProperty("background", "transparent", "important");
+                          el.style.setProperty("background-image", "none", "important"); _neutralized++;
+                        }
+                      }
+                    });
+                    if (_neutralized) console.log("[iframe-ss] Neutralized " + _neutralized + " overlays");
+                    void document.body.offsetHeight;
+                    // Re-read bboxes AFTER neutralization — hiding overlays can shift layout
+                    if (_neutralized > 0 && typeof window.__milgReReadBboxes === "function") {
+                      var res2 = window.__milgReReadBboxes();
+                      console.log("[iframe-ss] Re-read bboxes post-neutralize: " + res2);
+                    }
+                    // Phase B: Global mask style — white bg, white text, hide media
+                    var _maskStyle = document.createElement("style");
+                    _maskStyle.setAttribute("data-milg-mask", "1");
+                    _maskStyle.textContent = "*,*::before,*::after{color:#fff !important;background-color:transparent !important;background-image:none !important;background:transparent !important;border-color:transparent !important;box-shadow:none !important;text-shadow:none !important;outline-color:transparent !important;-webkit-text-fill-color:#fff !important;opacity:1 !important;transition:none !important;animation:none !important;}html{background:#fff !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}";
+                    document.head.appendChild(_maskStyle); void document.body.offsetHeight;
+                    // Re-read bboxes AFTER mask style — white bg + hidden media can shift layout
+                    if (typeof window.__milgReReadBboxes === "function") {
+                      var res3 = window.__milgReReadBboxes();
+                      console.log("[iframe-ss] Re-read bboxes post-mask-style: " + res3);
+                    }
+                    // Phase C: Collect pair elements and build overlap layers
+                    var _refs = window.__milgBboxRefs || [];
+                    var _pairs = (window.__milgData && window.__milgData.colors && window.__milgData.colors.contrastPairs) || [];
+                    var _pairEls = [];
+                    _refs.forEach(function(ref) {
+                      if (!ref.el || !ref.obj || ref.obj.ratio === undefined) return;
+                      var idx = _pairs.indexOf(ref.obj);
+                      if (idx >= 0) _pairEls.push({ el: ref.el, pair: ref.obj, idx: idx, bbox: ref.obj.bbox });
+                    });
+                    function _overlaps(a, b) {
+                      if (!a.bbox || !b.bbox) return false;
+                      return a.bbox.left < b.bbox.left + b.bbox.width && a.bbox.left + a.bbox.width > b.bbox.left &&
+                        a.bbox.top < b.bbox.top + b.bbox.height && a.bbox.top + a.bbox.height > b.bbox.top;
+                    }
+                    var _layers = []; var _remaining = _pairEls.slice();
+                    while (_remaining.length > 0) {
+                      var layer0 = []; var next = [];
+                      _remaining.forEach(function(pe) {
+                        if (layer0.some(function(l) { return _overlaps(pe, l); })) { next.push(pe); } else { layer0.push(pe); }
+                      });
+                      _layers.push(layer0); _remaining = next;
+                    }
+                    console.log("[iframe-ss] " + _pairEls.length + " elements in " + _layers.length + " layers");
+                    // Phase C2: Bake text-transform into actual text content.
+                    var _ttFixed = 0;
+                    document.querySelectorAll("*").forEach(function(el) {
+                      var tt = getComputedStyle(el).textTransform;
+                      if (tt === "uppercase" || tt === "lowercase" || tt === "capitalize") {
+                        var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
+                        var tn; while (tn = walker.nextNode()) {
+                          var orig = tn.textContent; if (!orig.trim()) continue;
+                          if (tt === "uppercase") tn.textContent = orig.toUpperCase();
+                          else if (tt === "lowercase") tn.textContent = orig.toLowerCase();
+                          else if (tt === "capitalize") tn.textContent = orig.replace(/\b\w/g, function(c) { return c.toUpperCase(); });
+                          _ttFixed++;
+                        }
+                      }
+                    });
+                    if (_ttFixed) console.log("[iframe-ss] Baked text-transform for " + _ttFixed + " text nodes");
+                    // Phase D: Capture one mask per layer — set layer elements to black via inline style
+                    var _li = 0;
+                    function _nextLayer() {
+                      if (_li >= _layers.length) { console.log("[iframe-ss] All " + _layers.length + " mask layers done"); _sendFinal(); return; }
+                      var layer = _layers[_li]; _li++;
+                      _prog("Text mask layer " + _li + "/" + _layers.length + "...");
+                      console.log("[iframe-ss] Layer " + _li + ": " + layer.length + " elements");
+                      layer.forEach(function(pe) {
+                        pe.el.style.setProperty("color", "#000", "important");
+                        pe.el.style.setProperty("-webkit-text-fill-color", "#000", "important");
+                        pe.el.querySelectorAll("*").forEach(function(ch) {
+                          ch.style.setProperty("color", "#000", "important");
+                          ch.style.setProperty("-webkit-text-fill-color", "#000", "important");
+                        });
+                      });
+                      void document.body.offsetHeight;
+                      console.log("[iframe-ss] Layer " + _li + ": starting domToCanvas...");
+                      var _layerDone = false;
+                      var _layerTimer = setTimeout(function() { if (!_layerDone) { _layerDone = true; console.warn("[iframe-ss] Layer " + _li + " domToCanvas timed out (120s)"); setTimeout(_nextLayer, 0); } }, 120000);
+                      ms.domToCanvas(document.documentElement, { scale: _sc, timeout: 12000 }).then(function(mc) {
+                        if (_layerDone) return; _layerDone = true; clearTimeout(_layerTimer);
+                        console.log("[iframe-ss] Layer " + _li + " captured: " + mc.width + "x" + mc.height);
+                        var mCtx = mc.getContext("2d", { willReadFrequently: true });
+                        var _fillTextFallbacks = 0;
+                        layer.forEach(function(pe) {
+                          if (!pe.bbox) return;
+                          var bx = Math.max(0, Math.round(pe.bbox.left * _sc));
+                          var by = Math.max(0, Math.round(pe.bbox.top * _sc));
+                          var bw = Math.min(Math.round(pe.bbox.width * _sc), mc.width - bx);
+                          var bh = Math.min(Math.round(pe.bbox.height * _sc), mc.height - by);
+                          if (bw < 2 || bh < 2) return;
+                          try {
+                            var px = mCtx.getImageData(bx, by, bw, bh).data;
+                            var bmp = new Uint8Array(bw * bh);
+                            for (var y = 0; y < bh; y++) { for (var x = 0; x < bw; x++) {
+                              var i = (y * bw + x) * 4;
+                              if ((px[i] + px[i + 1] + px[i + 2]) / 3 < 240) bmp[y * bw + x] = 1;
+                            } }
+                            var _dk = 0; for (var _b = 0; _b < bmp.length; _b++) if (bmp[_b]) _dk++;
+                            // Fallback: if domToCanvas failed to render text, use canvas.fillText
+                            if (_dk === 0 && bw > 3 && pe.pair.text) {
+                              try {
+                                var cs = getComputedStyle(pe.el);
+                                var _fc = document.createElement("canvas"); _fc.width = bw; _fc.height = bh;
+                                var _fx = _fc.getContext("2d"); _fx.fillStyle = "#fff"; _fx.fillRect(0, 0, bw, bh);
+                                var _fs = parseFloat(cs.fontSize) * _sc;
+                                _fx.fillStyle = "#000";
+                                _fx.font = cs.fontStyle + " " + cs.fontWeight + " " + _fs + "px " + cs.fontFamily;
+                                _fx.textBaseline = "top";
+                                var _pl = (parseFloat(cs.paddingLeft) || 0) * _sc;
+                                var _pt = (parseFloat(cs.paddingTop) || 0) * _sc;
+                                var _pr = (parseFloat(cs.paddingRight) || 0) * _sc;
+                                var _ta = cs.textAlign;
+                                var _txt = pe.pair.text.replace(/\[placeholder\] /, "");
+                                var _lh = parseFloat(cs.lineHeight) * _sc || _fs * 1.2;
+                                var _contentW = bw - _pl - _pr;
+                                var _words = _txt.split(/\s+/); var _lines = []; var _line = "";
+                                for (var _w = 0; _w < _words.length; _w++) {
+                                  var _test = _line ? _line + " " + _words[_w] : _words[_w];
+                                  if (_fx.measureText(_test).width > _contentW && _line) { _lines.push(_line); _line = _words[_w]; }
+                                  else { _line = _test; }
+                                } _lines.push(_line);
+                                var _totalH = _lines.length * _lh;
+                                var _tyStart = _pt;
+                                var _par = pe.el.parentElement; var _pcs = _par ? getComputedStyle(_par) : null;
+                                if (_pcs) {
+                                  if (_pcs.display.indexOf("flex") >= 0 && _pcs.alignItems === "center") { _tyStart = Math.max(0, (bh - _totalH) / 2); }
+                                  else if (bh > _totalH + _pt * 2) { _tyStart = _pt; }
+                                }
+                                for (var _li2 = 0; _li2 < _lines.length; _li2++) {
+                                  var _lw = _fx.measureText(_lines[_li2]).width;
+                                  var _tx = _pl;
+                                  if (_ta === "center") _tx = (_contentW - _lw) / 2 + _pl;
+                                  else if (_ta === "right" || _ta === "end") _tx = _contentW - _lw + _pl;
+                                  _fx.fillText(_lines[_li2], _tx, _tyStart + _li2 * _lh);
+                                }
+                                var _fpx = _fx.getImageData(0, 0, bw, bh).data;
+                                bmp = new Uint8Array(bw * bh);
+                                for (var _fy = 0; _fy < bh; _fy++) { for (var _fxx = 0; _fxx < bw; _fxx++) {
+                                  var _fi = (_fy * bw + _fxx) * 4; if ((_fpx[_fi] + _fpx[_fi + 1] + _fpx[_fi + 2]) / 3 < 240) bmp[_fy * bw + _fxx] = 1;
+                                } }
+                                _dk = 0; for (var _fb = 0; _fb < bmp.length; _fb++) if (bmp[_fb]) _dk++;
+                                _fillTextFallbacks++;
+                              } catch (e) {}
+                            }
+                            // Bit-pack bitmap: 8 pixels per byte, then base64 encode (~8x smaller for postMessage)
+                            var _byteLen = Math.ceil(bmp.length / 8); var _packed = new Uint8Array(_byteLen);
+                            for (var _bi = 0; _bi < bmp.length; _bi++) { if (bmp[_bi]) _packed[_bi >> 3] |= (1 << (_bi & 7)); }
+                            var _binStr = ""; for (var _bi2 = 0; _bi2 < _packed.length; _bi2++) _binStr += String.fromCharCode(_packed[_bi2]);
+                            var _b64 = btoa(_binStr);
+                            pe.pair._maskBmp = _b64; pe.pair._maskPacked = true; pe.pair._maskW = bw; pe.pair._maskH = bh; pe.pair._maskLayer = _li; pe.pair._maskDark = _dk;
+                            _maskResults[pe.idx] = { bmp: _b64, packed: true, w: bw, h: bh, layer: _li, dark: _dk };
+                          } catch (e) {}
+                        });
+                        if (_fillTextFallbacks > 0) console.log("[iframe-ss] Layer " + _li + ": " + _fillTextFallbacks + " elements used fillText fallback mask");
+                        // Reset layer elements to transparent (mask global style takes over)
+                        layer.forEach(function(pe) {
+                          pe.el.style.removeProperty("color");
+                          pe.el.style.removeProperty("-webkit-text-fill-color");
+                          pe.el.querySelectorAll("*").forEach(function(ch) {
+                            ch.style.removeProperty("color");
+                            ch.style.removeProperty("-webkit-text-fill-color");
+                          });
+                        });
+                        setTimeout(_nextLayer, 0);
+                      }).catch(function(e) { if (_layerDone) return; _layerDone = true; clearTimeout(_layerTimer); console.warn("[iframe-ss] Layer " + _li + " failed:", e); setTimeout(_nextLayer, 0); });
+                    }
+                    var _maskDone = false;
+                    var _origSendFinal = _sendFinal;
+                    var _maskTimer = setTimeout(function() { if (!_maskDone) { _maskDone = true; console.warn("[iframe-ss] Masks timed out (360s)"); _origSendFinal(); } }, 360000);
+                    _sendFinal = function() { if (_maskDone) return; _maskDone = true; clearTimeout(_maskTimer); console.log("[iframe-ss] Sending results (maskResults: " + Object.keys(_maskResults).length + " pairs)"); _origSendFinal(); };
+                    _nextLayer();
+                  }); // end document.fonts.ready.then
+                }).catch(function(e) { console.warn("[iframe-ss] expanded capture failed:", e); _sendFn({ type: _msgType, screenshots: [], _iframeId: _mid }, true); });
+              }); // close _buildRegionScreenshots callback
+            }).catch(function(e) { console.warn("[iframe-ss] clean capture failed:", e); _sendFn({ type: _msgType, screenshots: [], _iframeId: _mid }, true); });
+          }); // close _preloadFn callback
+        };
+        s.onerror = function() { _sendFn({ type: _msgType, screenshots: [], _iframeId: _mid }, true); };
+        document.head.appendChild(s);
+      });
+    };
+  }
+
+  return {
+    // Serializable hook sources for iframe/URL mode — pass their .toString() into
+    // getCaptureFn()'s opts.preHookSrc / opts.preloadSrc.
+    getIframePreHook: function() { return _iframePreHook; },
+    getIframePreloadFn: function() { return _iframePreloadFn; },
+    // The serializable capture+mask core — use: MilgCapture.getCaptureFn().toString()
+    getCaptureFn: function() { return _captureFn; }
+  };
+})();
+</file>
+
 <file path="docs/analyzer.css">
 /* Analyzer — inherits vars from style.css */
 
@@ -33491,873 +34554,6 @@ body.dark-ui .milg-viewer-overlap-item:hover { background: #334155; }
   .milg-viewer-tooltip { max-width: 280px; font-size: 11px; }
   .milg-viewer-overlap-picker { max-width: 300px; }
 }
-</file>
-
-<file path="tests/region-debug.spec.js">
-// @ts-check
-// Diagnostic test: captures region screenshot data from fink-translate.com
-// and writes debug artifacts to test-results/region-debug/
-const { test, expect } = require('@playwright/test');
-const fs = require('fs');
-const path = require('path');
-
-const ANALYZER_URL = 'http://localhost:8384/analyzer.html';
-const OUT_DIR = path.join(__dirname, '..', 'test-results', 'region-debug');
-
-test.describe('Region Screenshot Debug', () => {
-
-  test('diagnose fink-translate carousel regions', async ({ page }) => {
-    test.setTimeout(420000);
-    fs.mkdirSync(OUT_DIR, { recursive: true });
-
-    const consoleLogs = [];
-    page.on('console', msg => {
-      const text = msg.text();
-      consoleLogs.push(text);
-      // Print region/clipped related logs immediately
-      if (text.includes('region') || text.includes('Region') || text.includes('clipp') || text.includes('milg-viewer'))
-        console.log('[BROWSER]', text);
-    });
-
-    // 1. Run URL analysis
-    await page.goto(ANALYZER_URL);
-    await page.check('#screenshotCheck');
-    await page.click('[data-tab="tabUrl"]');
-    await page.fill('#urlInput', 'https://www.fink-translate.com/');
-    await page.click('#analyzeUrlBtn');
-    await page.waitForSelector('.report-container.visible', { timeout: 360000 });
-
-    // 2. Extract raw report data
-    const reportDump = await page.evaluate(() => {
-      const report = window.__milgLastReport;
-      if (!report || !report.raw) return { error: 'no report data' };
-      const raw = report.raw;
-
-      // Region screenshots
-      const regions = (raw.regionScreenshots || []).map((rgn, i) => ({
-        index: i,
-        hasScreenshot: !!rgn.screenshot,
-        screenshotLen: rgn.screenshot ? rgn.screenshot.length : 0,
-        screenshotMeta: rgn.screenshotMeta || null,
-        pairIndices: rgn.pairIndices || [],
-        localBboxes: rgn.localBboxes || {},
-        containerRect: rgn.containerRect || null,
-        hasExtractedData: !!rgn.extractedData,
-        extractedPairCount: rgn.extractedData && rgn.extractedData.colors ? (rgn.extractedData.colors.contrastPairs || []).length : 0,
-        hasRegionReport: !!rgn.regionReport,
-        regionScore: rgn.regionReport ? rgn.regionReport.overall : null,
-      }));
-
-      // Clipped pairs
-      const pairs = raw.colors ? raw.colors.contrastPairs || [] : [];
-      const clippedPairs = pairs.map((p, i) => ({
-        index: i,
-        isClipped: !!p._isClipped,
-        bbox: p.bbox,
-        selector: p.selector ? p.selector.substring(0, 80) : null,
-        text: p.text ? p.text.substring(0, 40) : null,
-        ratio: p.ratio,
-        passes: p.passes,
-      })).filter(p => p.isClipped);
-
-      // All pairs with bboxes (for bbox identity check)
-      const allPairsWithBbox = pairs.filter(p => p.bbox).length;
-
-      // screenshotMeta vs cleanMeta
-      const screenshotMeta = raw.screenshotMeta || null;
-      const cleanMeta = raw.screenshotCleanMeta || null;
-      const hasCleanScreenshot = !!raw.screenshotClean;
-      const hasExpandedScreenshot = !!raw.screenshotFull;
-
-      return {
-        regionCount: regions.length,
-        regions,
-        clippedPairCount: clippedPairs.length,
-        clippedPairs,
-        totalPairs: pairs.length,
-        allPairsWithBbox,
-        screenshotMeta,
-        cleanMeta,
-        hasCleanScreenshot,
-        hasExpandedScreenshot,
-      };
-    });
-
-    // Write the report dump
-    fs.writeFileSync(path.join(OUT_DIR, 'report-dump.json'), JSON.stringify(reportDump, null, 2));
-    console.log('\n=== REPORT DUMP ===');
-    console.log('Region count:', reportDump.regionCount);
-    console.log('Clipped pairs:', reportDump.clippedPairCount, '/', reportDump.totalPairs);
-    console.log('Has clean screenshot:', reportDump.hasCleanScreenshot);
-    console.log('Has expanded screenshot:', reportDump.hasExpandedScreenshot);
-    console.log('Clean meta:', JSON.stringify(reportDump.cleanMeta));
-    console.log('Screenshot meta:', JSON.stringify(reportDump.screenshotMeta));
-    if (reportDump.regions) {
-      reportDump.regions.forEach(r => {
-        console.log(`Region ${r.index}: screenshot=${r.screenshotLen}bytes, meta=${JSON.stringify(r.screenshotMeta)}, containerRect=${JSON.stringify(r.containerRect)}, pairIndices=[${r.pairIndices.join(',')}]`);
-      });
-    }
-    if (reportDump.clippedPairs) {
-      reportDump.clippedPairs.forEach(p => {
-        console.log(`Clipped pair ${p.index}: bbox=${JSON.stringify(p.bbox)} text="${p.text}" ratio=${p.ratio} passes=${p.passes}`);
-      });
-    }
-
-    // 3. Save region screenshot images
-    const regionImages = await page.evaluate(() => {
-      const report = window.__milgLastReport;
-      if (!report || !report.raw || !report.raw.regionScreenshots) return [];
-      return report.raw.regionScreenshots.map((rgn, i) => ({
-        index: i,
-        dataUri: rgn.screenshot || null,
-      }));
-    });
-    regionImages.forEach(ri => {
-      if (ri.dataUri) {
-        const match = ri.dataUri.match(/^data:image\/\w+;base64,(.+)$/);
-        if (match) {
-          fs.writeFileSync(path.join(OUT_DIR, `region-${ri.index}.webp`), Buffer.from(match[1], 'base64'));
-          console.log(`Saved region-${ri.index}.webp`);
-        }
-      }
-    });
-
-    // 4. Save clean screenshot
-    const cleanScreenshot = await page.evaluate(() => {
-      const report = window.__milgLastReport;
-      if (!report || !report.raw) return null;
-      return report.raw.screenshotClean || null;
-    });
-    if (cleanScreenshot) {
-      const match = cleanScreenshot.match(/^data:image\/\w+;base64,(.+)$/);
-      if (match) {
-        fs.writeFileSync(path.join(OUT_DIR, 'clean-screenshot.webp'), Buffer.from(match[1], 'base64'));
-        console.log('Saved clean-screenshot.webp');
-      }
-    }
-
-    // 5. Open viewer and check what renders
-    const screenshotDetails = page.locator('details.report-screenshots');
-    if (await screenshotDetails.count() > 0) {
-      await screenshotDetails.locator('summary').click();
-      const screenshotImg = page.locator('.screenshot-img').first();
-      await screenshotImg.waitFor({ state: 'visible', timeout: 5000 });
-      await screenshotImg.click();
-      await page.waitForSelector('.milg-viewer-overlay.visible', { timeout: 10000 });
-
-      // Click "All" filter
-      const allBtn = page.locator('.milg-viewer-filter-btn[data-filter-value="all"]');
-      if (await allBtn.count() > 0) {
-        await allBtn.click();
-        await page.waitForTimeout(500);
-      }
-
-      // Check SVG overlay state
-      const svgState = await page.evaluate(() => {
-        const svg = document.querySelector('svg.milg-viewer-svg');
-        if (!svg) return { error: 'no SVG found' };
-        const rects = svg.querySelectorAll('rect');
-        const regionIndicators = svg.querySelectorAll('rect[data-region]');
-        const texts = svg.querySelectorAll('text');
-        return {
-          totalRects: rects.length,
-          regionIndicatorCount: regionIndicators.length,
-          regionIndicators: Array.from(regionIndicators).map(r => ({
-            class: r.getAttribute('class'),
-            x: r.getAttribute('x'),
-            y: r.getAttribute('y'),
-            width: r.getAttribute('width'),
-            height: r.getAttribute('height'),
-            stroke: r.getAttribute('stroke'),
-          })),
-          textCount: texts.length,
-          texts: Array.from(texts).map(t => ({
-            x: t.getAttribute('x'),
-            y: t.getAttribute('y'),
-            fontSize: t.getAttribute('font-size'),
-            content: t.textContent.substring(0, 50),
-          })),
-          viewBox: svg.getAttribute('viewBox'),
-          svgWidth: svg.getBoundingClientRect().width,
-          svgHeight: svg.getBoundingClientRect().height,
-        };
-      });
-
-      fs.writeFileSync(path.join(OUT_DIR, 'svg-state.json'), JSON.stringify(svgState, null, 2));
-      console.log('\n=== SVG OVERLAY STATE ===');
-      console.log('viewBox:', svgState.viewBox);
-      console.log('SVG display size:', svgState.svgWidth, 'x', svgState.svgHeight);
-      console.log('Total rects:', svgState.totalRects);
-      console.log('Region indicators:', svgState.regionIndicatorCount);
-      if (svgState.regionIndicators) {
-        svgState.regionIndicators.forEach(ind => {
-          console.log('  Indicator:', JSON.stringify(ind));
-        });
-      }
-      console.log('Texts:', svgState.textCount);
-      if (svgState.texts) {
-        svgState.texts.forEach(t => console.log('  Text:', JSON.stringify(t)));
-      }
-
-      // Check region sections in DOM
-      const regionSections = await page.evaluate(() => {
-        const sections = document.querySelectorAll('.milg-viewer-region-section');
-        return Array.from(sections).map((s, i) => {
-          const img = s.querySelector('img');
-          const rgnSvg = s.querySelector('svg');
-          const rects = rgnSvg ? rgnSvg.querySelectorAll('rect') : [];
-          return {
-            id: s.id,
-            width: s.getBoundingClientRect().width,
-            height: s.getBoundingClientRect().height,
-            imgNaturalWidth: img ? img.naturalWidth : null,
-            imgNaturalHeight: img ? img.naturalHeight : null,
-            imgDisplayWidth: img ? img.getBoundingClientRect().width : null,
-            imgDisplayHeight: img ? img.getBoundingClientRect().height : null,
-            imgStyleWidth: img ? img.style.width : null,
-            svgViewBox: rgnSvg ? rgnSvg.getAttribute('viewBox') : null,
-            svgRectCount: rects.length,
-          };
-        });
-      });
-
-      console.log('\n=== REGION SECTIONS IN DOM ===');
-      regionSections.forEach(s => {
-        console.log(`${s.id}: section=${Math.round(s.width)}x${Math.round(s.height)}px, img=${Math.round(s.imgDisplayWidth)}x${Math.round(s.imgDisplayHeight)}px (natural: ${s.imgNaturalWidth}x${s.imgNaturalHeight}), style.width=${s.imgStyleWidth}, svgViewBox=${s.svgViewBox}, rects=${s.svgRectCount}`);
-      });
-
-      // Take a screenshot of the viewer top
-      await page.screenshot({ path: path.join(OUT_DIR, 'viewer-with-overlays.png'), fullPage: false });
-      console.log('Saved viewer-with-overlays.png');
-
-      // Scroll the viewer content to show the container indicator area
-      const indicatorRect = page.locator('svg.milg-viewer-svg rect[data-region="0"]');
-      if (await indicatorRect.count() > 0) {
-        await indicatorRect.scrollIntoViewIfNeeded();
-        await page.waitForTimeout(300);
-        await page.screenshot({ path: path.join(OUT_DIR, 'viewer-indicator-area.png'), fullPage: false });
-        console.log('Saved viewer-indicator-area.png');
-      }
-
-      // Scroll to first region section and screenshot
-      const firstRegion = page.locator('.milg-viewer-region-section').first();
-      if (await firstRegion.count() > 0) {
-        await firstRegion.scrollIntoViewIfNeeded();
-        await page.waitForTimeout(300);
-        await page.screenshot({ path: path.join(OUT_DIR, 'viewer-region-section.png'), fullPage: false });
-        console.log('Saved viewer-region-section.png');
-      }
-
-      // Grab console logs with milg-viewer prefix
-      const viewerLogs = consoleLogs.filter(l => l.includes('[milg-viewer]'));
-      console.log('\n=== VIEWER CONSOLE LOGS ===');
-      viewerLogs.forEach(l => console.log(l));
-    }
-
-    // Write all console logs
-    fs.writeFileSync(path.join(OUT_DIR, 'console-logs.txt'), consoleLogs.join('\n'));
-
-    // Assertions (loose — this is a diagnostic test)
-    expect(reportDump.regionCount).toBeGreaterThanOrEqual(0);
-    expect(reportDump.hasCleanScreenshot).toBe(true);
-  });
-});
-</file>
-
-<file path="docs/analyzer-capture.js">
-// make-it-look-good — Full-Page Capture & Mask Module
-// Shared logic for the iframe full-page screenshot + multi-layer text mask pipeline.
-// Extracted from analyzer-iframe.js buildScreenshotScript (Stage 6b refactor).
-// Used by analyzer-iframe.js (URL/paste analysis). Snippet/crawl adoption is a later stage.
-//
-// Exposes window.MilgCapture
-//
-// The core capture+mask function is mode-agnostic and serialized via .toString()
-// for injection into the analysis iframe (same discipline as MilgRegion.getRegionFn()).
-// Mode-specific PRE prep and image preload are passed in as opts.preHook / opts.preloadFn.
-
-window.MilgCapture = (function() {
-  "use strict";
-
-  // --- Mode-specific PRE hook (iframe/URL mode) ---
-  // Height-unlock → multi-viewport pre-scroll → reset → force-reveal animated
-  // elements → fast-forward CSS animations → overflow:visible. Calls done() when
-  // the page is settled and ready for capture. Serialized + injected; must be
-  // self-contained (no outer-scope refs beyond its args + DOM/window globals).
-  // _prog: progress reporter. done: continuation.
-  function _iframePreHook(_prog, done) {
-    var vh = window.innerHeight || 900;
-    // Unlock height to get true scrollHeight (sites with html,body{height:100%} clamp it)
-    // Set overflow:auto explicitly so the inner document is scrollable for IntersectionObservers
-    document.documentElement.style.cssText += "height:auto !important;overflow-y:auto !important;";
-    document.body.style.cssText += "height:auto !important;";
-    void document.body.offsetHeight; // force reflow
-    var totalH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-    var captureH = Math.min(totalH, vh * 10);
-    _prog("Pre-scrolling page to load content...");
-    console.log("[iframe-ss] Phase 1: Pre-scrolling " + captureH + "px (" + Math.ceil(captureH / vh) + " steps, vh=" + vh + ") ...");
-    // Phase 1: Pre-scroll to trigger IntersectionObservers, lazy images, fade-in animations
-    var _positions = []; for (var p = 0; p < captureH; p += vh) _positions.push(p);
-    var _pi = 0;
-    function _scrollNext() {
-      if (_pi >= _positions.length) {
-        console.log("[iframe-ss] Phase 1 done (scrollY=" + window.scrollY + "). Waiting for content...");
-        setTimeout(_startCapture, 800); return; // 800ms for lazy content + animations to start
-      }
-      window.scrollTo(0, _positions[_pi]);
-      // Also scroll documentElement directly (some browsers need this in iframes)
-      document.documentElement.scrollTop = _positions[_pi];
-      try { window.dispatchEvent(new Event("scroll")); } catch (e) {}
-      console.log("[iframe-ss] scroll to " + _positions[_pi] + " → actual=" + window.scrollY);
-      _pi++; setTimeout(_scrollNext, 200); // 200ms per step (more time for observers)
-    }
-    _scrollNext();
-    // Phase 2: Reset scroll, force-reveal hidden animated content, prep for capture
-    function _startCapture() {
-      document.documentElement.style.scrollBehavior = "auto";
-      document.body.style.scrollBehavior = "auto";
-      window.scrollTo(0, 0); document.documentElement.scrollTop = 0; document.body.scrollTop = 0;
-      document.querySelectorAll("*").forEach(function(el) {
-        if (el.scrollTop > 0) {
-          var s = getComputedStyle(el);
-          if (s.overflow === "auto" || s.overflow === "scroll" || s.overflowY === "auto" || s.overflowY === "scroll") {
-            el.style.scrollBehavior = "auto"; el.scrollTop = 0;
-          }
-        }
-      });
-      // Force-finalize scroll-triggered animations:
-      // IntersectionObserver doesn't fire in offscreen iframes (browser optimization).
-      // Find all elements with opacity:0 that have transitions/animations and force them visible.
-      var _revealed = 0;
-      document.querySelectorAll("*").forEach(function(el) {
-        var cs = getComputedStyle(el);
-        if (cs.opacity === "0" && el.tagName !== "SCRIPT" && el.tagName !== "STYLE") {
-          var hasTrans = cs.transition && cs.transition.indexOf("opacity") !== -1;
-          var hasAnim = cs.animationName && cs.animationName !== "none";
-          var hasTransform = cs.transform && cs.transform !== "none";
-          var cls = (el.className && typeof el.className === "string") ? el.className.toLowerCase() : "";
-          var isScrollAnim = hasTrans || hasAnim || /fade|reveal|animate|aos|scroll|slide|appear/.test(cls);
-          if (isScrollAnim) {
-            el.style.cssText += ";opacity:1 !important;transform:none !important;transition:none !important;animation:none !important;";
-            _revealed++;
-          }
-        }
-      });
-      if (_revealed > 0) 0 && console.log("[iframe-ss] Force-revealed " + _revealed + " scroll-animated elements (IO disabled in offscreen iframes)");
-      // Also inject a style to fast-forward any remaining CSS animations
-      var _ffStyle = document.createElement("style");
-      _ffStyle.textContent = "*,*::before,*::after{animation-delay:0s !important;animation-duration:0.01s !important;transition-duration:0s !important;transition-delay:0s !important;}";
-      document.head.appendChild(_ffStyle);
-      void document.body.offsetHeight;
-      // Switch to overflow:visible for capture
-      document.documentElement.style.cssText += "overflow:visible !important;";
-      document.body.style.cssText += "overflow:visible !important;";
-      // Overflow expansion for carousels is deferred — happens AFTER clean screenshot capture
-      void document.body.offsetHeight;
-      _prog("Waiting for animations to settle...");
-      0 && console.log("[iframe-ss] Phase 2: Waiting for animations to finalize...");
-      setTimeout(function() {
-        if (typeof window.__milgReReadBboxes === "function") {
-          var res = window.__milgReReadBboxes();
-          0 && console.log("[iframe-ss] Re-read bboxes: " + res);
-        }
-        done();
-      }, 1500);
-    }
-  }
-
-  // --- Mode-specific image preload (iframe/URL mode) ---
-  // Preloads cross-origin <img>, <source srcset>, and CSS background-image URLs
-  // through the CORS proxy → data URI before capture so domToCanvas can rasterize
-  // them. proxyUrl empty → no-op. Serialized + injected.
-  function _iframePreloadFn(_prog, proxyUrl, done) {
-    var _imgPx = proxyUrl || "";
-    function _preloadImages(cb) {
-      if (!_imgPx) { cb(); return; }
-      var imgs = document.querySelectorAll("img");
-      var srcs = document.querySelectorAll("source[srcset]");
-      var jobs = [];
-      imgs.forEach(function(i) {
-        if (!i.src || i.src.indexOf("data:") === 0 || i.src.indexOf("blob:") === 0) return;
-        if (i.src.indexOf(location.origin) === 0) return;
-        var _rawSrc = i.getAttribute("src");
-        if (_rawSrc && _rawSrc.charAt(0) === "#") return;
-        var _cleanUrl = i.src.split("#")[0]; if (!_cleanUrl) return;
-        jobs.push({ el: i, url: _cleanUrl, attr: "src" });
-      });
-      srcs.forEach(function(s) {
-        var ss = s.getAttribute("srcset"); if (!ss) return;
-        if (ss.charAt(0) === "#") return;
-        var u = ss.split(",")[0].trim().split(/\s+/)[0];
-        if (!u || u.indexOf("data:") === 0 || u.indexOf("blob:") === 0) return;
-        if (u.indexOf(location.origin) === 0) return;
-        var _cleanU = u.split("#")[0]; if (!_cleanU) return;
-        jobs.push({ el: s, url: _cleanU, attr: "srcset" });
-      });
-      if (jobs.length === 0) { cb(); return; }
-      _prog("Preloading " + jobs.length + " images via proxy...");
-      console.log("[iframe-ss] Preloading " + jobs.length + " cross-origin images via proxy");
-      var done2 = 0;
-      jobs.forEach(function(j) {
-        var pxUrl = _imgPx + "?url=" + encodeURIComponent(j.url);
-        fetch(pxUrl).then(function(r) {
-          if (!r.ok) throw new Error(r.status); return r.blob();
-        }).then(function(blob) {
-          return new Promise(function(res) {
-            var fr = new FileReader(); fr.onload = function() { res(fr.result); }; fr.onerror = function() { res(null); }; fr.readAsDataURL(blob);
-          });
-        }).then(function(dataUri) {
-          if (dataUri) {
-            if (j.attr === "src") j.el.src = dataUri;
-            else if (j.attr === "srcset") j.el.setAttribute("srcset", dataUri);
-          }
-        }).catch(function(e) {
-          console.warn("[iframe-ss] Image preload failed:", j.url, e && e.message || "");
-        }).finally(function() {
-          done2++; if (done2 >= jobs.length) cb();
-        });
-      });
-    }
-    function _preloadBgImages(cb) {
-      if (!_imgPx) { cb(); return; }
-      var jobs = [];
-      document.querySelectorAll("*").forEach(function(el) {
-        var bg = getComputedStyle(el).backgroundImage;
-        if (!bg || bg === "none") return;
-        var m = bg.match(/url\("?(https?:\/\/[^"\)]+)"?\)/);
-        if (!m || !m[1] || m[1].indexOf(location.origin) === 0) return;
-        var _bgUrl = m[1].split("#")[0]; if (!_bgUrl) return;
-        jobs.push({ el: el, url: _bgUrl, fullBg: bg });
-      });
-      if (jobs.length === 0) { cb(); return; }
-      console.log("[iframe-ss] Preloading " + jobs.length + " background images via proxy");
-      var done2 = 0;
-      jobs.forEach(function(j) {
-        fetch(_imgPx + "?url=" + encodeURIComponent(j.url)).then(function(r) {
-          if (!r.ok) throw new Error(r.status); return r.blob();
-        }).then(function(blob) {
-          return new Promise(function(res) { var fr = new FileReader(); fr.onload = function() { res(fr.result); }; fr.onerror = function() { res(null); }; fr.readAsDataURL(blob); });
-        }).then(function(d) {
-          if (d) j.el.style.backgroundImage = j.fullBg.replace(j.url, d);
-        }).catch(function() {}).finally(function() { done2++; if (done2 >= jobs.length) cb(); });
-      });
-    }
-    _preloadImages(function() { _preloadBgImages(function() { done(); }); });
-  }
-
-  // --- Serializable capture + mask CORE ---
-  // Returned by getCaptureFn(). Injected into the analysis iframe via .toString().
-  // MUST be self-contained — no references to outer module scope (the helpers
-  // _iframePreHook / _iframePreloadFn are passed in as SOURCE STRINGS via opts and
-  // rebuilt inside; the region fn is also passed as a source string via opts).
-  //
-  // scale, quality: numbers. prog: progress reporter fn. opts: {
-  //   msgType:     postMessage type string (used by failure-path postMessages)
-  //   cdnUrl:      modern-screenshot CDN script URL
-  //   proxyUrl:    CORS proxy URL for image preload (passed to preloadFn)
-  //   expand:      bool — do the carousel-expanded second screenshot (iframe: true)
-  //   preHookSrc:  source string of preHook(prog, done) — mode-specific PRE prep
-  //   preloadSrc:  source string of preloadFn(prog, proxyUrl, done) — image preload
-  //   regionFnSrc: source string of MilgRegion.getRegionFn() — region screenshots
-  //   sendFn:      OPTIONAL live function sendFn(payload, isFinal) — pluggable output
-  //                sink. Used when the core runs in the SAME realm as the caller
-  //                (snippet mode: getCaptureFn() is called directly, not serialized),
-  //                so the sink may close over caller locals (its `data` object etc.).
-  //   sendFnSrc:   OPTIONAL source string of sendFn(payload, isFinal) — same contract,
-  //                for callers that serialize the whole core (none today). If neither
-  //                sendFn nor sendFnSrc is given the default is parent.postMessage —
-  //                i.e. the original iframe behavior.
-  //                `payload` always carries `.type` (msgType) so a postMessage sink
-  //                is a pass-through; `isFinal` marks the terminal full-result message.
-  // }
-  function _captureFn(scale, quality, prog, opts) {
-    return function(callback) {
-      var _sc = scale;
-      var _q = quality;
-      var _prog = prog;
-      var _msgType = opts.msgType;
-      var _cdn = opts.cdnUrl;
-      var _proxyUrl = opts.proxyUrl || "";
-      var _expand = !!opts.expand;
-      var _mid = window.__milgIframeId || "";
-      var vh = window.innerHeight || 900;
-      var fullH = 0;
-
-      // Rebuild mode-specific hooks from source strings (serialization-safe).
-      var _preHook = (0, eval)("(" + opts.preHookSrc + ")");
-      var _preloadFn = (0, eval)("(" + opts.preloadSrc + ")");
-      var _regionFn = (0, eval)("(" + opts.regionFnSrc + ")");
-
-      // Pluggable output sink. Default = original iframe behavior (postMessage to
-      // parent). The snippet supplies opts.sendFnSrc to route results into its
-      // `data` object + finalize, since it has no parent window to message.
-      var _sendFn = (typeof opts.sendFn === "function")
-        ? opts.sendFn
-        : opts.sendFnSrc
-        ? (0, eval)("(" + opts.sendFnSrc + ")")
-        : function(payload, isFinal) {
-            // Default sink = postMessage to parent (iframe/URL mode). For the final
-            // full-result message, keep the 3-tier size-limit retry (drop updatedData,
-            // then drop screenshots) that the iframe path has always relied on.
-            try { parent.postMessage(payload, "*"); } catch (e) {
-              if (!isFinal) return;
-              console.warn("[milg-warn] postMessage failed (" + e.message + "), retrying without updatedData");
-              payload.updatedData = null;
-              try { parent.postMessage(payload, "*"); } catch (e2) {
-                console.warn("[milg-warn] Retry failed, dropping screenshots");
-                payload.screenshots = []; payload.screenshotFull = null;
-                try { parent.postMessage(payload, "*"); } catch (e3) {}
-              }
-            }
-          };
-
-      // PRE: mode-specific prep (height-unlock/pre-scroll/force-reveal/anim/overflow).
-      _preHook(_prog, function() {
-        fullH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-        console.log("[iframe-ss] scrollHeight=" + fullH + " vh=" + vh);
-        var s = document.createElement("script");
-        s.src = _cdn;
-        s.onload = function() {
-          var ms = window.modernScreenshot;
-          if (!ms || !ms.domToCanvas) { _sendFn({ type: _msgType, screenshots: [], _iframeId: _mid }, true); return; }
-
-          // Preload images via proxy → data URI, then capture
-          _preloadFn(_prog, _proxyUrl, function() {
-            // Phase A: Clean screenshot (page as-rendered, before overflow expansion)
-            _prog("Capturing clean screenshot...");
-            console.log("[iframe-ss] Capturing clean screenshot at " + _sc + "x...");
-            ms.domToCanvas(document.documentElement, { scale: _sc, timeout: 45000 }).then(function(_cleanCanvas) {
-              var _cleanUri; try { _cleanUri = _cleanCanvas.toDataURL("image/webp", _q); } catch (e) { _cleanUri = ""; }
-              var _cleanW = _cleanCanvas.width, _cleanH = _cleanCanvas.height;
-              console.log("[iframe-ss] Clean screenshot: " + _cleanW + "x" + _cleanH);
-
-              // Inject and run region screenshot function (serialized to avoid escaping issues).
-              var _cp2 = window.__milgData && window.__milgData.colors ? window.__milgData.colors.contrastPairs || [] : [];
-              var _buildRegionScreenshots = _regionFn(_sc, _q, _prog, _cp2);
-              _buildRegionScreenshots(function(_regionResults) {
-                window.__milgRegionScreenshots = _regionResults;
-
-                // Save clean-screenshot bbox coordinates before Phase B expansion.
-                var _savedBboxes = [];
-                if (window.__milgBboxRefs) {
-                  window.__milgBboxRefs.forEach(function(ref) {
-                    if (ref.obj && ref.obj[ref.key]) {
-                      var b = ref.obj[ref.key];
-                      _savedBboxes.push({ obj: ref.obj, key: ref.key, left: b.left, top: b.top, width: b.width, height: b.height, _rcid: b._rcid });
-                    }
-                  });
-                }
-
-                // Phase B: Expand overflow:hidden containers with transformed descendants (carousels/sliders)
-                var _expanded = 0;
-                if (_expand) {
-                  document.querySelectorAll("*").forEach(function(container) {
-                    var cs = getComputedStyle(container);
-                    var ov = cs.overflow || "", ovx = cs.overflowX || "", ovy = cs.overflowY || "";
-                    var isClipping = ov === "hidden" || ov === "clip" || ovx === "hidden" || ovx === "clip" || ovy === "hidden" || ovy === "clip";
-                    if (!isClipping) return;
-                    var cr = container.getBoundingClientRect();
-                    if (cr.width < 100 || cr.height < 30) return;
-                    var transEls = [];
-                    container.querySelectorAll("*").forEach(function(desc) {
-                      var ct = getComputedStyle(desc).transform;
-                      if (!ct || ct === "none") return;
-                      var _m = ct.match(/matrix\(([^)]+)\)/);
-                      if (!_m) return;
-                      var _p = _m[1].split(",");
-                      var _tx = Math.abs(parseFloat(_p[4]) || 0);
-                      var _ty = Math.abs(parseFloat(_p[5]) || 0);
-                      if (_tx > 5 || _ty > 5) transEls.push(desc);
-                    });
-                    if (transEls.length === 0) return;
-                    container.style.cssText += ";overflow:visible !important;";
-                    transEls.forEach(function(el) { el.style.cssText += ";transform:none !important;"; });
-                    _expanded++;
-                  });
-                  if (_expanded > 0) console.log("[iframe-ss] Expanded " + _expanded + " overflow:hidden containers with transformed descendants");
-                  void document.body.offsetHeight;
-                  // Re-read bboxes after expansion so they match the expanded layout
-                  if (_expanded > 0 && typeof window.__milgReReadBboxes === "function") {
-                    var _res2 = window.__milgReReadBboxes();
-                    console.log("[iframe-ss] Re-read bboxes after expansion: " + _res2);
-                  }
-                  // Recalculate doc height after expansion (may have grown)
-                  fullH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-                }
-
-                // Phase C: Expanded screenshot (all carousel content visible, bboxes aligned)
-                _prog("Capturing expanded screenshot...");
-                console.log("[iframe-ss] Capturing expanded screenshot at " + _sc + "x...");
-                ms.domToCanvas(document.documentElement, { scale: _sc, timeout: 45000 }).then(function(fc) {
-                  console.log("[iframe-ss] Expanded screenshot: " + fc.width + "x" + fc.height);
-                  var fullUri; try { fullUri = fc.toDataURL("image/webp", _q); } catch (e) { console.warn("[milg-warn] WebP conversion failed:", e.message); fullUri = ""; }
-                  var _cw = fc.width, _ch = fc.height;
-                  // Restore clean-screenshot bbox coordinates so updatedData matches the displayed image
-                  _savedBboxes.forEach(function(s2) { var nb = { left: s2.left, top: s2.top, width: s2.width, height: s2.height }; if (s2._rcid) nb._rcid = s2._rcid; s2.obj[s2.key] = nb; });
-
-                  var _maskResults = {}; // Defined HERE so _sendFinal can access it (same scope)
-                  function _sendFinal() {
-                    var _raw = window.__milgData || null;
-                    // Build a lean updatedData with ONLY re-read bboxes (not full extraction + screenshots).
-                    var updatedData = null;
-                    if (_raw) {
-                      updatedData = {
-                        colors: { contrastPairs: _raw.colors ? _raw.colors.contrastPairs : [] },
-                        typography: { fontSizes: _raw.typography ? _raw.typography.fontSizes : [], headings: _raw.typography ? _raw.typography.headings : [], maxLineLength: _raw.typography ? _raw.typography.maxLineLength : null },
-                        interaction: { touchTargets: _raw.interaction ? _raw.interaction.touchTargets : [] },
-                        layout: { offscreenElements: _raw.layout ? _raw.layout.offscreenElements : [], hiddenPanelIssues: _raw.layout ? _raw.layout.hiddenPanelIssues : [], alignmentElements: _raw.layout ? _raw.layout.alignmentElements : [], borderRadii: _raw.layout ? _raw.layout.borderRadii : [] }
-                      };
-                    }
-                    // Explicitly copy mask results onto updatedData pairs (don't rely on object identity)
-                    if (updatedData && updatedData.colors && updatedData.colors.contrastPairs && typeof _maskResults !== "undefined") {
-                      Object.keys(_maskResults).forEach(function(idx) {
-                        var i = parseInt(idx, 10); var mr = _maskResults[idx];
-                        if (updatedData.colors.contrastPairs[i] && mr) {
-                          updatedData.colors.contrastPairs[i]._maskBmp = mr.bmp;
-                          updatedData.colors.contrastPairs[i]._maskPacked = !!mr.packed;
-                          updatedData.colors.contrastPairs[i]._maskW = mr.w;
-                          updatedData.colors.contrastPairs[i]._maskH = mr.h;
-                          updatedData.colors.contrastPairs[i]._maskLayer = mr.layer;
-                          updatedData.colors.contrastPairs[i]._maskDark = mr.dark;
-                        }
-                      });
-                    }
-                    var msg = {
-                      type: _msgType, _iframeId: _mid,
-                      screenshots: fullUri ? [fullUri] : [],
-                      screenshotFull: fullUri || null,
-                      screenshotClean: _cleanUri || null,
-                      textMask: null, // legacy combined-mask field; per-pair _maskBmp is the live mask source
-                      screenshotMeta: {
-                        scale: _sc, viewportHeight: vh, sectionCount: 1,
-                        canvasWidth: _cw, canvasHeight: _ch,
-                        docHeightAtCapture: fullH,
-                        calibrationOffsetY: 0, calibrationSamples: []
-                      },
-                      screenshotCleanMeta: { canvasWidth: _cleanW, canvasHeight: _cleanH },
-                      regionScreenshots: window.__milgRegionScreenshots || [],
-                      updatedData: updatedData
-                    };
-                    var _udPairs = updatedData && updatedData.colors ? updatedData.colors.contrastPairs || [] : [];
-                    var _maskCount = _udPairs.filter(function(p) { return !!p._maskBmp; }).length;
-                    var _rcidCount = _udPairs.filter(function(p) { return !!p._regionContainerId; }).length;
-                    var _clipCount = _udPairs.filter(function(p) { return !!p._isClipped; }).length;
-                    console.log("[D] iframe→parent pairs=" + _udPairs.length + " rcid=" + _rcidCount + " clipped=" + _clipCount + " masks=" + _maskCount);
-                    _sendFn(msg, true);
-                  }
-
-                  // Wait for fonts, then inline them as @font-face data URIs before mask capture.
-                  (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(function() {
-                    var _cssFontCount = 0; try { Array.from(document.styleSheets).forEach(function(ss2) { try { Array.from(ss2.cssRules).forEach(function(r) { if (r instanceof CSSFontFaceRule) _cssFontCount++; }); } catch (e) {} }); } catch (e) {}
-                    console.log("[iframe-ss] Font prep: " + document.fonts.size + " API fonts, " + _cssFontCount + " CSS @font-face rules");
-                    // Step 2: Layered text masks with transition kill
-                    _prog("Building text masks...");
-                    console.log("[iframe-ss] Step 2: Layered masks (fonts: " + document.fonts.size + " loaded)...");
-                    // Phase A: Kill ALL transitions on every element BEFORE any color changes
-                    document.querySelectorAll("*").forEach(function(el) { el.style.setProperty("transition-duration", "0s", "important"); el.style.setProperty("transition", "none", "important"); });
-                    void document.body.offsetHeight;
-                    // Phase A2: Neutralize absolute/fixed overlays that sit on top of text.
-                    var _neutralized = 0;
-                    document.querySelectorAll("*").forEach(function(el) {
-                      var cs = getComputedStyle(el);
-                      if (cs.position === "absolute" || cs.position === "fixed") {
-                        if (!el.textContent.trim()) {
-                          el.style.setProperty("display", "none", "important"); _neutralized++;
-                        } else if (cs.pointerEvents === "none") {
-                          el.style.setProperty("background", "transparent", "important");
-                          el.style.setProperty("background-image", "none", "important"); _neutralized++;
-                        }
-                      }
-                    });
-                    if (_neutralized) console.log("[iframe-ss] Neutralized " + _neutralized + " overlays");
-                    void document.body.offsetHeight;
-                    // Re-read bboxes AFTER neutralization — hiding overlays can shift layout
-                    if (_neutralized > 0 && typeof window.__milgReReadBboxes === "function") {
-                      var res2 = window.__milgReReadBboxes();
-                      console.log("[iframe-ss] Re-read bboxes post-neutralize: " + res2);
-                    }
-                    // Phase B: Global mask style — white bg, white text, hide media
-                    var _maskStyle = document.createElement("style");
-                    _maskStyle.setAttribute("data-milg-mask", "1");
-                    _maskStyle.textContent = "*,*::before,*::after{color:#fff !important;background-color:transparent !important;background-image:none !important;background:transparent !important;border-color:transparent !important;box-shadow:none !important;text-shadow:none !important;outline-color:transparent !important;-webkit-text-fill-color:#fff !important;opacity:1 !important;transition:none !important;animation:none !important;}html{background:#fff !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}";
-                    document.head.appendChild(_maskStyle); void document.body.offsetHeight;
-                    // Re-read bboxes AFTER mask style — white bg + hidden media can shift layout
-                    if (typeof window.__milgReReadBboxes === "function") {
-                      var res3 = window.__milgReReadBboxes();
-                      console.log("[iframe-ss] Re-read bboxes post-mask-style: " + res3);
-                    }
-                    // Phase C: Collect pair elements and build overlap layers
-                    var _refs = window.__milgBboxRefs || [];
-                    var _pairs = (window.__milgData && window.__milgData.colors && window.__milgData.colors.contrastPairs) || [];
-                    var _pairEls = [];
-                    _refs.forEach(function(ref) {
-                      if (!ref.el || !ref.obj || ref.obj.ratio === undefined) return;
-                      var idx = _pairs.indexOf(ref.obj);
-                      if (idx >= 0) _pairEls.push({ el: ref.el, pair: ref.obj, idx: idx, bbox: ref.obj.bbox });
-                    });
-                    function _overlaps(a, b) {
-                      if (!a.bbox || !b.bbox) return false;
-                      return a.bbox.left < b.bbox.left + b.bbox.width && a.bbox.left + a.bbox.width > b.bbox.left &&
-                        a.bbox.top < b.bbox.top + b.bbox.height && a.bbox.top + a.bbox.height > b.bbox.top;
-                    }
-                    var _layers = []; var _remaining = _pairEls.slice();
-                    while (_remaining.length > 0) {
-                      var layer0 = []; var next = [];
-                      _remaining.forEach(function(pe) {
-                        if (layer0.some(function(l) { return _overlaps(pe, l); })) { next.push(pe); } else { layer0.push(pe); }
-                      });
-                      _layers.push(layer0); _remaining = next;
-                    }
-                    console.log("[iframe-ss] " + _pairEls.length + " elements in " + _layers.length + " layers");
-                    // Phase C2: Bake text-transform into actual text content.
-                    var _ttFixed = 0;
-                    document.querySelectorAll("*").forEach(function(el) {
-                      var tt = getComputedStyle(el).textTransform;
-                      if (tt === "uppercase" || tt === "lowercase" || tt === "capitalize") {
-                        var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
-                        var tn; while (tn = walker.nextNode()) {
-                          var orig = tn.textContent; if (!orig.trim()) continue;
-                          if (tt === "uppercase") tn.textContent = orig.toUpperCase();
-                          else if (tt === "lowercase") tn.textContent = orig.toLowerCase();
-                          else if (tt === "capitalize") tn.textContent = orig.replace(/\b\w/g, function(c) { return c.toUpperCase(); });
-                          _ttFixed++;
-                        }
-                      }
-                    });
-                    if (_ttFixed) console.log("[iframe-ss] Baked text-transform for " + _ttFixed + " text nodes");
-                    // Phase D: Capture one mask per layer — set layer elements to black via inline style
-                    var _li = 0;
-                    function _nextLayer() {
-                      if (_li >= _layers.length) { console.log("[iframe-ss] All " + _layers.length + " mask layers done"); _sendFinal(); return; }
-                      var layer = _layers[_li]; _li++;
-                      _prog("Text mask layer " + _li + "/" + _layers.length + "...");
-                      console.log("[iframe-ss] Layer " + _li + ": " + layer.length + " elements");
-                      layer.forEach(function(pe) {
-                        pe.el.style.setProperty("color", "#000", "important");
-                        pe.el.style.setProperty("-webkit-text-fill-color", "#000", "important");
-                        pe.el.querySelectorAll("*").forEach(function(ch) {
-                          ch.style.setProperty("color", "#000", "important");
-                          ch.style.setProperty("-webkit-text-fill-color", "#000", "important");
-                        });
-                      });
-                      void document.body.offsetHeight;
-                      console.log("[iframe-ss] Layer " + _li + ": starting domToCanvas...");
-                      var _layerDone = false;
-                      var _layerTimer = setTimeout(function() { if (!_layerDone) { _layerDone = true; console.warn("[iframe-ss] Layer " + _li + " domToCanvas timed out (120s)"); setTimeout(_nextLayer, 0); } }, 120000);
-                      ms.domToCanvas(document.documentElement, { scale: _sc, timeout: 12000 }).then(function(mc) {
-                        if (_layerDone) return; _layerDone = true; clearTimeout(_layerTimer);
-                        console.log("[iframe-ss] Layer " + _li + " captured: " + mc.width + "x" + mc.height);
-                        var mCtx = mc.getContext("2d", { willReadFrequently: true });
-                        var _fillTextFallbacks = 0;
-                        layer.forEach(function(pe) {
-                          if (!pe.bbox) return;
-                          var bx = Math.max(0, Math.round(pe.bbox.left * _sc));
-                          var by = Math.max(0, Math.round(pe.bbox.top * _sc));
-                          var bw = Math.min(Math.round(pe.bbox.width * _sc), mc.width - bx);
-                          var bh = Math.min(Math.round(pe.bbox.height * _sc), mc.height - by);
-                          if (bw < 2 || bh < 2) return;
-                          try {
-                            var px = mCtx.getImageData(bx, by, bw, bh).data;
-                            var bmp = new Uint8Array(bw * bh);
-                            for (var y = 0; y < bh; y++) { for (var x = 0; x < bw; x++) {
-                              var i = (y * bw + x) * 4;
-                              if ((px[i] + px[i + 1] + px[i + 2]) / 3 < 240) bmp[y * bw + x] = 1;
-                            } }
-                            var _dk = 0; for (var _b = 0; _b < bmp.length; _b++) if (bmp[_b]) _dk++;
-                            // Fallback: if domToCanvas failed to render text, use canvas.fillText
-                            if (_dk === 0 && bw > 3 && pe.pair.text) {
-                              try {
-                                var cs = getComputedStyle(pe.el);
-                                var _fc = document.createElement("canvas"); _fc.width = bw; _fc.height = bh;
-                                var _fx = _fc.getContext("2d"); _fx.fillStyle = "#fff"; _fx.fillRect(0, 0, bw, bh);
-                                var _fs = parseFloat(cs.fontSize) * _sc;
-                                _fx.fillStyle = "#000";
-                                _fx.font = cs.fontStyle + " " + cs.fontWeight + " " + _fs + "px " + cs.fontFamily;
-                                _fx.textBaseline = "top";
-                                var _pl = (parseFloat(cs.paddingLeft) || 0) * _sc;
-                                var _pt = (parseFloat(cs.paddingTop) || 0) * _sc;
-                                var _pr = (parseFloat(cs.paddingRight) || 0) * _sc;
-                                var _ta = cs.textAlign;
-                                var _txt = pe.pair.text.replace(/\[placeholder\] /, "");
-                                var _lh = parseFloat(cs.lineHeight) * _sc || _fs * 1.2;
-                                var _contentW = bw - _pl - _pr;
-                                var _words = _txt.split(/\s+/); var _lines = []; var _line = "";
-                                for (var _w = 0; _w < _words.length; _w++) {
-                                  var _test = _line ? _line + " " + _words[_w] : _words[_w];
-                                  if (_fx.measureText(_test).width > _contentW && _line) { _lines.push(_line); _line = _words[_w]; }
-                                  else { _line = _test; }
-                                } _lines.push(_line);
-                                var _totalH = _lines.length * _lh;
-                                var _tyStart = _pt;
-                                var _par = pe.el.parentElement; var _pcs = _par ? getComputedStyle(_par) : null;
-                                if (_pcs) {
-                                  if (_pcs.display.indexOf("flex") >= 0 && _pcs.alignItems === "center") { _tyStart = Math.max(0, (bh - _totalH) / 2); }
-                                  else if (bh > _totalH + _pt * 2) { _tyStart = _pt; }
-                                }
-                                for (var _li2 = 0; _li2 < _lines.length; _li2++) {
-                                  var _lw = _fx.measureText(_lines[_li2]).width;
-                                  var _tx = _pl;
-                                  if (_ta === "center") _tx = (_contentW - _lw) / 2 + _pl;
-                                  else if (_ta === "right" || _ta === "end") _tx = _contentW - _lw + _pl;
-                                  _fx.fillText(_lines[_li2], _tx, _tyStart + _li2 * _lh);
-                                }
-                                var _fpx = _fx.getImageData(0, 0, bw, bh).data;
-                                bmp = new Uint8Array(bw * bh);
-                                for (var _fy = 0; _fy < bh; _fy++) { for (var _fxx = 0; _fxx < bw; _fxx++) {
-                                  var _fi = (_fy * bw + _fxx) * 4; if ((_fpx[_fi] + _fpx[_fi + 1] + _fpx[_fi + 2]) / 3 < 240) bmp[_fy * bw + _fxx] = 1;
-                                } }
-                                _dk = 0; for (var _fb = 0; _fb < bmp.length; _fb++) if (bmp[_fb]) _dk++;
-                                _fillTextFallbacks++;
-                              } catch (e) {}
-                            }
-                            // Bit-pack bitmap: 8 pixels per byte, then base64 encode (~8x smaller for postMessage)
-                            var _byteLen = Math.ceil(bmp.length / 8); var _packed = new Uint8Array(_byteLen);
-                            for (var _bi = 0; _bi < bmp.length; _bi++) { if (bmp[_bi]) _packed[_bi >> 3] |= (1 << (_bi & 7)); }
-                            var _binStr = ""; for (var _bi2 = 0; _bi2 < _packed.length; _bi2++) _binStr += String.fromCharCode(_packed[_bi2]);
-                            var _b64 = btoa(_binStr);
-                            pe.pair._maskBmp = _b64; pe.pair._maskPacked = true; pe.pair._maskW = bw; pe.pair._maskH = bh; pe.pair._maskLayer = _li; pe.pair._maskDark = _dk;
-                            _maskResults[pe.idx] = { bmp: _b64, packed: true, w: bw, h: bh, layer: _li, dark: _dk };
-                          } catch (e) {}
-                        });
-                        if (_fillTextFallbacks > 0) console.log("[iframe-ss] Layer " + _li + ": " + _fillTextFallbacks + " elements used fillText fallback mask");
-                        // Reset layer elements to transparent (mask global style takes over)
-                        layer.forEach(function(pe) {
-                          pe.el.style.removeProperty("color");
-                          pe.el.style.removeProperty("-webkit-text-fill-color");
-                          pe.el.querySelectorAll("*").forEach(function(ch) {
-                            ch.style.removeProperty("color");
-                            ch.style.removeProperty("-webkit-text-fill-color");
-                          });
-                        });
-                        setTimeout(_nextLayer, 0);
-                      }).catch(function(e) { if (_layerDone) return; _layerDone = true; clearTimeout(_layerTimer); console.warn("[iframe-ss] Layer " + _li + " failed:", e); setTimeout(_nextLayer, 0); });
-                    }
-                    var _maskDone = false;
-                    var _origSendFinal = _sendFinal;
-                    var _maskTimer = setTimeout(function() { if (!_maskDone) { _maskDone = true; console.warn("[iframe-ss] Masks timed out (360s)"); _origSendFinal(); } }, 360000);
-                    _sendFinal = function() { if (_maskDone) return; _maskDone = true; clearTimeout(_maskTimer); console.log("[iframe-ss] Sending results (maskResults: " + Object.keys(_maskResults).length + " pairs)"); _origSendFinal(); };
-                    _nextLayer();
-                  }); // end document.fonts.ready.then
-                }).catch(function(e) { console.warn("[iframe-ss] expanded capture failed:", e); _sendFn({ type: _msgType, screenshots: [], _iframeId: _mid }, true); });
-              }); // close _buildRegionScreenshots callback
-            }).catch(function(e) { console.warn("[iframe-ss] clean capture failed:", e); _sendFn({ type: _msgType, screenshots: [], _iframeId: _mid }, true); });
-          }); // close _preloadFn callback
-        };
-        s.onerror = function() { _sendFn({ type: _msgType, screenshots: [], _iframeId: _mid }, true); };
-        document.head.appendChild(s);
-      });
-    };
-  }
-
-  return {
-    // Serializable hook sources for iframe/URL mode — pass their .toString() into
-    // getCaptureFn()'s opts.preHookSrc / opts.preloadSrc.
-    getIframePreHook: function() { return _iframePreHook; },
-    getIframePreloadFn: function() { return _iframePreloadFn; },
-    // The serializable capture+mask core — use: MilgCapture.getCaptureFn().toString()
-    getCaptureFn: function() { return _captureFn; }
-  };
-})();
 </file>
 
 <file path="docs/analyzer-report.js">
