@@ -140,3 +140,53 @@ test('LLM pack multi (viewport): dedup, affects N/M, per-unit docs', async ({ pa
     expect(m.firstCatDoc).toMatch(/Desktop/);
   }
 });
+
+// A console-snippet CRAWL produces a {_milgCrawl:true, results:[...]} JSON. Importing
+// it populates the crawl session, so the LLM-pack button must yield a multi-PAGE pack.
+test('LLM pack: crawl import (snippet crawl shape) → multi-page -site pack', async ({ page }) => {
+  test.setTimeout(120000);
+  // 1. Get a real extraction `data` object from a normal analysis.
+  await page.goto(ANALYZER_URL);
+  await page.check('#screenshotCheck');
+  await page.click('[data-tab="tabUrl"]');
+  await page.fill('#urlInput', FIXTURE_URL);
+  await page.click('#analyzeUrlBtn');
+  await page.waitForSelector('.report-container.visible', { timeout: 90000 });
+  await page.waitForTimeout(2000);
+  const rawJson = await page.evaluate(() => JSON.stringify(window.__milgLastReport.raw));
+  const raw = JSON.parse(rawJson);
+
+  // 2. Build a snippet-crawl-shaped JSON with two pages.
+  const a = JSON.parse(JSON.stringify(raw)); a.meta = Object.assign({}, a.meta, { url: 'https://example.com/' });
+  const b = JSON.parse(JSON.stringify(raw)); b.meta = Object.assign({}, b.meta, { url: 'https://example.com/about' });
+  const crawl = { _milgCrawl: true, startUrl: 'https://example.com/', results: [
+    { url: 'https://example.com/', data: a }, { url: 'https://example.com/about', data: b } ] };
+  const tmp = require('path').join(require('os').tmpdir(), 'milg-crawl-llmpack.json');
+  require('fs').writeFileSync(tmp, JSON.stringify(crawl));
+
+  // 3. Import it → crawl session populated.
+  await page.goto(ANALYZER_URL);
+  await page.setInputFiles('#importJsonFile', tmp);
+  await page.waitForFunction(() => !!(window.MilgCrawlUI && MilgCrawlUI.getCrawlSession && MilgCrawlUI.getCrawlSession()), { timeout: 30000 });
+  const sess = await page.evaluate(() => { const s = MilgCrawlUI.getCrawlSession(); return { pages: s.pages.length, hasSummary: !!s.summary }; });
+  console.log('CRAWL_SESSION', JSON.stringify(sess));
+  expect(sess.pages).toBe(2);
+
+  // 4. Click the LLM-pack button → expect a multi-page -site pack.
+  const dl = page.waitForEvent('download', { timeout: 30000 });
+  await page.evaluate(() => document.getElementById('llmPackBtn').click());
+  const download = await dl;
+  console.log('CRAWL_PACK_FILE', download.suggestedFilename());
+  expect(download.suggestedFilename()).toMatch(/^milg-llm-pack-.*-site\.zip$/);
+  const savePath = await download.path();
+  let listing = '';
+  try { listing = require('child_process').execSync(`unzip -l "${savePath}"`, { encoding: 'utf8' }); } catch (e) {}
+  if (listing) {
+    console.log('CRAWL_ZIP', listing);
+    expect(listing).toMatch(/findings\/00-index\.md/);
+    expect(listing).toMatch(/units\//);                 // per-page docs exist
+    // Two page units → two unit docs.
+    const unitDocs = (listing.match(/units\/[^\s]+\.md/g) || []);
+    expect(unitDocs.length).toBe(2);
+  }
+});
