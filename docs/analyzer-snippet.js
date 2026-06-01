@@ -97,6 +97,7 @@
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(json).then(function() {
         console.log('%c\u2713 Design data copied to clipboard (' + sizeMB + ' MB)! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+        console.log('%c\u2139 Captured at this window\u2019s width only \u2014 for multi-viewport (deep scan) findings, analyze the URL in the analyzer instead.', 'color: #6b7280; font-size: 12px;');
       }).catch(copyFallback);
     } else {
       copyFallback();
@@ -219,6 +220,7 @@
                 ? '<button id="milg-crawl-dl-btn" style="' + _priStyle + '">Download JSON</button><br><button id="milg-crawl-copy-btn" style="' + _secStyle + '">Copy to Clipboard</button>'
                 : '<button id="milg-crawl-copy-btn" style="' + _priStyle + '">Copy to Clipboard</button><br><button id="milg-crawl-dl-btn" style="' + _secStyle + '">Download JSON</button>') +
               '<div style="color:rgba(255,255,255,0.5);font-size:11px;margin-top:8px">Then ' + (_cLarge ? 'import' : 'paste') + ' into the analyzer</div>' +
+              '<div style="color:rgba(255,255,255,0.35);font-size:10px;margin-top:8px;line-height:1.45;max-width:380px">Each page captured at one viewport. For multi-viewport (deep scan) per page, run the crawl from the analyzer’s URL mode.</div>' +
               '</div>';
             function _crawlDone() { setTimeout(function() { _removeCrawlOverlay(); }, 1500); }
             document.getElementById('milg-crawl-copy-btn').addEventListener('click', function() {

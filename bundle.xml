@@ -188,6 +188,7 @@ tests/
   llm-pack-export.spec.js
   README.md
   region-debug.spec.js
+  snippet-deepscan-hint.spec.js
   test-case-1-review.md
   test-case-2-review.md
   test-case-3-review.md
@@ -25556,6 +25557,29 @@ All HTML outputs are loadable as presets in the [preview tool](../docs/index.htm
 - The review notes reference knowledge files that actually have content
 </file>
 
+<file path="tests/snippet-deepscan-hint.spec.js">
+// @ts-check
+// Guards that the console-snippet overlay surfaces the "deep scan needs URL mode" hint.
+// The snippet is assembled by loadSnippet() from the shell files; the hint lives in the
+// shell source, so the rendered #snippetCode must contain it for both screenshot modes.
+const { test, expect } = require('@playwright/test');
+const ANALYZER_URL = 'http://localhost:8384/analyzer.html';
+const HINT = /multi-viewport \(deep scan\)/i;
+
+test('snippet code surfaces the multi-viewport / deep-scan hint', async ({ page }) => {
+  test.setTimeout(60000);
+  await page.goto(ANALYZER_URL);
+  await page.click('[data-tab="tabSnippet"]');
+  // Wait for the snippet to assemble (loadSnippet fetches the shell + parts).
+  await page.waitForFunction(() => {
+    const el = document.getElementById('snippetCode');
+    return el && el.textContent && el.textContent.length > 2000 && !/^Loading/.test(el.textContent);
+  }, { timeout: 30000 });
+  const code = await page.evaluate(() => document.getElementById('snippetCode').textContent);
+  expect(code).toMatch(HINT);
+});
+</file>
+
 <file path="tests/test-case-1-review.md">
 # Design Review Notes
 
@@ -31975,6 +31999,7 @@ run();
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(json).then(function() {
         console.log('%c\u2713 Design data copied to clipboard (' + sizeMB + ' MB)! Paste into the analyzer.', 'color: #16a34a; font-weight: bold; font-size: 14px;');
+        console.log('%c\u2139 Captured at this window\u2019s width only \u2014 for multi-viewport (deep scan) findings, analyze the URL in the analyzer instead.', 'color: #6b7280; font-size: 12px;');
       }).catch(copyFallback);
     } else {
       copyFallback();
@@ -32097,6 +32122,7 @@ run();
                 ? '<button id="milg-crawl-dl-btn" style="' + _priStyle + '">Download JSON</button><br><button id="milg-crawl-copy-btn" style="' + _secStyle + '">Copy to Clipboard</button>'
                 : '<button id="milg-crawl-copy-btn" style="' + _priStyle + '">Copy to Clipboard</button><br><button id="milg-crawl-dl-btn" style="' + _secStyle + '">Download JSON</button>') +
               '<div style="color:rgba(255,255,255,0.5);font-size:11px;margin-top:8px">Then ' + (_cLarge ? 'import' : 'paste') + ' into the analyzer</div>' +
+              '<div style="color:rgba(255,255,255,0.35);font-size:10px;margin-top:8px;line-height:1.45;max-width:380px">Each page captured at one viewport. For multi-viewport (deep scan) per page, run the crawl from the analyzer’s URL mode.</div>' +
               '</div>';
             function _crawlDone() { setTimeout(function() { _removeCrawlOverlay(); }, 1500); }
             document.getElementById('milg-crawl-copy-btn').addEventListener('click', function() {
@@ -32231,201 +32257,6 @@ run();
     window.MilgExtract();
   }
 })();
-</file>
-
-<file path="tests/llm-pack-export.spec.js">
-// @ts-check
-// Regression guard for the "LLM pack (.zip)" export (v3.11.21).
-// Asserts (a) MilgReport.buildLlmPack produces the expected document set with real
-// content, and (b) clicking the button loads JSZip and downloads a valid .zip.
-const { test, expect } = require('@playwright/test');
-const fs = require('fs');
-const { execSync } = require('child_process');
-
-const BASE_URL = 'http://localhost:8384';
-const ANALYZER_URL = `${BASE_URL}/analyzer.html`;
-const FIXTURE_URL = `${BASE_URL}/tests/fixtures/parity-page.html`;
-
-test('LLM pack: builder manifest + real button download', async ({ page }) => {
-  test.setTimeout(120000);
-  await page.goto(ANALYZER_URL);
-  await page.check('#screenshotCheck');
-  await page.click('[data-tab="tabUrl"]');
-  await page.fill('#urlInput', FIXTURE_URL);
-  await page.click('#analyzeUrlBtn');
-  await page.waitForSelector('.report-container.visible', { timeout: 90000 });
-  await page.waitForTimeout(2000);
-
-  // (a) Builder manifest shape + content.
-  const pack = await page.evaluate(() => {
-    const r = window.__milgLastReport;
-    const p = MilgReport.buildLlmPack(r, { severityFilter: 'all' });
-    const byPath = {};
-    p.files.forEach((f) => { byPath[f.path] = f.text; });
-    return {
-      folder: p.folder,
-      paths: p.files.map((f) => f.path),
-      assets: p.assets.map((a) => ({ path: a.path, len: (a.b64 || '').length })),
-      readmeHasScore: /Overall score:/.test(byPath['README.md'] || ''),
-      agentHasObjective: /## Objective/.test(byPath['AGENT_PROMPT.md'] || ''),
-      guidelinesHasTokens: /## 1\. Design tokens to honor/.test(byPath['GUIDELINES.md'] || ''),
-      guidelinesHasContrast: /4\.5:1/.test(byPath['GUIDELINES.md'] || ''),
-      indexHasTable: /\| # \| Category \|/.test(byPath['findings/00-index.md'] || ''),
-      thirdPartyHasJSZip: /JSZip/.test(byPath['THIRD_PARTY.md'] || ''),
-      categoryDocs: p.files.filter((f) => /^findings\/\d\d-/.test(f.path) && f.path !== 'findings/00-index.md').length,
-      // A category doc that has a selector-bearing finding should surface a `Selector(s):` block.
-      anyDocHasSelector: p.files.some((f) => /^findings\/\d\d-/.test(f.path) && /\*\*Selector\(s\):\*\*/.test(f.text)),
-    };
-  });
-  console.log('PACK', JSON.stringify(pack, null, 2));
-
-  expect(pack.folder).toMatch(/^milg-llm-pack-/);
-  expect(pack.paths).toContain('README.md');
-  expect(pack.paths).toContain('AGENT_PROMPT.md');
-  expect(pack.paths).toContain('GUIDELINES.md');
-  expect(pack.paths).toContain('findings/00-index.md');
-  expect(pack.paths).toContain('THIRD_PARTY.md');
-  expect(pack.categoryDocs).toBeGreaterThan(0);
-  expect(pack.readmeHasScore).toBe(true);
-  expect(pack.agentHasObjective).toBe(true);
-  expect(pack.guidelinesHasTokens).toBe(true);
-  expect(pack.guidelinesHasContrast).toBe(true);
-  expect(pack.indexHasTable).toBe(true);
-  expect(pack.thirdPartyHasJSZip).toBe(true);
-  expect(pack.assets.length, 'clean screenshot asset included').toBeGreaterThan(0);
-  expect(pack.assets[0].path).toMatch(/^assets\/clean-screenshot\./);
-  expect(pack.anyDocHasSelector, 'at least one finding surfaces selectors').toBe(true);
-
-  // (b) Real button click → JSZip load → .zip download.
-  const downloadPromise = page.waitForEvent('download', { timeout: 30000 });
-  await page.click('#llmPackBtn');
-  const download = await downloadPromise;
-  expect(download.suggestedFilename()).toMatch(/^milg-llm-pack-.*\.zip$/);
-  const savePath = await download.path();
-  expect(savePath).toBeTruthy();
-  const buf = fs.readFileSync(savePath);
-  // ZIP magic bytes "PK\x03\x04".
-  expect(buf.length).toBeGreaterThan(200);
-  expect(buf[0]).toBe(0x50); expect(buf[1]).toBe(0x4b);
-
-  // List entries with the system unzip (present in CI/dev images) to confirm structure.
-  let listing = '';
-  try { listing = execSync(`unzip -l "${savePath}"`, { encoding: 'utf8' }); } catch (e) { listing = ''; }
-  if (listing) {
-    console.log('ZIP_LISTING', listing);
-    expect(listing).toMatch(/README\.md/);
-    expect(listing).toMatch(/AGENT_PROMPT\.md/);
-    expect(listing).toMatch(/GUIDELINES\.md/);
-    expect(listing).toMatch(/findings\/00-index\.md/);
-    expect(listing).toMatch(/assets\/clean-screenshot\./);
-    expect(listing).toMatch(/THIRD_PARTY\.md/);
-  }
-});
-
-test('LLM pack multi (viewport): dedup, affects N/M, per-unit docs', async ({ page }) => {
-  test.setTimeout(120000);
-  await page.goto(ANALYZER_URL);
-  await page.check('#screenshotCheck');
-  await page.click('[data-tab="tabUrl"]');
-  await page.fill('#urlInput', FIXTURE_URL);
-  await page.click('#analyzeUrlBtn');
-  await page.waitForSelector('.report-container.visible', { timeout: 90000 });
-  await page.waitForTimeout(2000);
-
-  // Build a 2-viewport pack: unit A (Desktop) = full report; unit B (Phone) = same
-  // report with the FIRST category's findings removed → those findings become
-  // "Desktop only" (1/2), the rest "all 2 viewports" (2/2).
-  const m = await page.evaluate(() => {
-    const r = window.__milgLastReport;
-    const clone = () => ({ overall: r.overall, grade: r.grade, gradeLabel: r.gradeLabel, meta: r.meta, raw: r.raw,
-      categories: r.categories.map((c) => ({ label: c.label, weight: c.weight, score: c.score, findings: c.findings.slice() })) });
-    const a = clone();                 // Desktop — full
-    const b = clone(); b.categories[0].findings = []; // Phone — first category cleared
-    const firstCat = r.categories[0].label;
-    const p = MilgReport.buildLlmPackMulti({
-      mode: 'viewport',
-      units: [{ id: 'v0', label: 'Desktop (1280px)', report: a }, { id: 'v1', label: 'Phone (375px)', report: b }],
-      primaryReport: r, host: 'example', aggregateScore: r.overall, dims: { viewports: 2 }, severityFilter: 'all',
-    });
-    const byPath = {}; p.files.forEach((f) => { byPath[f.path] = f.text; });
-    return {
-      folder: p.folder,
-      paths: p.files.map((f) => f.path),
-      unitDocs: p.files.filter((f) => /^units\//.test(f.path)).map((f) => f.path),
-      readme: byPath['README.md'],
-      agent: byPath['AGENT_PROMPT.md'],
-      index: byPath['findings/00-index.md'],
-      firstCat,
-      firstCatDoc: byPath['findings/01-' + (r.categories[0].label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''))  + '.md'],
-    };
-  });
-  console.log('MULTI_PATHS', JSON.stringify(m.paths, null, 2));
-  console.log('MULTI_INDEX', m.index);
-
-  expect(m.folder).toMatch(/-viewports$/);
-  expect(m.unitDocs.length).toBe(2);              // one per viewport
-  expect(m.readme).toMatch(/Checked across:\*\* 2 viewports/);
-  expect(m.agent).toMatch(/scored independently/);
-  expect(m.agent).toMatch(/Viewport-specific/);   // mode-specific solve strategy present
-  // Affects column shows both the universal (2/2) and the desktop-only (1/2) issues.
-  expect(m.index).toMatch(/\| 2\/2 \|/);
-  expect(m.index).toMatch(/\| 1\/2 \|/);
-  // The first category's issues are Desktop-only → badge "1/2 ... Desktop".
-  if (m.firstCatDoc) {
-    expect(m.firstCatDoc).toMatch(/\*\*Affects:\*\*/);
-    expect(m.firstCatDoc).toMatch(/Desktop/);
-  }
-});
-
-// A console-snippet CRAWL produces a {_milgCrawl:true, results:[...]} JSON. Importing
-// it populates the crawl session, so the LLM-pack button must yield a multi-PAGE pack.
-test('LLM pack: crawl import (snippet crawl shape) → multi-page -site pack', async ({ page }) => {
-  test.setTimeout(120000);
-  // 1. Get a real extraction `data` object from a normal analysis.
-  await page.goto(ANALYZER_URL);
-  await page.check('#screenshotCheck');
-  await page.click('[data-tab="tabUrl"]');
-  await page.fill('#urlInput', FIXTURE_URL);
-  await page.click('#analyzeUrlBtn');
-  await page.waitForSelector('.report-container.visible', { timeout: 90000 });
-  await page.waitForTimeout(2000);
-  const rawJson = await page.evaluate(() => JSON.stringify(window.__milgLastReport.raw));
-  const raw = JSON.parse(rawJson);
-
-  // 2. Build a snippet-crawl-shaped JSON with two pages.
-  const a = JSON.parse(JSON.stringify(raw)); a.meta = Object.assign({}, a.meta, { url: 'https://example.com/' });
-  const b = JSON.parse(JSON.stringify(raw)); b.meta = Object.assign({}, b.meta, { url: 'https://example.com/about' });
-  const crawl = { _milgCrawl: true, startUrl: 'https://example.com/', results: [
-    { url: 'https://example.com/', data: a }, { url: 'https://example.com/about', data: b } ] };
-  const tmp = require('path').join(require('os').tmpdir(), 'milg-crawl-llmpack.json');
-  require('fs').writeFileSync(tmp, JSON.stringify(crawl));
-
-  // 3. Import it → crawl session populated.
-  await page.goto(ANALYZER_URL);
-  await page.setInputFiles('#importJsonFile', tmp);
-  await page.waitForFunction(() => !!(window.MilgCrawlUI && MilgCrawlUI.getCrawlSession && MilgCrawlUI.getCrawlSession()), { timeout: 30000 });
-  const sess = await page.evaluate(() => { const s = MilgCrawlUI.getCrawlSession(); return { pages: s.pages.length, hasSummary: !!s.summary }; });
-  console.log('CRAWL_SESSION', JSON.stringify(sess));
-  expect(sess.pages).toBe(2);
-
-  // 4. Click the LLM-pack button → expect a multi-page -site pack.
-  const dl = page.waitForEvent('download', { timeout: 30000 });
-  await page.evaluate(() => document.getElementById('llmPackBtn').click());
-  const download = await dl;
-  console.log('CRAWL_PACK_FILE', download.suggestedFilename());
-  expect(download.suggestedFilename()).toMatch(/^milg-llm-pack-.*-site\.zip$/);
-  const savePath = await download.path();
-  let listing = '';
-  try { listing = require('child_process').execSync(`unzip -l "${savePath}"`, { encoding: 'utf8' }); } catch (e) {}
-  if (listing) {
-    console.log('CRAWL_ZIP', listing);
-    expect(listing).toMatch(/findings\/00-index\.md/);
-    expect(listing).toMatch(/units\//);                 // per-page docs exist
-    // Two page units → two unit docs.
-    const unitDocs = (listing.match(/units\/[^\s]+\.md/g) || []);
-    expect(unitDocs.length).toBe(2);
-  }
-});
 </file>
 
 <file path="tests/region-debug.spec.js">
@@ -34762,6 +34593,201 @@ body.dark-ui .milg-viewer-overlap-item:hover { background: #334155; }
   .milg-viewer-tooltip { max-width: 280px; font-size: 11px; }
   .milg-viewer-overlap-picker { max-width: 300px; }
 }
+</file>
+
+<file path="tests/llm-pack-export.spec.js">
+// @ts-check
+// Regression guard for the "LLM pack (.zip)" export (v3.11.21).
+// Asserts (a) MilgReport.buildLlmPack produces the expected document set with real
+// content, and (b) clicking the button loads JSZip and downloads a valid .zip.
+const { test, expect } = require('@playwright/test');
+const fs = require('fs');
+const { execSync } = require('child_process');
+
+const BASE_URL = 'http://localhost:8384';
+const ANALYZER_URL = `${BASE_URL}/analyzer.html`;
+const FIXTURE_URL = `${BASE_URL}/tests/fixtures/parity-page.html`;
+
+test('LLM pack: builder manifest + real button download', async ({ page }) => {
+  test.setTimeout(120000);
+  await page.goto(ANALYZER_URL);
+  await page.check('#screenshotCheck');
+  await page.click('[data-tab="tabUrl"]');
+  await page.fill('#urlInput', FIXTURE_URL);
+  await page.click('#analyzeUrlBtn');
+  await page.waitForSelector('.report-container.visible', { timeout: 90000 });
+  await page.waitForTimeout(2000);
+
+  // (a) Builder manifest shape + content.
+  const pack = await page.evaluate(() => {
+    const r = window.__milgLastReport;
+    const p = MilgReport.buildLlmPack(r, { severityFilter: 'all' });
+    const byPath = {};
+    p.files.forEach((f) => { byPath[f.path] = f.text; });
+    return {
+      folder: p.folder,
+      paths: p.files.map((f) => f.path),
+      assets: p.assets.map((a) => ({ path: a.path, len: (a.b64 || '').length })),
+      readmeHasScore: /Overall score:/.test(byPath['README.md'] || ''),
+      agentHasObjective: /## Objective/.test(byPath['AGENT_PROMPT.md'] || ''),
+      guidelinesHasTokens: /## 1\. Design tokens to honor/.test(byPath['GUIDELINES.md'] || ''),
+      guidelinesHasContrast: /4\.5:1/.test(byPath['GUIDELINES.md'] || ''),
+      indexHasTable: /\| # \| Category \|/.test(byPath['findings/00-index.md'] || ''),
+      thirdPartyHasJSZip: /JSZip/.test(byPath['THIRD_PARTY.md'] || ''),
+      categoryDocs: p.files.filter((f) => /^findings\/\d\d-/.test(f.path) && f.path !== 'findings/00-index.md').length,
+      // A category doc that has a selector-bearing finding should surface a `Selector(s):` block.
+      anyDocHasSelector: p.files.some((f) => /^findings\/\d\d-/.test(f.path) && /\*\*Selector\(s\):\*\*/.test(f.text)),
+    };
+  });
+  console.log('PACK', JSON.stringify(pack, null, 2));
+
+  expect(pack.folder).toMatch(/^milg-llm-pack-/);
+  expect(pack.paths).toContain('README.md');
+  expect(pack.paths).toContain('AGENT_PROMPT.md');
+  expect(pack.paths).toContain('GUIDELINES.md');
+  expect(pack.paths).toContain('findings/00-index.md');
+  expect(pack.paths).toContain('THIRD_PARTY.md');
+  expect(pack.categoryDocs).toBeGreaterThan(0);
+  expect(pack.readmeHasScore).toBe(true);
+  expect(pack.agentHasObjective).toBe(true);
+  expect(pack.guidelinesHasTokens).toBe(true);
+  expect(pack.guidelinesHasContrast).toBe(true);
+  expect(pack.indexHasTable).toBe(true);
+  expect(pack.thirdPartyHasJSZip).toBe(true);
+  expect(pack.assets.length, 'clean screenshot asset included').toBeGreaterThan(0);
+  expect(pack.assets[0].path).toMatch(/^assets\/clean-screenshot\./);
+  expect(pack.anyDocHasSelector, 'at least one finding surfaces selectors').toBe(true);
+
+  // (b) Real button click → JSZip load → .zip download.
+  const downloadPromise = page.waitForEvent('download', { timeout: 30000 });
+  await page.click('#llmPackBtn');
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^milg-llm-pack-.*\.zip$/);
+  const savePath = await download.path();
+  expect(savePath).toBeTruthy();
+  const buf = fs.readFileSync(savePath);
+  // ZIP magic bytes "PK\x03\x04".
+  expect(buf.length).toBeGreaterThan(200);
+  expect(buf[0]).toBe(0x50); expect(buf[1]).toBe(0x4b);
+
+  // List entries with the system unzip (present in CI/dev images) to confirm structure.
+  let listing = '';
+  try { listing = execSync(`unzip -l "${savePath}"`, { encoding: 'utf8' }); } catch (e) { listing = ''; }
+  if (listing) {
+    console.log('ZIP_LISTING', listing);
+    expect(listing).toMatch(/README\.md/);
+    expect(listing).toMatch(/AGENT_PROMPT\.md/);
+    expect(listing).toMatch(/GUIDELINES\.md/);
+    expect(listing).toMatch(/findings\/00-index\.md/);
+    expect(listing).toMatch(/assets\/clean-screenshot\./);
+    expect(listing).toMatch(/THIRD_PARTY\.md/);
+  }
+});
+
+test('LLM pack multi (viewport): dedup, affects N/M, per-unit docs', async ({ page }) => {
+  test.setTimeout(120000);
+  await page.goto(ANALYZER_URL);
+  await page.check('#screenshotCheck');
+  await page.click('[data-tab="tabUrl"]');
+  await page.fill('#urlInput', FIXTURE_URL);
+  await page.click('#analyzeUrlBtn');
+  await page.waitForSelector('.report-container.visible', { timeout: 90000 });
+  await page.waitForTimeout(2000);
+
+  // Build a 2-viewport pack: unit A (Desktop) = full report; unit B (Phone) = same
+  // report with the FIRST category's findings removed → those findings become
+  // "Desktop only" (1/2), the rest "all 2 viewports" (2/2).
+  const m = await page.evaluate(() => {
+    const r = window.__milgLastReport;
+    const clone = () => ({ overall: r.overall, grade: r.grade, gradeLabel: r.gradeLabel, meta: r.meta, raw: r.raw,
+      categories: r.categories.map((c) => ({ label: c.label, weight: c.weight, score: c.score, findings: c.findings.slice() })) });
+    const a = clone();                 // Desktop — full
+    const b = clone(); b.categories[0].findings = []; // Phone — first category cleared
+    const firstCat = r.categories[0].label;
+    const p = MilgReport.buildLlmPackMulti({
+      mode: 'viewport',
+      units: [{ id: 'v0', label: 'Desktop (1280px)', report: a }, { id: 'v1', label: 'Phone (375px)', report: b }],
+      primaryReport: r, host: 'example', aggregateScore: r.overall, dims: { viewports: 2 }, severityFilter: 'all',
+    });
+    const byPath = {}; p.files.forEach((f) => { byPath[f.path] = f.text; });
+    return {
+      folder: p.folder,
+      paths: p.files.map((f) => f.path),
+      unitDocs: p.files.filter((f) => /^units\//.test(f.path)).map((f) => f.path),
+      readme: byPath['README.md'],
+      agent: byPath['AGENT_PROMPT.md'],
+      index: byPath['findings/00-index.md'],
+      firstCat,
+      firstCatDoc: byPath['findings/01-' + (r.categories[0].label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''))  + '.md'],
+    };
+  });
+  console.log('MULTI_PATHS', JSON.stringify(m.paths, null, 2));
+  console.log('MULTI_INDEX', m.index);
+
+  expect(m.folder).toMatch(/-viewports$/);
+  expect(m.unitDocs.length).toBe(2);              // one per viewport
+  expect(m.readme).toMatch(/Checked across:\*\* 2 viewports/);
+  expect(m.agent).toMatch(/scored independently/);
+  expect(m.agent).toMatch(/Viewport-specific/);   // mode-specific solve strategy present
+  // Affects column shows both the universal (2/2) and the desktop-only (1/2) issues.
+  expect(m.index).toMatch(/\| 2\/2 \|/);
+  expect(m.index).toMatch(/\| 1\/2 \|/);
+  // The first category's issues are Desktop-only → badge "1/2 ... Desktop".
+  if (m.firstCatDoc) {
+    expect(m.firstCatDoc).toMatch(/\*\*Affects:\*\*/);
+    expect(m.firstCatDoc).toMatch(/Desktop/);
+  }
+});
+
+// A console-snippet CRAWL produces a {_milgCrawl:true, results:[...]} JSON. Importing
+// it populates the crawl session, so the LLM-pack button must yield a multi-PAGE pack.
+test('LLM pack: crawl import (snippet crawl shape) → multi-page -site pack', async ({ page }) => {
+  test.setTimeout(120000);
+  // 1. Get a real extraction `data` object from a normal analysis.
+  await page.goto(ANALYZER_URL);
+  await page.check('#screenshotCheck');
+  await page.click('[data-tab="tabUrl"]');
+  await page.fill('#urlInput', FIXTURE_URL);
+  await page.click('#analyzeUrlBtn');
+  await page.waitForSelector('.report-container.visible', { timeout: 90000 });
+  await page.waitForTimeout(2000);
+  const rawJson = await page.evaluate(() => JSON.stringify(window.__milgLastReport.raw));
+  const raw = JSON.parse(rawJson);
+
+  // 2. Build a snippet-crawl-shaped JSON with two pages.
+  const a = JSON.parse(JSON.stringify(raw)); a.meta = Object.assign({}, a.meta, { url: 'https://example.com/' });
+  const b = JSON.parse(JSON.stringify(raw)); b.meta = Object.assign({}, b.meta, { url: 'https://example.com/about' });
+  const crawl = { _milgCrawl: true, startUrl: 'https://example.com/', results: [
+    { url: 'https://example.com/', data: a }, { url: 'https://example.com/about', data: b } ] };
+  const tmp = require('path').join(require('os').tmpdir(), 'milg-crawl-llmpack.json');
+  require('fs').writeFileSync(tmp, JSON.stringify(crawl));
+
+  // 3. Import it → crawl session populated.
+  await page.goto(ANALYZER_URL);
+  await page.setInputFiles('#importJsonFile', tmp);
+  await page.waitForFunction(() => !!(window.MilgCrawlUI && MilgCrawlUI.getCrawlSession && MilgCrawlUI.getCrawlSession()), { timeout: 30000 });
+  const sess = await page.evaluate(() => { const s = MilgCrawlUI.getCrawlSession(); return { pages: s.pages.length, hasSummary: !!s.summary }; });
+  console.log('CRAWL_SESSION', JSON.stringify(sess));
+  expect(sess.pages).toBe(2);
+
+  // 4. Click the LLM-pack button → expect a multi-page -site pack.
+  const dl = page.waitForEvent('download', { timeout: 30000 });
+  await page.evaluate(() => document.getElementById('llmPackBtn').click());
+  const download = await dl;
+  console.log('CRAWL_PACK_FILE', download.suggestedFilename());
+  expect(download.suggestedFilename()).toMatch(/^milg-llm-pack-.*-site\.zip$/);
+  const savePath = await download.path();
+  let listing = '';
+  try { listing = require('child_process').execSync(`unzip -l "${savePath}"`, { encoding: 'utf8' }); } catch (e) {}
+  if (listing) {
+    console.log('CRAWL_ZIP', listing);
+    expect(listing).toMatch(/findings\/00-index\.md/);
+    expect(listing).toMatch(/units\//);                 // per-page docs exist
+    // Two page units → two unit docs.
+    const unitDocs = (listing.match(/units\/[^\s]+\.md/g) || []);
+    expect(unitDocs.length).toBe(2);
+  }
+});
 </file>
 
 <file path="docs/analyzer-report.js">
@@ -40734,6 +40760,7 @@ Open (inherent, no action):
         : '<button id="milg-copy-btn" style="padding:14px 32px;font-size:15px;font-weight:600;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-bottom:8px;min-width:200px">Copy to Clipboard</button>' +
           '<button id="milg-download-btn" style="padding:10px 24px;font-size:13px;font-weight:500;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.2);border-radius:8px;cursor:pointer;margin-bottom:12px;min-width:200px">Download JSON</button>') +
       '<div style="color:rgba(255,255,255,0.4);font-size:11px">Then ' + (jsonKB > 2048 ? 'import' : 'paste') + ' into the analyzer</div>' +
+      '<div style="color:rgba(255,255,255,0.35);font-size:10px;margin-top:10px;line-height:1.45;max-width:360px">Captured at this window’s width only. For multi-viewport (deep scan) findings, analyze the URL in the analyzer instead.</div>' +
       '</div>';
     document.body.appendChild(_copyOverlay);
 
@@ -41045,6 +41072,7 @@ Open (inherent, no action):
                   : '<button id="milg-crawl-copy-btn" style="padding:12px 28px;font-size:14px;font-weight:600;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-bottom:8px;min-width:220px">Copy to Clipboard</button><br>' +
                     '<button id="milg-crawl-dl-btn" style="padding:10px 24px;font-size:13px;font-weight:500;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.2);border-radius:8px;cursor:pointer;margin-bottom:10px;min-width:220px">Download JSON</button>') +
                 '<div style="color:rgba(255,255,255,0.5);font-size:11px;margin-top:8px">Then ' + (_crawlKB > 2048 ? 'import' : 'paste') + ' into the analyzer</div>' +
+                '<div style="color:rgba(255,255,255,0.35);font-size:10px;margin-top:8px;line-height:1.45;max-width:380px">Each page captured at one viewport. For multi-viewport (deep scan) per page, run the crawl from the analyzer’s URL mode.</div>' +
                 '</div>';
               function _crawlDoneAction() {
                 // Close overlay and reload page to restore styles corrupted by mask capture
@@ -44390,7 +44418,7 @@ window.MilgViewer = (function() {
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.22 loaded');
+console.log('[milg] analyzer.js v3.11.23 loaded');
 
 (function() {
   "use strict";
@@ -46325,7 +46353,7 @@ console.log('[milg] analyzer.js v3.11.22 loaded');
   <title>make-it-look-good — Design Analyzer</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='2' y='2' width='12' height='12' rx='2' fill='%232563eb'/><rect x='18' y='2' width='12' height='12' rx='2' fill='%2393c5fd'/><rect x='2' y='18' width='12' height='12' rx='2' fill='%2393c5fd'/><rect x='18' y='18' width='12' height='12' rx='2' fill='%232563eb'/></svg>">
   <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="analyzer.css?v=3.11.22">
+  <link rel="stylesheet" href="analyzer.css?v=3.11.23">
 </head>
 <body class="analyzer-body">
 
@@ -46354,7 +46382,7 @@ console.log('[milg] analyzer.js v3.11.22 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.11.22</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.11.23</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -46768,33 +46796,33 @@ console.log('[milg] analyzer.js v3.11.22 loaded');
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=3.11.22"></script>
-  <script src="scoring/contrast.js?v=3.11.22"></script>
-  <script src="scoring/typography.js?v=3.11.22"></script>
-  <script src="scoring/spacing.js?v=3.11.22"></script>
-  <script src="scoring/touch.js?v=3.11.22"></script>
-  <script src="scoring/accessibility.js?v=3.11.22"></script>
-  <script src="scoring/responsive.js?v=3.11.22"></script>
-  <script src="scoring/consistency.js?v=3.11.22"></script>
-  <script src="scoring/cognitive.js?v=3.11.22"></script>
-  <script src="scoring/layout.js?v=3.11.22"></script>
-  <script src="scoring/performance.js?v=3.11.22"></script>
-  <script src="scoring/readability.js?v=3.11.22"></script>
-  <script src="scoring/filters.js?v=3.11.22"></script>
-  <script src="scoring/balance.js?v=3.11.22"></script>
+  <script src="scoring/registry.js?v=3.11.23"></script>
+  <script src="scoring/contrast.js?v=3.11.23"></script>
+  <script src="scoring/typography.js?v=3.11.23"></script>
+  <script src="scoring/spacing.js?v=3.11.23"></script>
+  <script src="scoring/touch.js?v=3.11.23"></script>
+  <script src="scoring/accessibility.js?v=3.11.23"></script>
+  <script src="scoring/responsive.js?v=3.11.23"></script>
+  <script src="scoring/consistency.js?v=3.11.23"></script>
+  <script src="scoring/cognitive.js?v=3.11.23"></script>
+  <script src="scoring/layout.js?v=3.11.23"></script>
+  <script src="scoring/performance.js?v=3.11.23"></script>
+  <script src="scoring/readability.js?v=3.11.23"></script>
+  <script src="scoring/filters.js?v=3.11.23"></script>
+  <script src="scoring/balance.js?v=3.11.23"></script>
   <!-- Queue + Report rendering + UI -->
-  <script src="analyzer-queue.js?v=3.11.22"></script>
-  <script src="analyzer-report.js?v=3.11.22"></script>
-  <script src="analyzer-crawl.js?v=3.11.22"></script>
-  <script src="analyzer-extract.js?v=3.11.22"></script>
-  <script src="analyzer-region.js?v=3.11.22"></script>
-  <script src="analyzer-capture.js?v=3.11.22"></script>
-  <script src="analyzer-iframe.js?v=3.11.22"></script>
-  <script src="analyzer-proxy.js?v=3.11.22"></script>
-  <script src="analyzer-crawl-ui.js?v=3.11.22"></script>
-  <script src="analyzer-contrast-verify.js?v=3.11.22"></script>
-  <script src="analyzer-viewer.js?v=3.11.22"></script>
-  <script src="analyzer.js?v=3.11.22"></script>
+  <script src="analyzer-queue.js?v=3.11.23"></script>
+  <script src="analyzer-report.js?v=3.11.23"></script>
+  <script src="analyzer-crawl.js?v=3.11.23"></script>
+  <script src="analyzer-extract.js?v=3.11.23"></script>
+  <script src="analyzer-region.js?v=3.11.23"></script>
+  <script src="analyzer-capture.js?v=3.11.23"></script>
+  <script src="analyzer-iframe.js?v=3.11.23"></script>
+  <script src="analyzer-proxy.js?v=3.11.23"></script>
+  <script src="analyzer-crawl-ui.js?v=3.11.23"></script>
+  <script src="analyzer-contrast-verify.js?v=3.11.23"></script>
+  <script src="analyzer-viewer.js?v=3.11.23"></script>
+  <script src="analyzer.js?v=3.11.23"></script>
 </body>
 </html>
 </file>
