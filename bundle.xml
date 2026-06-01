@@ -25454,96 +25454,6 @@ This test case demonstrates several important patterns for handling minimal inpu
 4. **Offer a system, not just a component.** When someone asks for "a button," giving them a system (with variants, states, and sizes) is more useful than giving them one perfect button they cannot adapt.
 </file>
 
-<file path="tests/llm-pack-export.spec.js">
-// @ts-check
-// Regression guard for the "LLM pack (.zip)" export (v3.11.21).
-// Asserts (a) MilgReport.buildLlmPack produces the expected document set with real
-// content, and (b) clicking the button loads JSZip and downloads a valid .zip.
-const { test, expect } = require('@playwright/test');
-const fs = require('fs');
-const { execSync } = require('child_process');
-
-const BASE_URL = 'http://localhost:8384';
-const ANALYZER_URL = `${BASE_URL}/analyzer.html`;
-const FIXTURE_URL = `${BASE_URL}/tests/fixtures/parity-page.html`;
-
-test('LLM pack: builder manifest + real button download', async ({ page }) => {
-  test.setTimeout(120000);
-  await page.goto(ANALYZER_URL);
-  await page.check('#screenshotCheck');
-  await page.click('[data-tab="tabUrl"]');
-  await page.fill('#urlInput', FIXTURE_URL);
-  await page.click('#analyzeUrlBtn');
-  await page.waitForSelector('.report-container.visible', { timeout: 90000 });
-  await page.waitForTimeout(2000);
-
-  // (a) Builder manifest shape + content.
-  const pack = await page.evaluate(() => {
-    const r = window.__milgLastReport;
-    const p = MilgReport.buildLlmPack(r, { severityFilter: 'all' });
-    const byPath = {};
-    p.files.forEach((f) => { byPath[f.path] = f.text; });
-    return {
-      folder: p.folder,
-      paths: p.files.map((f) => f.path),
-      assets: p.assets.map((a) => ({ path: a.path, len: (a.b64 || '').length })),
-      readmeHasScore: /Overall score:/.test(byPath['README.md'] || ''),
-      agentHasObjective: /## Objective/.test(byPath['AGENT_PROMPT.md'] || ''),
-      guidelinesHasTokens: /## 1\. Design tokens to honor/.test(byPath['GUIDELINES.md'] || ''),
-      guidelinesHasContrast: /4\.5:1/.test(byPath['GUIDELINES.md'] || ''),
-      indexHasTable: /\| # \| Category \|/.test(byPath['findings/00-index.md'] || ''),
-      thirdPartyHasJSZip: /JSZip/.test(byPath['THIRD_PARTY.md'] || ''),
-      categoryDocs: p.files.filter((f) => /^findings\/\d\d-/.test(f.path) && f.path !== 'findings/00-index.md').length,
-      // A category doc that has a selector-bearing finding should surface a `Selector(s):` block.
-      anyDocHasSelector: p.files.some((f) => /^findings\/\d\d-/.test(f.path) && /\*\*Selector\(s\):\*\*/.test(f.text)),
-    };
-  });
-  console.log('PACK', JSON.stringify(pack, null, 2));
-
-  expect(pack.folder).toMatch(/^milg-llm-pack-/);
-  expect(pack.paths).toContain('README.md');
-  expect(pack.paths).toContain('AGENT_PROMPT.md');
-  expect(pack.paths).toContain('GUIDELINES.md');
-  expect(pack.paths).toContain('findings/00-index.md');
-  expect(pack.paths).toContain('THIRD_PARTY.md');
-  expect(pack.categoryDocs).toBeGreaterThan(0);
-  expect(pack.readmeHasScore).toBe(true);
-  expect(pack.agentHasObjective).toBe(true);
-  expect(pack.guidelinesHasTokens).toBe(true);
-  expect(pack.guidelinesHasContrast).toBe(true);
-  expect(pack.indexHasTable).toBe(true);
-  expect(pack.thirdPartyHasJSZip).toBe(true);
-  expect(pack.assets.length, 'clean screenshot asset included').toBeGreaterThan(0);
-  expect(pack.assets[0].path).toMatch(/^assets\/clean-screenshot\./);
-  expect(pack.anyDocHasSelector, 'at least one finding surfaces selectors').toBe(true);
-
-  // (b) Real button click → JSZip load → .zip download.
-  const downloadPromise = page.waitForEvent('download', { timeout: 30000 });
-  await page.click('#llmPackBtn');
-  const download = await downloadPromise;
-  expect(download.suggestedFilename()).toMatch(/^milg-llm-pack-.*\.zip$/);
-  const savePath = await download.path();
-  expect(savePath).toBeTruthy();
-  const buf = fs.readFileSync(savePath);
-  // ZIP magic bytes "PK\x03\x04".
-  expect(buf.length).toBeGreaterThan(200);
-  expect(buf[0]).toBe(0x50); expect(buf[1]).toBe(0x4b);
-
-  // List entries with the system unzip (present in CI/dev images) to confirm structure.
-  let listing = '';
-  try { listing = execSync(`unzip -l "${savePath}"`, { encoding: 'utf8' }); } catch (e) { listing = ''; }
-  if (listing) {
-    console.log('ZIP_LISTING', listing);
-    expect(listing).toMatch(/README\.md/);
-    expect(listing).toMatch(/AGENT_PROMPT\.md/);
-    expect(listing).toMatch(/GUIDELINES\.md/);
-    expect(listing).toMatch(/findings\/00-index\.md/);
-    expect(listing).toMatch(/assets\/clean-screenshot\./);
-    expect(listing).toMatch(/THIRD_PARTY\.md/);
-  }
-});
-</file>
-
 <file path="tests/README.md">
 # Test Cases
 
@@ -28766,257 +28676,6 @@ Each test case has:
 Use these to calibrate your output quality and verify the flow works.
 </file>
 
-<file path="README.md">
-# make-it-look-good
-
-> **Make your website, app, or UI actually look good.** Give your AI assistant this repo and it will help you design, redesign, or fix the visual design of any web project — with real design principles, not guesswork.
-
-Your AI asks what you're building, what personality you want (clean, minimalist, playful, editorial), your colors, and your audience — then produces production-ready HTML/CSS with proper spacing, contrast, typography, and responsive behavior. It works on landing pages, dashboards, forms, portfolios, e-commerce, or any UI.
-
-**This is not a library you install.** It's a design knowledge base (45 topics on color, typography, spacing, layout, interaction, accessibility) plus a consultation playbook that guides your AI through the right questions and decisions.
-
----
-
-## If you are an AI assistant reading this
-
-The user wants you to **help them make their website or UI look good**. This repo is a design toolkit — use it to guide the user through a design consultation for *their* project.
-
-**Start here:**
-1. Read [`CONSULT.md`](CONSULT.md) — the full design consultation playbook. Follow it step by step.
-2. Read [`docs/presets/_index.md`](docs/presets/_index.md) — template catalog with preview links.
-3. Read [`workflows/quick-reference.md`](workflows/quick-reference.md) — critical design numbers.
-4. Read ONLY the knowledge files relevant to the user's question (see Step 2 in CONSULT.md).
-
-**Your job:** Ask the user what they're building (or what they want to improve), walk them through personality/colors/audience questions, then generate or fix their UI code using the design principles in this repo. Do NOT improve this repo itself — focus on the user's project.
-
-CONSULT.md includes:
-- A consultation depth selector (quick start / guided / thorough) — ask the user how deep to go
-- Required intake questions about personality, colors, inspiration, and dark mode — don't skip these
-- Website analysis workflow (Step 1E) for when users share reference URLs
-- Template catalog with preview links at `https://jdeworks.github.io/make-it-look-good/#preset:{element}/{personality}`
-
----
-
-## For Developers
-
-### What is this?
-
-You have a website or UI that needs to look better. Give this repo to your AI assistant and it becomes a **design consultant** — asking the right questions, applying real design principles, and producing code that actually looks professional. Not generic blue SaaS. Your brand, your personality, your colors.
-
-### How to use it
-
-**Option A — Online chat** (Claude.ai, ChatGPT, Gemini, Perplexity, etc.)
-
-Copy-paste this entire block as your first message:
-
-```
-Fetch this file — it's a design toolkit that will help me make my website look good:
-https://raw.githubusercontent.com/jdeworks/make-it-look-good/dev/bundle.xml
-
-Read the CONSULT.md inside it and follow the consultation playbook step by step.
-You are a design consultant — help me design or improve MY website/UI, not this
-repo. Start by asking what I'm building and how detailed I want the consultation
-(quick start / guided / thorough).
-```
-
-The bundle (~194k tokens) includes the full consultation playbook, all 45 knowledge files, and a template catalog. To browse templates visually, use the [live preview tool](https://jdeworks.github.io/make-it-look-good/) and tell your AI which ones you like.
-
-**Option B — Local AI agent** (Claude Code, Cursor, Windsurf, Codex, etc.)
-
-Clone and point your agent at the folder:
-```bash
-git clone -b dev https://github.com/jdeworks/make-it-look-good.git
-```
-
-Then tell your agent:
-```
-Read CONSULT.md from the make-it-look-good folder. It's a design consultation
-playbook — use it to help me make my website/UI look good. Follow the steps
-and start by asking what I'm building.
-```
-
-A local agent gets the full file structure including all 170+ template HTML files. This is the recommended approach for hands-on design work.
-
-**Option C — Quick prompts** (if your AI already has the repo loaded)
-
-Guided consultation (asks about personality, colors, audience):
-```
-Follow the CONSULT.md playbook to run a design consultation for my project.
-```
-
-Audit existing code:
-```
-Follow CONSULT.md Step 1A to audit this code, then generate design review notes: [paste your code]
-```
-
-Grab a component:
-```
-Look at docs/presets/_index.md and give me a hero + pricing cards layout.
-```
-
-> **Tip:** Share a link to a site you like the look of. Even one reference ("I want it to feel like aesop.com") dramatically improves results.
-
----
-
-### Preview Tool
-
-Paste any HTML+Tailwind into the [live preview tool](https://jdeworks.github.io/make-it-look-good/) to see it rendered instantly. Toggle mobile/tablet/desktop views, dark mode, and share via URL. Includes 121 prebuilt templates across 38 elements with multiple design personalities.
-
-### Design Analyzer
-
-Score any website against evidence-based design rules with the [Design Analyzer](https://jdeworks.github.io/make-it-look-good/analyzer.html). **~60 checks across 14 scoring modules** — no AI, just math against WCAG 2.2, Material Design, NNGroup research, and typography best practices. Every finding links to its source.
-
-Three ways to analyze:
-
-| Method | Best for | How |
-|--------|----------|-----|
-| **Enter URL** | Phone, quick checks | Paste a URL — fetched via CORS proxy, scored automatically |
-| **Console Snippet** | Most accurate, localhost, behind login | Copy snippet → run in DevTools console → paste JSON |
-| **Paste HTML** | Static mockups | Paste HTML source, rendered in iframe |
-
-Scoring modules: Color & Contrast (WCAG + APCA), Typography, Spacing & Layout, Touch & Interaction, Accessibility, Responsive Design, Visual Consistency, Cognitive Load, Layout Quality, Performance, Readability, Motion & Animation, Visual Balance.
-
-Features: 8 audience profiles (General, WCAG AAA, Elderly, Low Vision, Motor Impairment, Color Blind, Children, Cognitive), page context detection, gradient/background-image/CSS-filter contrast resolution, decorative element filtering, context-aware touch targets (nav/footer/inline exemptions per WCAG 2.5.8), CVD palette simulation (Machado et al. 2009), post-analysis exclusion suggestions, extraction caching, dark mode report, viewport size selection, deep scan (multi-viewport + dark mode), page screenshots, analysis history, N/A category detection, progress bar, JSON export/import, markdown/PDF export. Self-hostable CORS proxy (Cloudflare Worker, free tier 100K req/day) — see [`proxy/README.md`](proxy/README.md).
-
-Validated against 125 preset templates via headless browser testing (Puppeteer) — average score 88, min 69, max 100, with a 7-point gap between "before" (81 avg) and "clean" (88 avg) variants.
-
-### Before & After Examples
-
-Each "before" shows a typical MVP. Each "after" is a structurally different redesign — not just CSS tweaks but genuinely different layouts. Multiple personalities (Clean, Minimalist, Playful, Editorial) show how the same content can look completely different.
-
-| Example | Personalities | Try it |
-|---------|--------------|--------|
-| Dashboard | Clean, Minimalist, Playful | [Before](https://jdeworks.github.io/make-it-look-good/#preset:dashboard/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:dashboard/clean) |
-| Landing Page | Clean, Minimalist, Playful, Editorial | [Before](https://jdeworks.github.io/make-it-look-good/#preset:landing/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:landing/clean) |
-| Form | Clean, Minimalist, Playful, Editorial | [Before](https://jdeworks.github.io/make-it-look-good/#preset:form/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:form/clean) |
-| Card Grid | Clean, Minimalist, Playful | [Before](https://jdeworks.github.io/make-it-look-good/#preset:cards/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:cards/clean) |
-| Multi-Page App | Clean, Minimalist, Playful | [Before](https://jdeworks.github.io/make-it-look-good/#preset:project/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:project/clean) |
-
-Click any "After" link — personality buttons appear in the preview header to switch between variants. Color swatches let you recolor with any Tailwind palette. Effect buttons apply CSS overlays (Hushed, Bouncy, Frosted, Serif).
-
-### Example: Guided Consultation Flow
-
-Here's what a real consultation looks like when an LLM follows the playbook. The user says *"I need a website for my cafe. Something warm and inviting."*
-
-**1. The AI classifies the input** → vague idea, no code → guided intake
-
-**2. Intake questions asked:**
-- What are you building? → Landing page / content site, single-page with sections
-- Who uses it? → General public, 65-75% mobile traffic
-- Personality? → Playful & friendly, "specialty coffee shop" feel
-- Tech stack? → Plain HTML + Tailwind CDN
-- Colors? → Warm amber `#f59e0b`, rich brown `#78350f`
-- Inspiration? → "Your favorite neighborhood spot, not corporate chain"
-- Dark mode? → No
-
-**3. The AI reads knowledge files** → `layout/visual-hierarchy.md`, `typography/type-scale.md`, `color/color-psychology.md`, `interaction/touch-targets.md`, `responsive/mobile-first.md`
-
-**4. Design decisions (with reasoning):**
-- Playfair Display headings + Inter body → artisanal yet readable
-- Amber-900 on amber-50 at 7.2:1 contrast → AAA pass
-- White text on amber buttons fails WCAG → switched to amber-900 text
-- `rounded-2xl` cards + pill-shaped CTAs → warmth, not corporate
-- 48px touch targets everywhere → mobile-heavy audience
-- Section order: Hero → Menu → About → Hours → Footer → inverted pyramid
-
-**5. Output:** A single self-contained HTML file that renders on 375px–1440px+, passes WCAG AA on all text, with warm amber palette and serif/sans font pairing.
-
-The full flow with all design decisions is in [`tests/e2e-restaurant-flow.md`](tests/e2e-restaurant-flow.md). The output is in [`tests/e2e-restaurant.html`](tests/e2e-restaurant.html).
-
-### Validated Test Cases
-
-The consultation flow is tested across 12 real-world scenarios — all pass all applicable design rules (contrast, touch targets, spacing, hierarchy). See [`tests/`](tests/) for the full set.
-
-| Scenario | Input | What It Proves |
-|----------|-------|----------------|
-| React settings page | JSX + inline styles | Outputs in user's framework, no forced Tailwind migration |
-| Barebones HTML | Hackathon-quality landing page | Full redesign with Tailwind CDN |
-| Vue dashboard | Vue 3 SFC + scoped CSS | Preserves Vue SFC structure |
-| Restaurant landing | "warm and inviting cafe" | Guided intake → personality-driven output |
-| Developer portfolio | "dark mode, emerald accent" | Dark mode design with monospace accents |
-| SaaS pricing | Brand colors provided | Brand color application, clean personality |
-| Status page | JSON API data pasted | Raw data → structured UI (Step 1D) |
-| CLI output | Terminal table pasted | Non-standard input → dark technical dashboard |
-| Email template | "welcome email" | Non-web output with email-specific constraints |
-
----
-
-## What's Inside
-
-### Preset Library — [`docs/presets/_index.md`](docs/presets/_index.md)
-
-38+ presets with multiple personality variants (Clean, Minimalist, Playful). Interactive components also have React, Vue, and Svelte framework files.
-
-| Category | Examples |
-|----------|---------|
-| **Layout Shells** | App shell, marketing page, dashboard, centered form |
-| **Components** | Hero, tabs, accordion, pagination, dropdown, avatars, data table |
-| **Full Pages** | Pricing, portfolio, restaurant, status page |
-| **Before → After** | Dashboard, landing page, form, card grid, multi-page app |
-| **Expressive** | Personal site, agency landing, agency portfolio, app showcase, scroll reveal landing, product launch, editorial blog, SaaS features, scroll story, product page, devtool landing, docs site, event page, personalized portfolio |
-| **Edge Cases** | Deploy monitor, button system, OSS landing |
-
-All presets: dark mode, WCAG AA contrast, 44px touch targets, responsive. [Composition recipes](docs/presets/_index.md#composition-recipes) show how to combine them into full pages.
-
-### Knowledge Files — 44 topics
-
-| Area | Topics |
-|------|--------|
-| **Foundations** | [Cognitive load](foundations/cognitive-load.md), [Gestalt](foundations/gestalt-principles.md), [Hick's Law](foundations/hicks-law.md), [Fitts's Law](foundations/fitts-law.md), [Aesthetic-usability](foundations/aesthetic-usability.md), [Peak-end rule](foundations/peak-end-rule.md) |
-| **Color** | [Contrast & a11y](color/contrast-and-accessibility.md), [Color systems](color/color-systems.md), [Psychology](color/color-psychology.md), [Color-blind safety](color/color-blind-safety.md) |
-| **Typography** | [Type scale](typography/type-scale.md), [Font pairing](typography/font-pairing.md), [Readability](typography/readability.md), [Web font loading](typography/web-font-loading.md) |
-| **Layout** | [Spacing system](layout/spacing-system.md), [Visual hierarchy](layout/visual-hierarchy.md), [Grid systems](layout/grid-systems.md), [Whitespace](layout/whitespace.md) |
-| **Interaction** | [Animation timing](interaction/animation-timing.md), [Micro-interactions](interaction/micro-interactions.md), [Touch targets](interaction/touch-targets.md), [Loading states](interaction/loading-states.md) |
-| **Responsive** | [Mobile-first](responsive/mobile-first.md), [Breakpoints](responsive/breakpoints.md), [Fluid typography](responsive/fluid-typography.md), [Patterns](responsive/responsive-patterns.md) |
-| **Systems** | [Design tokens](systems/design-tokens.md), [Material Design 3](systems/material-design-3.md), [Apple HIG](systems/apple-hig.md), [Building a system](systems/building-a-system.md) |
-| **Expressive** | [Visual identity](expressive/visual-identity.md), [Hero patterns](expressive/hero-patterns.md), [Scroll storytelling](expressive/scroll-storytelling.md), [Purposeful motion](expressive/purposeful-motion.md), [Scroll effect patterns](expressive/scroll-effect-patterns.md), [Curated examples](expressive/curated-examples.md) |
-| **Heuristics** | [Nielsen's 10](heuristics/nielsen-10.md), [UX frameworks](heuristics/ux-frameworks.md) |
-| **Components** | [Buttons](components/buttons.md), [Forms](components/forms.md), [Cards](components/cards.md), [Navigation](components/navigation.md), [Modals](components/modals-and-dialogs.md), [Tables](components/tables-and-lists.md), [Feedback](components/feedback.md) |
-
-Each file: 200–400 lines, concrete rules with numbers, CSS/Tailwind patterns, decision trees, sources.
-
-### Workflows
-
-| Workflow | Use when |
-|----------|----------|
-| [Quick Reference](workflows/quick-reference.md) | Need a number fast (contrast ratio, spacing value, timing) |
-| [New Project Checklist](workflows/new-project-checklist.md) | Starting from scratch |
-| [Design Review Checklist](workflows/design-review-checklist.md) | Auditing an existing design |
-
-### Critical Numbers
-
-| What | Value |
-|------|-------|
-| Text contrast (AA) | 4.5:1 |
-| Large text contrast (AA) | 3:1 |
-| Body font size | ≥16px |
-| Line height | 1.4–1.6 |
-| Line length | 45–75 characters |
-| Touch target | ≥44×44px |
-| Base spacing unit | 4px or 8px |
-| Nav items | 5–7 max |
-| Enter animation | 200–300ms |
-| Exit animation | 150–200ms |
-
-## Third-party libraries
-
-The Design Analyzer (`docs/`) loads a few libraries from public CDNs at runtime; none are vendored into this repository. Credit and licenses:
-
-| Library | Used for | License |
-|---------|----------|---------|
-| [JSZip](https://github.com/Stuk/jszip) | Building the "LLM pack (.zip)" export in the browser | Dual [MIT or GPLv3](https://github.com/Stuk/jszip/blob/main/LICENSE.markdown); used here under **MIT**. © Stuart Knightley & JSZip contributors |
-| [Tailwind CSS (Play CDN)](https://tailwindcss.com) | Styling generated previews / fragment analysis | [MIT](https://github.com/tailwindlabs/tailwindcss/blob/master/LICENSE) |
-| [modern-screenshot](https://github.com/qq15725/modern-screenshot) | Full-page / region screenshot capture | [MIT](https://github.com/qq15725/modern-screenshot/blob/main/LICENSE) |
-
-Each generated LLM pack also ships a `THIRD_PARTY.md` repeating the JSZip attribution.
-
----
-
-If this helped you ship something that looks good, [give it a star](../../stargazers). Found an issue? [Open one](../../issues).
-
-Sources: [research/sources.md](research/sources.md)
-</file>
-
 <file path="docs/tests/fixtures/bbox-test.html">
 <!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -31011,6 +30670,151 @@ test.describe('Cross-Mode Parity', () => {
 });
 </file>
 
+<file path="tests/llm-pack-export.spec.js">
+// @ts-check
+// Regression guard for the "LLM pack (.zip)" export (v3.11.21).
+// Asserts (a) MilgReport.buildLlmPack produces the expected document set with real
+// content, and (b) clicking the button loads JSZip and downloads a valid .zip.
+const { test, expect } = require('@playwright/test');
+const fs = require('fs');
+const { execSync } = require('child_process');
+
+const BASE_URL = 'http://localhost:8384';
+const ANALYZER_URL = `${BASE_URL}/analyzer.html`;
+const FIXTURE_URL = `${BASE_URL}/tests/fixtures/parity-page.html`;
+
+test('LLM pack: builder manifest + real button download', async ({ page }) => {
+  test.setTimeout(120000);
+  await page.goto(ANALYZER_URL);
+  await page.check('#screenshotCheck');
+  await page.click('[data-tab="tabUrl"]');
+  await page.fill('#urlInput', FIXTURE_URL);
+  await page.click('#analyzeUrlBtn');
+  await page.waitForSelector('.report-container.visible', { timeout: 90000 });
+  await page.waitForTimeout(2000);
+
+  // (a) Builder manifest shape + content.
+  const pack = await page.evaluate(() => {
+    const r = window.__milgLastReport;
+    const p = MilgReport.buildLlmPack(r, { severityFilter: 'all' });
+    const byPath = {};
+    p.files.forEach((f) => { byPath[f.path] = f.text; });
+    return {
+      folder: p.folder,
+      paths: p.files.map((f) => f.path),
+      assets: p.assets.map((a) => ({ path: a.path, len: (a.b64 || '').length })),
+      readmeHasScore: /Overall score:/.test(byPath['README.md'] || ''),
+      agentHasObjective: /## Objective/.test(byPath['AGENT_PROMPT.md'] || ''),
+      guidelinesHasTokens: /## 1\. Design tokens to honor/.test(byPath['GUIDELINES.md'] || ''),
+      guidelinesHasContrast: /4\.5:1/.test(byPath['GUIDELINES.md'] || ''),
+      indexHasTable: /\| # \| Category \|/.test(byPath['findings/00-index.md'] || ''),
+      thirdPartyHasJSZip: /JSZip/.test(byPath['THIRD_PARTY.md'] || ''),
+      categoryDocs: p.files.filter((f) => /^findings\/\d\d-/.test(f.path) && f.path !== 'findings/00-index.md').length,
+      // A category doc that has a selector-bearing finding should surface a `Selector(s):` block.
+      anyDocHasSelector: p.files.some((f) => /^findings\/\d\d-/.test(f.path) && /\*\*Selector\(s\):\*\*/.test(f.text)),
+    };
+  });
+  console.log('PACK', JSON.stringify(pack, null, 2));
+
+  expect(pack.folder).toMatch(/^milg-llm-pack-/);
+  expect(pack.paths).toContain('README.md');
+  expect(pack.paths).toContain('AGENT_PROMPT.md');
+  expect(pack.paths).toContain('GUIDELINES.md');
+  expect(pack.paths).toContain('findings/00-index.md');
+  expect(pack.paths).toContain('THIRD_PARTY.md');
+  expect(pack.categoryDocs).toBeGreaterThan(0);
+  expect(pack.readmeHasScore).toBe(true);
+  expect(pack.agentHasObjective).toBe(true);
+  expect(pack.guidelinesHasTokens).toBe(true);
+  expect(pack.guidelinesHasContrast).toBe(true);
+  expect(pack.indexHasTable).toBe(true);
+  expect(pack.thirdPartyHasJSZip).toBe(true);
+  expect(pack.assets.length, 'clean screenshot asset included').toBeGreaterThan(0);
+  expect(pack.assets[0].path).toMatch(/^assets\/clean-screenshot\./);
+  expect(pack.anyDocHasSelector, 'at least one finding surfaces selectors').toBe(true);
+
+  // (b) Real button click → JSZip load → .zip download.
+  const downloadPromise = page.waitForEvent('download', { timeout: 30000 });
+  await page.click('#llmPackBtn');
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^milg-llm-pack-.*\.zip$/);
+  const savePath = await download.path();
+  expect(savePath).toBeTruthy();
+  const buf = fs.readFileSync(savePath);
+  // ZIP magic bytes "PK\x03\x04".
+  expect(buf.length).toBeGreaterThan(200);
+  expect(buf[0]).toBe(0x50); expect(buf[1]).toBe(0x4b);
+
+  // List entries with the system unzip (present in CI/dev images) to confirm structure.
+  let listing = '';
+  try { listing = execSync(`unzip -l "${savePath}"`, { encoding: 'utf8' }); } catch (e) { listing = ''; }
+  if (listing) {
+    console.log('ZIP_LISTING', listing);
+    expect(listing).toMatch(/README\.md/);
+    expect(listing).toMatch(/AGENT_PROMPT\.md/);
+    expect(listing).toMatch(/GUIDELINES\.md/);
+    expect(listing).toMatch(/findings\/00-index\.md/);
+    expect(listing).toMatch(/assets\/clean-screenshot\./);
+    expect(listing).toMatch(/THIRD_PARTY\.md/);
+  }
+});
+
+test('LLM pack multi (viewport): dedup, affects N/M, per-unit docs', async ({ page }) => {
+  test.setTimeout(120000);
+  await page.goto(ANALYZER_URL);
+  await page.check('#screenshotCheck');
+  await page.click('[data-tab="tabUrl"]');
+  await page.fill('#urlInput', FIXTURE_URL);
+  await page.click('#analyzeUrlBtn');
+  await page.waitForSelector('.report-container.visible', { timeout: 90000 });
+  await page.waitForTimeout(2000);
+
+  // Build a 2-viewport pack: unit A (Desktop) = full report; unit B (Phone) = same
+  // report with the FIRST category's findings removed → those findings become
+  // "Desktop only" (1/2), the rest "all 2 viewports" (2/2).
+  const m = await page.evaluate(() => {
+    const r = window.__milgLastReport;
+    const clone = () => ({ overall: r.overall, grade: r.grade, gradeLabel: r.gradeLabel, meta: r.meta, raw: r.raw,
+      categories: r.categories.map((c) => ({ label: c.label, weight: c.weight, score: c.score, findings: c.findings.slice() })) });
+    const a = clone();                 // Desktop — full
+    const b = clone(); b.categories[0].findings = []; // Phone — first category cleared
+    const firstCat = r.categories[0].label;
+    const p = MilgReport.buildLlmPackMulti({
+      mode: 'viewport',
+      units: [{ id: 'v0', label: 'Desktop (1280px)', report: a }, { id: 'v1', label: 'Phone (375px)', report: b }],
+      primaryReport: r, host: 'example', aggregateScore: r.overall, dims: { viewports: 2 }, severityFilter: 'all',
+    });
+    const byPath = {}; p.files.forEach((f) => { byPath[f.path] = f.text; });
+    return {
+      folder: p.folder,
+      paths: p.files.map((f) => f.path),
+      unitDocs: p.files.filter((f) => /^units\//.test(f.path)).map((f) => f.path),
+      readme: byPath['README.md'],
+      agent: byPath['AGENT_PROMPT.md'],
+      index: byPath['findings/00-index.md'],
+      firstCat,
+      firstCatDoc: byPath['findings/01-' + (r.categories[0].label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''))  + '.md'],
+    };
+  });
+  console.log('MULTI_PATHS', JSON.stringify(m.paths, null, 2));
+  console.log('MULTI_INDEX', m.index);
+
+  expect(m.folder).toMatch(/-viewports$/);
+  expect(m.unitDocs.length).toBe(2);              // one per viewport
+  expect(m.readme).toMatch(/Checked across:\*\* 2 viewports/);
+  expect(m.agent).toMatch(/scored independently/);
+  expect(m.agent).toMatch(/Viewport-specific/);   // mode-specific solve strategy present
+  // Affects column shows both the universal (2/2) and the desktop-only (1/2) issues.
+  expect(m.index).toMatch(/\| 2\/2 \|/);
+  expect(m.index).toMatch(/\| 1\/2 \|/);
+  // The first category's issues are Desktop-only → badge "1/2 ... Desktop".
+  if (m.firstCatDoc) {
+    expect(m.firstCatDoc).toMatch(/\*\*Affects:\*\*/);
+    expect(m.firstCatDoc).toMatch(/Desktop/);
+  }
+});
+</file>
+
 <file path="tests/verify-debug-overlay.spec.js">
 // @ts-check
 // Regression guard for the verify-box debug overlay cycle (none -> mask -> zones).
@@ -31523,6 +31327,257 @@ module.exports = defineConfig({
   },
   workers: 1,
 });
+</file>
+
+<file path="README.md">
+# make-it-look-good
+
+> **Make your website, app, or UI actually look good.** Give your AI assistant this repo and it will help you design, redesign, or fix the visual design of any web project — with real design principles, not guesswork.
+
+Your AI asks what you're building, what personality you want (clean, minimalist, playful, editorial), your colors, and your audience — then produces production-ready HTML/CSS with proper spacing, contrast, typography, and responsive behavior. It works on landing pages, dashboards, forms, portfolios, e-commerce, or any UI.
+
+**This is not a library you install.** It's a design knowledge base (45 topics on color, typography, spacing, layout, interaction, accessibility) plus a consultation playbook that guides your AI through the right questions and decisions.
+
+---
+
+## If you are an AI assistant reading this
+
+The user wants you to **help them make their website or UI look good**. This repo is a design toolkit — use it to guide the user through a design consultation for *their* project.
+
+**Start here:**
+1. Read [`CONSULT.md`](CONSULT.md) — the full design consultation playbook. Follow it step by step.
+2. Read [`docs/presets/_index.md`](docs/presets/_index.md) — template catalog with preview links.
+3. Read [`workflows/quick-reference.md`](workflows/quick-reference.md) — critical design numbers.
+4. Read ONLY the knowledge files relevant to the user's question (see Step 2 in CONSULT.md).
+
+**Your job:** Ask the user what they're building (or what they want to improve), walk them through personality/colors/audience questions, then generate or fix their UI code using the design principles in this repo. Do NOT improve this repo itself — focus on the user's project.
+
+CONSULT.md includes:
+- A consultation depth selector (quick start / guided / thorough) — ask the user how deep to go
+- Required intake questions about personality, colors, inspiration, and dark mode — don't skip these
+- Website analysis workflow (Step 1E) for when users share reference URLs
+- Template catalog with preview links at `https://jdeworks.github.io/make-it-look-good/#preset:{element}/{personality}`
+
+---
+
+## For Developers
+
+### What is this?
+
+You have a website or UI that needs to look better. Give this repo to your AI assistant and it becomes a **design consultant** — asking the right questions, applying real design principles, and producing code that actually looks professional. Not generic blue SaaS. Your brand, your personality, your colors.
+
+### How to use it
+
+**Option A — Online chat** (Claude.ai, ChatGPT, Gemini, Perplexity, etc.)
+
+Copy-paste this entire block as your first message:
+
+```
+Fetch this file — it's a design toolkit that will help me make my website look good:
+https://raw.githubusercontent.com/jdeworks/make-it-look-good/dev/bundle.xml
+
+Read the CONSULT.md inside it and follow the consultation playbook step by step.
+You are a design consultant — help me design or improve MY website/UI, not this
+repo. Start by asking what I'm building and how detailed I want the consultation
+(quick start / guided / thorough).
+```
+
+The bundle (~194k tokens) includes the full consultation playbook, all 45 knowledge files, and a template catalog. To browse templates visually, use the [live preview tool](https://jdeworks.github.io/make-it-look-good/) and tell your AI which ones you like.
+
+**Option B — Local AI agent** (Claude Code, Cursor, Windsurf, Codex, etc.)
+
+Clone and point your agent at the folder:
+```bash
+git clone -b dev https://github.com/jdeworks/make-it-look-good.git
+```
+
+Then tell your agent:
+```
+Read CONSULT.md from the make-it-look-good folder. It's a design consultation
+playbook — use it to help me make my website/UI look good. Follow the steps
+and start by asking what I'm building.
+```
+
+A local agent gets the full file structure including all 170+ template HTML files. This is the recommended approach for hands-on design work.
+
+**Option C — Quick prompts** (if your AI already has the repo loaded)
+
+Guided consultation (asks about personality, colors, audience):
+```
+Follow the CONSULT.md playbook to run a design consultation for my project.
+```
+
+Audit existing code:
+```
+Follow CONSULT.md Step 1A to audit this code, then generate design review notes: [paste your code]
+```
+
+Grab a component:
+```
+Look at docs/presets/_index.md and give me a hero + pricing cards layout.
+```
+
+> **Tip:** Share a link to a site you like the look of. Even one reference ("I want it to feel like aesop.com") dramatically improves results.
+
+---
+
+### Preview Tool
+
+Paste any HTML+Tailwind into the [live preview tool](https://jdeworks.github.io/make-it-look-good/) to see it rendered instantly. Toggle mobile/tablet/desktop views, dark mode, and share via URL. Includes 121 prebuilt templates across 38 elements with multiple design personalities.
+
+### Design Analyzer
+
+Score any website against evidence-based design rules with the [Design Analyzer](https://jdeworks.github.io/make-it-look-good/analyzer.html). **~60 checks across 14 scoring modules** — no AI, just math against WCAG 2.2, Material Design, NNGroup research, and typography best practices. Every finding links to its source.
+
+Three ways to analyze:
+
+| Method | Best for | How |
+|--------|----------|-----|
+| **Enter URL** | Phone, quick checks | Paste a URL — fetched via CORS proxy, scored automatically |
+| **Console Snippet** | Most accurate, localhost, behind login | Copy snippet → run in DevTools console → paste JSON |
+| **Paste HTML** | Static mockups | Paste HTML source, rendered in iframe |
+
+Scoring modules: Color & Contrast (WCAG + APCA), Typography, Spacing & Layout, Touch & Interaction, Accessibility, Responsive Design, Visual Consistency, Cognitive Load, Layout Quality, Performance, Readability, Motion & Animation, Visual Balance.
+
+Features: 8 audience profiles (General, WCAG AAA, Elderly, Low Vision, Motor Impairment, Color Blind, Children, Cognitive), page context detection, gradient/background-image/CSS-filter contrast resolution, decorative element filtering, context-aware touch targets (nav/footer/inline exemptions per WCAG 2.5.8), CVD palette simulation (Machado et al. 2009), post-analysis exclusion suggestions, extraction caching, dark mode report, viewport size selection, deep scan (multi-viewport + dark mode), page screenshots, analysis history, N/A category detection, progress bar, JSON export/import, markdown/PDF export. Self-hostable CORS proxy (Cloudflare Worker, free tier 100K req/day) — see [`proxy/README.md`](proxy/README.md).
+
+Validated against 125 preset templates via headless browser testing (Puppeteer) — average score 88, min 69, max 100, with a 7-point gap between "before" (81 avg) and "clean" (88 avg) variants.
+
+### Before & After Examples
+
+Each "before" shows a typical MVP. Each "after" is a structurally different redesign — not just CSS tweaks but genuinely different layouts. Multiple personalities (Clean, Minimalist, Playful, Editorial) show how the same content can look completely different.
+
+| Example | Personalities | Try it |
+|---------|--------------|--------|
+| Dashboard | Clean, Minimalist, Playful | [Before](https://jdeworks.github.io/make-it-look-good/#preset:dashboard/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:dashboard/clean) |
+| Landing Page | Clean, Minimalist, Playful, Editorial | [Before](https://jdeworks.github.io/make-it-look-good/#preset:landing/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:landing/clean) |
+| Form | Clean, Minimalist, Playful, Editorial | [Before](https://jdeworks.github.io/make-it-look-good/#preset:form/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:form/clean) |
+| Card Grid | Clean, Minimalist, Playful | [Before](https://jdeworks.github.io/make-it-look-good/#preset:cards/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:cards/clean) |
+| Multi-Page App | Clean, Minimalist, Playful | [Before](https://jdeworks.github.io/make-it-look-good/#preset:project/before) → [After](https://jdeworks.github.io/make-it-look-good/#preset:project/clean) |
+
+Click any "After" link — personality buttons appear in the preview header to switch between variants. Color swatches let you recolor with any Tailwind palette. Effect buttons apply CSS overlays (Hushed, Bouncy, Frosted, Serif).
+
+### Example: Guided Consultation Flow
+
+Here's what a real consultation looks like when an LLM follows the playbook. The user says *"I need a website for my cafe. Something warm and inviting."*
+
+**1. The AI classifies the input** → vague idea, no code → guided intake
+
+**2. Intake questions asked:**
+- What are you building? → Landing page / content site, single-page with sections
+- Who uses it? → General public, 65-75% mobile traffic
+- Personality? → Playful & friendly, "specialty coffee shop" feel
+- Tech stack? → Plain HTML + Tailwind CDN
+- Colors? → Warm amber `#f59e0b`, rich brown `#78350f`
+- Inspiration? → "Your favorite neighborhood spot, not corporate chain"
+- Dark mode? → No
+
+**3. The AI reads knowledge files** → `layout/visual-hierarchy.md`, `typography/type-scale.md`, `color/color-psychology.md`, `interaction/touch-targets.md`, `responsive/mobile-first.md`
+
+**4. Design decisions (with reasoning):**
+- Playfair Display headings + Inter body → artisanal yet readable
+- Amber-900 on amber-50 at 7.2:1 contrast → AAA pass
+- White text on amber buttons fails WCAG → switched to amber-900 text
+- `rounded-2xl` cards + pill-shaped CTAs → warmth, not corporate
+- 48px touch targets everywhere → mobile-heavy audience
+- Section order: Hero → Menu → About → Hours → Footer → inverted pyramid
+
+**5. Output:** A single self-contained HTML file that renders on 375px–1440px+, passes WCAG AA on all text, with warm amber palette and serif/sans font pairing.
+
+The full flow with all design decisions is in [`tests/e2e-restaurant-flow.md`](tests/e2e-restaurant-flow.md). The output is in [`tests/e2e-restaurant.html`](tests/e2e-restaurant.html).
+
+### Validated Test Cases
+
+The consultation flow is tested across 12 real-world scenarios — all pass all applicable design rules (contrast, touch targets, spacing, hierarchy). See [`tests/`](tests/) for the full set.
+
+| Scenario | Input | What It Proves |
+|----------|-------|----------------|
+| React settings page | JSX + inline styles | Outputs in user's framework, no forced Tailwind migration |
+| Barebones HTML | Hackathon-quality landing page | Full redesign with Tailwind CDN |
+| Vue dashboard | Vue 3 SFC + scoped CSS | Preserves Vue SFC structure |
+| Restaurant landing | "warm and inviting cafe" | Guided intake → personality-driven output |
+| Developer portfolio | "dark mode, emerald accent" | Dark mode design with monospace accents |
+| SaaS pricing | Brand colors provided | Brand color application, clean personality |
+| Status page | JSON API data pasted | Raw data → structured UI (Step 1D) |
+| CLI output | Terminal table pasted | Non-standard input → dark technical dashboard |
+| Email template | "welcome email" | Non-web output with email-specific constraints |
+
+---
+
+## What's Inside
+
+### Preset Library — [`docs/presets/_index.md`](docs/presets/_index.md)
+
+38+ presets with multiple personality variants (Clean, Minimalist, Playful). Interactive components also have React, Vue, and Svelte framework files.
+
+| Category | Examples |
+|----------|---------|
+| **Layout Shells** | App shell, marketing page, dashboard, centered form |
+| **Components** | Hero, tabs, accordion, pagination, dropdown, avatars, data table |
+| **Full Pages** | Pricing, portfolio, restaurant, status page |
+| **Before → After** | Dashboard, landing page, form, card grid, multi-page app |
+| **Expressive** | Personal site, agency landing, agency portfolio, app showcase, scroll reveal landing, product launch, editorial blog, SaaS features, scroll story, product page, devtool landing, docs site, event page, personalized portfolio |
+| **Edge Cases** | Deploy monitor, button system, OSS landing |
+
+All presets: dark mode, WCAG AA contrast, 44px touch targets, responsive. [Composition recipes](docs/presets/_index.md#composition-recipes) show how to combine them into full pages.
+
+### Knowledge Files — 44 topics
+
+| Area | Topics |
+|------|--------|
+| **Foundations** | [Cognitive load](foundations/cognitive-load.md), [Gestalt](foundations/gestalt-principles.md), [Hick's Law](foundations/hicks-law.md), [Fitts's Law](foundations/fitts-law.md), [Aesthetic-usability](foundations/aesthetic-usability.md), [Peak-end rule](foundations/peak-end-rule.md) |
+| **Color** | [Contrast & a11y](color/contrast-and-accessibility.md), [Color systems](color/color-systems.md), [Psychology](color/color-psychology.md), [Color-blind safety](color/color-blind-safety.md) |
+| **Typography** | [Type scale](typography/type-scale.md), [Font pairing](typography/font-pairing.md), [Readability](typography/readability.md), [Web font loading](typography/web-font-loading.md) |
+| **Layout** | [Spacing system](layout/spacing-system.md), [Visual hierarchy](layout/visual-hierarchy.md), [Grid systems](layout/grid-systems.md), [Whitespace](layout/whitespace.md) |
+| **Interaction** | [Animation timing](interaction/animation-timing.md), [Micro-interactions](interaction/micro-interactions.md), [Touch targets](interaction/touch-targets.md), [Loading states](interaction/loading-states.md) |
+| **Responsive** | [Mobile-first](responsive/mobile-first.md), [Breakpoints](responsive/breakpoints.md), [Fluid typography](responsive/fluid-typography.md), [Patterns](responsive/responsive-patterns.md) |
+| **Systems** | [Design tokens](systems/design-tokens.md), [Material Design 3](systems/material-design-3.md), [Apple HIG](systems/apple-hig.md), [Building a system](systems/building-a-system.md) |
+| **Expressive** | [Visual identity](expressive/visual-identity.md), [Hero patterns](expressive/hero-patterns.md), [Scroll storytelling](expressive/scroll-storytelling.md), [Purposeful motion](expressive/purposeful-motion.md), [Scroll effect patterns](expressive/scroll-effect-patterns.md), [Curated examples](expressive/curated-examples.md) |
+| **Heuristics** | [Nielsen's 10](heuristics/nielsen-10.md), [UX frameworks](heuristics/ux-frameworks.md) |
+| **Components** | [Buttons](components/buttons.md), [Forms](components/forms.md), [Cards](components/cards.md), [Navigation](components/navigation.md), [Modals](components/modals-and-dialogs.md), [Tables](components/tables-and-lists.md), [Feedback](components/feedback.md) |
+
+Each file: 200–400 lines, concrete rules with numbers, CSS/Tailwind patterns, decision trees, sources.
+
+### Workflows
+
+| Workflow | Use when |
+|----------|----------|
+| [Quick Reference](workflows/quick-reference.md) | Need a number fast (contrast ratio, spacing value, timing) |
+| [New Project Checklist](workflows/new-project-checklist.md) | Starting from scratch |
+| [Design Review Checklist](workflows/design-review-checklist.md) | Auditing an existing design |
+
+### Critical Numbers
+
+| What | Value |
+|------|-------|
+| Text contrast (AA) | 4.5:1 |
+| Large text contrast (AA) | 3:1 |
+| Body font size | ≥16px |
+| Line height | 1.4–1.6 |
+| Line length | 45–75 characters |
+| Touch target | ≥44×44px |
+| Base spacing unit | 4px or 8px |
+| Nav items | 5–7 max |
+| Enter animation | 200–300ms |
+| Exit animation | 150–200ms |
+
+## Third-party libraries
+
+The Design Analyzer (`docs/`) loads a few libraries from public CDNs at runtime; none are vendored into this repository. Credit and licenses:
+
+| Library | Used for | License |
+|---------|----------|---------|
+| [JSZip](https://github.com/Stuk/jszip) | Building the "LLM pack (.zip)" export in the browser | Dual [MIT or GPLv3](https://github.com/Stuk/jszip/blob/main/LICENSE.markdown); used here under **MIT**. © Stuart Knightley & JSZip contributors |
+| [Tailwind CSS (Play CDN)](https://tailwindcss.com) | Styling generated previews / fragment analysis | [MIT](https://github.com/tailwindlabs/tailwindcss/blob/master/LICENSE) |
+| [modern-screenshot](https://github.com/qq15725/modern-screenshot) | Full-page / region screenshot capture | [MIT](https://github.com/qq15725/modern-screenshot/blob/main/LICENSE) |
+
+Each generated LLM pack also ships a `THIRD_PARTY.md` repeating the JSZip attribution.
+
+---
+
+If this helped you ship something that looks good, [give it a star](../../stargazers). Found an issue? [Open one](../../issues).
+
+Sources: [research/sources.md](research/sources.md)
 </file>
 
 <file path="docs/tests/test-bbox-viewer.js">
@@ -35651,6 +35706,71 @@ window.MilgReport = (function() {
     var loc = f.locator; if (!loc || !loc.bboxes) return 0;
     return loc.bboxes.length;
   }
+  function _sevRank(sev) { return sev === 'error' ? 0 : sev === 'warning' ? 1 : sev === 'info' ? 2 : 3; }
+  // Stable identity for deduping a finding across viewports/pages. Prefer the
+  // element's primary selector (groups the same element across units); else fall
+  // back to a number-stripped title template (merges "contrast 3.2:1" and "4:1").
+  function _normTitle(t) { return String(t || '').replace(/\d+(\.\d+)?/g, '#').replace(/\s+/g, ' ').trim(); }
+  function _findingDedupKey(catLabel, f) {
+    var primarySel = (f.locator && f.locator.selector) ? f.locator.selector : null;
+    return catLabel + (primarySel ? ' :: sel :: ' + primarySel : ' :: ttl :: ' + _normTitle(f.title));
+  }
+  // Markdown lines for a finding's selector block (or affected-element count).
+  function _selectorBlockLines(f) {
+    var sels = _findingSelectors(f);
+    if (sels.length) {
+      var out = ['**Selector(s):**'];
+      sels.forEach(function(s) { out.push('- `' + s + '`'); });
+      var extra = _findingBboxCount(f) - sels.length;
+      if (extra > 0) out.push('- _…and ' + extra + ' more matched element(s)_');
+      return out;
+    }
+    var bc = _findingBboxCount(f);
+    return bc > 0 ? ['**Affected elements:** ' + bc + ' location(s).'] : [];
+  }
+  function _sourceMd(f) {
+    if (!f.source) return null;
+    var sp = String(f.source).split(' — ');
+    return '**Source:** ' + (sp[1] ? '[' + sp[0] + '](' + sp[1] + ')' : sp[0]);
+  }
+  // Concrete, reusable design-token snapshot (shared by single + multi packs).
+  function _tokenLinesFor(raw) {
+    var L = [];
+    var ty = raw.typography || {}, sp = raw.spacing || {}, st = raw.structure || {};
+    L.push('- **Body type:** ' + (ty.bodyFontSize || '?') + ' / line-height ' + (ty.bodyLineHeight || '?'));
+    if (ty.fontFamilies && ty.fontFamilies.length) L.push('- **Font families:** ' + ty.fontFamilies.join(', '));
+    if (ty.headings && ty.headings.length) {
+      var _hseen = {}, _hscale = [];
+      ty.headings.forEach(function(h) { var k = h.tag + ' ' + h.fontSize; if (!_hseen[k]) { _hseen[k] = 1; _hscale.push(k); } });
+      L.push('- **Heading scale:** ' + _hscale.join(' · '));
+    }
+    if (ty.fontWeights && ty.fontWeights.length) L.push('- **Weights in use:** ' + ty.fontWeights.map(function(w) { return w.value; }).filter(Boolean).join(', '));
+    if (sp.maxContentWidth) L.push('- **Max content width:** ' + sp.maxContentWidth);
+    var topPad = (sp.paddings || [])[0]; if (topPad) L.push('- **Common padding:** ' + topPad.value);
+    var topGap = (sp.gaps || [])[0]; if (topGap) L.push('- **Common gap:** ' + topGap.value);
+    var textC = (raw.colors && raw.colors.textColors || []).map(function(c) { return c.value; }).filter(Boolean).slice(0, 6);
+    var bgC = (raw.colors && raw.colors.bgColors || []).map(function(c) { return c.value; }).filter(Boolean).slice(0, 6);
+    if (textC.length) L.push('- **Text colors:** ' + textC.join(', '));
+    if (bgC.length) L.push('- **Background colors:** ' + bgC.join(', '));
+    L.push('- **CSS framework:** ' + (st.cssFramework || 'unknown'));
+    L.push('- **Responsive utilities:** ' + (st.responsiveClasses ? 'yes' : 'no') + ' · **Dark mode:** ' + (st.darkModeClasses ? 'yes' : 'no'));
+    if (st.totalElements) L.push('- **DOM size:** ' + st.totalElements + ' elements');
+    return L;
+  }
+  // General design principles (shared). Responsive/dark-mode lines are conditional.
+  function _generalPrincipleLines(raw) {
+    var L = [];
+    L.push('- **Contrast:** body/normal text needs a contrast ratio ≥ 4.5:1; large text (≥ 24px, or ≥ 19px bold) needs ≥ 3:1. UI/graphical boundaries need ≥ 3:1. (WCAG 2.2 §1.4.3 / §1.4.11)');
+    L.push('- **Touch targets:** interactive controls should be ≥ 44×44px with adequate spacing. (WCAG 2.2 §2.5.8, Apple HIG)');
+    L.push('- **Type:** keep a consistent modular scale; body ≥ 16px; line-height ~1.4–1.6 for body; line length ~45–75 characters.');
+    L.push('- **Spacing:** use a consistent spacing rhythm (e.g. 4/8px base); align elements to a shared grid; avoid arbitrary one-off margins.');
+    L.push('- **Hierarchy:** one h1 per page; never skip heading levels; use size, weight, and spacing to signal importance.');
+    L.push('- **Semantics & a11y:** prefer landmark elements (header/nav/main/footer), label all form controls, give every meaningful image alt text, ensure visible focus indicators.');
+    L.push('- **Consistency:** limit the palette and type set; reuse component patterns; keep interaction (hover/focus/active) states consistent.');
+    if (raw.structure && raw.structure.responsiveClasses) L.push('- **Responsive:** the page uses responsive utilities — verify fixes hold across breakpoints, not just the analyzed width.');
+    if (raw.structure && raw.structure.darkModeClasses) L.push('- **Dark mode:** the page supports dark mode — re-check contrast and color choices in both themes.');
+    return L;
+  }
 
   function buildLlmPack(report, options) {
     var opts = options || {};
@@ -35683,30 +35803,7 @@ window.MilgReport = (function() {
     // Stable doc number per category (1-based, in report order).
     cats.forEach(function(c, i) { c.docNum = String(i + 1).padStart(2, '0'); c.docPath = 'findings/' + c.docNum + '-' + c.slug + '.md'; });
 
-    // ---- Design tokens (concrete, reusable) -------------------------------
-    function tokenLines() {
-      var L = [];
-      var ty = raw.typography || {}, sp = raw.spacing || {}, st = raw.structure || {};
-      L.push('- **Body type:** ' + (ty.bodyFontSize || '?') + ' / line-height ' + (ty.bodyLineHeight || '?'));
-      if (ty.fontFamilies && ty.fontFamilies.length) L.push('- **Font families:** ' + ty.fontFamilies.join(', '));
-      if (ty.headings && ty.headings.length) {
-        var _hseen = {}, _hscale = [];
-        ty.headings.forEach(function(h) { var k = h.tag + ' ' + h.fontSize; if (!_hseen[k]) { _hseen[k] = 1; _hscale.push(k); } });
-        L.push('- **Heading scale:** ' + _hscale.join(' · '));
-      }
-      if (ty.fontWeights && ty.fontWeights.length) L.push('- **Weights in use:** ' + ty.fontWeights.map(function(w) { return w.value; }).filter(Boolean).join(', '));
-      if (sp.maxContentWidth) L.push('- **Max content width:** ' + sp.maxContentWidth);
-      var topPad = (sp.paddings || [])[0]; if (topPad) L.push('- **Common padding:** ' + topPad.value);
-      var topGap = (sp.gaps || [])[0]; if (topGap) L.push('- **Common gap:** ' + topGap.value);
-      var textC = (raw.colors && raw.colors.textColors || []).map(function(c) { return c.value; }).filter(Boolean).slice(0, 6);
-      var bgC = (raw.colors && raw.colors.bgColors || []).map(function(c) { return c.value; }).filter(Boolean).slice(0, 6);
-      if (textC.length) L.push('- **Text colors:** ' + textC.join(', '));
-      if (bgC.length) L.push('- **Background colors:** ' + bgC.join(', '));
-      L.push('- **CSS framework:** ' + (st.cssFramework || 'unknown'));
-      L.push('- **Responsive utilities:** ' + (st.responsiveClasses ? 'yes' : 'no') + ' · **Dark mode:** ' + (st.darkModeClasses ? 'yes' : 'no'));
-      if (st.totalElements) L.push('- **DOM size:** ' + st.totalElements + ' elements');
-      return L;
-    }
+    var tokenLines = function() { return _tokenLinesFor(raw); };
 
     // ---- README.md (overview + index) -------------------------------------
     var R = [];
@@ -35815,15 +35912,7 @@ window.MilgReport = (function() {
     G.push('');
     G.push('## 3. General principles');
     G.push('');
-    G.push('- **Contrast:** body/normal text needs a contrast ratio ≥ 4.5:1; large text (≥ 24px, or ≥ 19px bold) needs ≥ 3:1. UI/graphical boundaries need ≥ 3:1. (WCAG 2.2 §1.4.3 / §1.4.11)');
-    G.push('- **Touch targets:** interactive controls should be ≥ 44×44px with adequate spacing. (WCAG 2.2 §2.5.8, Apple HIG)');
-    G.push('- **Type:** keep a consistent modular scale; body ≥ 16px; line-height ~1.4–1.6 for body; line length ~45–75 characters.');
-    G.push('- **Spacing:** use a consistent spacing rhythm (e.g. 4/8px base); align elements to a shared grid; avoid arbitrary one-off margins.');
-    G.push('- **Hierarchy:** one h1 per page; never skip heading levels; use size, weight, and spacing to signal importance.');
-    G.push('- **Semantics & a11y:** prefer landmark elements (header/nav/main/footer), label all form controls, give every meaningful image alt text, ensure visible focus indicators.');
-    G.push('- **Consistency:** limit the palette and type set; reuse component patterns; keep interaction (hover/focus/active) states consistent.');
-    if (raw.structure && raw.structure.responsiveClasses) G.push('- **Responsive:** the page uses responsive utilities — verify fixes hold across breakpoints, not just the analyzed width.');
-    if (raw.structure && raw.structure.darkModeClasses) G.push('- **Dark mode:** the page supports dark mode — re-check contrast and color choices in both themes.');
+    _generalPrincipleLines(raw).forEach(function(l) { G.push(l); });
     G.push('');
     files.push({ path: 'GUIDELINES.md', text: G.join('\n') });
 
@@ -35861,22 +35950,10 @@ window.MilgReport = (function() {
           if (f.detail) { D.push(f.detail); D.push(''); }
           if (f.fix) { D.push('**Fix:** ' + f.fix); D.push(''); }
           if (f.presetRef) { D.push('**Example:** ' + f.presetRef); D.push(''); }
-          var sels = _findingSelectors(f);
-          if (sels.length) {
-            D.push('**Selector(s):**');
-            sels.forEach(function(s) { D.push('- `' + s + '`'); });
-            var extra = _findingBboxCount(f) - sels.length;
-            if (extra > 0) D.push('- _…and ' + extra + ' more matched element(s)_');
-            D.push('');
-          } else {
-            var bc = _findingBboxCount(f);
-            if (bc > 0) { D.push('**Affected elements:** ' + bc + ' location(s) on the page.'); D.push(''); }
-          }
-          if (f.source) {
-            var sp = String(f.source).split(' — ');
-            D.push('**Source:** ' + (sp[1] ? '[' + sp[0] + '](' + sp[1] + ')' : sp[0]));
-            D.push('');
-          }
+          var selLines = _selectorBlockLines(f);
+          if (selLines.length) { selLines.forEach(function(l) { D.push(l); }); D.push(''); }
+          var src = _sourceMd(f);
+          if (src) { D.push(src); D.push(''); }
         });
       }
       files.push({ path: c.docPath, text: D.join('\n') });
@@ -35905,7 +35982,302 @@ window.MilgReport = (function() {
     return { folder: folder, files: files, assets: assets };
   }
 
-  return { renderReport: renderReport, renderMarkdown: renderMarkdown, renderCrawlSummary: renderCrawlSummary, renderCrawlPageTab: renderCrawlPageTab, buildLlmPack: buildLlmPack };
+  function _thirdPartyLines() {
+    return ['# Third-party software', '',
+      'This .zip was assembled in the browser with **JSZip**.', '',
+      'JSZip — © Stuart Knightley and JSZip contributors. Dual-licensed under the MIT license or GPLv3; used here under the **MIT license**.',
+      'Project: https://github.com/Stuk/jszip — License: https://github.com/Stuk/jszip/blob/main/LICENSE.markdown', ''];
+  }
+
+  // Multi-unit LLM pack — deep-scan viewports, crawl pages, or the full page×viewport
+  // matrix. input.units = [{ id, label, report }], each report a FULL scored report
+  // (the caller re-scores every viewport/page). Findings are deduped across units via
+  // _findingDedupKey (selector → normalized title) and annotated "affects N/M", so the
+  // broadest "worst offenders" sort to the top. Also emits per-unit docs.
+  function buildLlmPackMulti(input) {
+    var opts = input || {};
+    var severityFilter = opts.severityFilter || 'all';
+    var passSev = _passSevFn(severityFilter);
+    var units = (opts.units || []).filter(function(u) { return u && u.report; });
+    var M = units.length;
+    var mode = opts.mode || 'viewport';                       // 'viewport' | 'crawl' | 'matrix'
+    var unitWord = mode === 'crawl' ? 'page' : mode === 'matrix' ? 'page×viewport combination' : 'viewport';
+    var unitWordShort = mode === 'crawl' ? 'page' : mode === 'matrix' ? 'combo' : 'viewport';
+    var primary = opts.primaryReport || (units[0] && units[0].report) || {};
+    var raw = primary.raw || {};
+    var meta = primary.meta || {};
+    var profile = raw.profile || primary.profile || 'general';
+    var _fwRaw = raw.structure && raw.structure.cssFramework;
+    var fw = (_fwRaw && _fwRaw !== 'unknown') ? _fwRaw : 'the existing CSS framework';
+    var host = opts.host || 'site';
+    if (!opts.host) { try { host = new URL(meta.url).hostname.replace(/^www\./, ''); } catch (e) {} }
+    var folder = 'milg-llm-pack-' + _slug(host) + (mode === 'crawl' ? '-site' : mode === 'matrix' ? '-site-viewports' : '-viewports');
+    var dims = opts.dims || {};
+    var files = [], assets = [];
+    var shot = raw.screenshotClean || (raw.screenshots && raw.screenshots[0]) || null;
+    var hasShot = !!(shot && /^data:image\//.test(shot));
+    // Unique per-unit doc slug (labels can collide, e.g. same page title twice).
+    var _slugCount = {};
+    units.forEach(function(u) {
+      var base = _slug(u.label) || 'unit', s = base, n = 1;
+      while (_slugCount[s]) { s = base + '-' + (n++); }
+      _slugCount[s] = 1; u._docSlug = s;
+    });
+
+    // ---- Aggregate findings across units → per category, deduped groups ----
+    var catOrder = [], catMap = {};
+    function ensureCat(label, weight, score) {
+      if (!catMap[label]) { catMap[label] = { label: label, weight: weight, score: score, groups: {} }; catOrder.push(label); }
+      return catMap[label];
+    }
+    (primary.categories || []).forEach(function(c) { ensureCat(c.label, c.weight, c.score); });
+    units.forEach(function(u) {
+      (u.report.categories || []).forEach(function(c) {
+        var cm = ensureCat(c.label, c.weight, c.score);
+        (c.findings || []).forEach(function(f) {
+          if (!passSev(f.severity)) return;
+          var key = _findingDedupKey(c.label, f);
+          var g = cm.groups[key];
+          if (!g) { g = cm.groups[key] = { title: f.title, fix: f.fix, presetRef: f.presetRef, source: f.source, severity: f.severity, ref: f, units: {}, occ: [] }; }
+          if (_sevRank(f.severity) < _sevRank(g.severity)) { g.severity = f.severity; g.title = f.title; g.fix = f.fix; g.source = f.source; g.presetRef = f.presetRef; g.ref = f; }
+          g.units[u.id] = u.label;
+          g.occ.push({ label: u.label, detail: f.detail || '', title: f.title });
+        });
+      });
+    });
+    var cats = catOrder.map(function(label, i) {
+      var cm = catMap[label];
+      var groups = Object.keys(cm.groups).map(function(k) { var g = cm.groups[k]; g.n = Object.keys(g.units).length; return g; });
+      groups.sort(function(a, b) { return (b.n - a.n) || (_sevRank(a.severity) - _sevRank(b.severity)) || (b.occ.length - a.occ.length); });
+      return { label: label, weight: cm.weight, slug: _slug(label), docNum: String(i + 1).padStart(2, '0'), groups: groups,
+        errors: groups.filter(function(g) { return g.severity === 'error'; }).length,
+        warnings: groups.filter(function(g) { return g.severity === 'warning'; }).length,
+        infos: groups.filter(function(g) { return g.severity === 'info'; }).length };
+    });
+    cats.forEach(function(c) { c.docPath = 'findings/' + c.docNum + '-' + c.slug + '.md'; });
+    var allGroups = [];
+    cats.forEach(function(c) { c.groups.forEach(function(g) { allGroups.push({ cat: c, g: g }); }); });
+    allGroups.sort(function(a, b) { return (b.g.n - a.g.n) || (_sevRank(a.g.severity) - _sevRank(b.g.severity)) || (b.g.occ.length - a.g.occ.length); });
+
+    function scopeBadge(g) {
+      if (g.n >= M) return 'all ' + M + ' ' + unitWordShort + (M !== 1 ? 's' : '');
+      var labels = Object.keys(g.units).map(function(id) { return g.units[id]; });
+      return g.n + '/' + M + ' ' + unitWordShort + (M !== 1 ? 's' : '') + ' — ' + labels.join(', ');
+    }
+    function breakdownLines(g) {
+      var seen = {}, rows = [];
+      g.occ.forEach(function(o) {
+        var txt = o.detail || o.title;
+        var line = '- ' + o.label + (txt ? ': ' + txt : '');
+        if (!seen[line]) { seen[line] = 1; rows.push(line); }
+      });
+      return rows;
+    }
+    var scopeSentence = mode === 'crawl' ? (M + ' page' + (M !== 1 ? 's' : ''))
+      : mode === 'matrix' ? ((dims.pages || '?') + ' pages × ' + (dims.viewports || '?') + ' viewports = ' + M + ' scored combinations')
+      : (M + ' viewport' + (M !== 1 ? 's' : ''));
+
+    // ---- README.md --------------------------------------------------------
+    var R = [];
+    R.push('# Design analysis pack — ' + host + (mode === 'crawl' ? ' (site crawl)' : mode === 'matrix' ? ' (site × viewports)' : ' (multi-viewport)'));
+    R.push('');
+    R.push('> Generated by the [make-it-look-good](https://github.com/jdeworks/make-it-look-good) Design Analyzer (rule-based scoring, no AI). Hand this to a coding/design agent — start with **AGENT_PROMPT.md**.');
+    R.push('');
+    R.push('- **' + (mode === 'crawl' ? 'Start URL' : 'URL') + ':** ' + (opts.startUrl || meta.url || 'n/a'));
+    R.push('- **Checked across:** ' + scopeSentence + ' (each scored independently)');
+    R.push('- **Audience profile:** ' + profile);
+    if (opts.aggregateScore != null) R.push('- **Average score:** ' + opts.aggregateScore + '/100');
+    R.push('- **Severity filter for this pack:** ' + severityFilter);
+    R.push('- **Distinct issues after dedup:** ' + allGroups.length);
+    R.push('');
+    R.push('## Contents');
+    R.push('');
+    R.push('| File | Purpose |');
+    R.push('|------|---------|');
+    R.push('| `AGENT_PROMPT.md` | Base prompt — give this to the agent first |');
+    R.push('| `GUIDELINES.md` | Tokens to honor + cross-cutting priorities + how to solve by scope |');
+    R.push('| `findings/00-index.md` | Every distinct issue, worst-offenders first, with "affects N/M" |');
+    R.push('| `findings/NN-<category>.md` | Per category: each issue + scope badge + per-' + unitWordShort + ' breakdown + fix |');
+    R.push('| `units/<' + unitWordShort + '>.md` | Per-' + unitWordShort + ' findings (the individual ' + unitWord + ' view) |');
+    if (hasShot) R.push('| `assets/clean-screenshot.*` | Clean full-page screenshot for visual context |');
+    R.push('');
+    R.push('## ' + (mode === 'crawl' ? 'Pages' : mode === 'matrix' ? 'Units (page × viewport)' : 'Viewports') + ' analyzed');
+    R.push('');
+    R.push('| Unit | Score | Doc |');
+    R.push('|------|-------|-----|');
+    units.forEach(function(u) { R.push('| ' + u.label + ' | ' + u.report.overall + '/100 (' + u.report.grade + ') | `units/' + u._docSlug + '.md` |'); });
+    R.push('');
+    files.push({ path: 'README.md', text: R.join('\n') });
+
+    // ---- AGENT_PROMPT.md --------------------------------------------------
+    var A = [];
+    A.push('# Agent prompt');
+    A.push('');
+    A.push('You are a senior frontend / UX engineer. You have a design-analysis pack for **' + (opts.startUrl || meta.url || host) + '**, produced by a rule-based analyzer (deterministic WCAG / design-heuristic checks — no AI judgement, so every finding is a concrete, measurable issue).');
+    A.push('');
+    A.push('## What was checked');
+    A.push('');
+    A.push('The design was analyzed across **' + scopeSentence + '**, and **each ' + unitWord + ' was scored independently**. Findings were then **deduplicated across ' + unitWordShort + 's** — every issue in `findings/` carries an "Affects: N/M" badge plus a per-' + unitWordShort + ' breakdown, so you can see whether a problem is universal or only shows up in one place.');
+    A.push('');
+    A.push('## Objective');
+    A.push('');
+    A.push('Raise the design quality across ' + (mode === 'crawl' ? 'the whole site' : 'all ' + unitWordShort + 's') + ' by resolving the findings, without changing content/copy/intent, and staying consistent with the existing design tokens and ' + fw + '.');
+    A.push('');
+    A.push('## What you have');
+    A.push('');
+    A.push('- `GUIDELINES.md` — design tokens to reuse, the cross-cutting priorities, and how to solve issues by scope. **Read this first.**');
+    A.push('- `findings/00-index.md` — every distinct issue, ordered worst-offenders-first (broadest reach, then severity).');
+    A.push('- `findings/NN-<category>.md` — per category; each issue has an **Affects** badge, a per-' + unitWordShort + ' breakdown, a recommended **Fix**, **Selector(s)**, and a source link.');
+    A.push('- `units/<' + unitWordShort + '>.md` — the individual findings for each ' + unitWord + ', if you need to drill into one.');
+    if (hasShot) A.push('- `assets/clean-screenshot.*` — a full-page screenshot for visual reference.');
+    A.push('');
+    A.push('## How to work');
+    A.push('');
+    A.push('1. Read `GUIDELINES.md` so every change is consistent with the existing tokens.');
+    A.push('2. Start at the top of `findings/00-index.md`. An issue that **affects all ' + unitWordShort + 's** is the highest-leverage fix — resolving it once clears it everywhere.');
+    A.push('3. Solve each issue according to its scope:');
+    A.push('   - **Cross-cutting** (affects all/most ' + unitWordShort + 's): fix once at the shared layer — ' + (mode === 'crawl' ? 'the shared component, template, or global stylesheet' : 'base styles that hold at every breakpoint') + '.');
+    if (mode === 'viewport' || mode === 'matrix') A.push('   - **Viewport-specific** (affects only some viewports, e.g. Phone): use a responsive / conditional rule (media query or responsive utility) so you do **not** regress the viewports where it already passes.');
+    if (mode === 'crawl' || mode === 'matrix') A.push('   - **Page-specific** (affects only some pages): fix it in those pages or their template, not globally.');
+    A.push('4. Use the per-' + unitWordShort + ' breakdown under each issue to see exactly where — and at what magnitude — it occurs.');
+    A.push('5. Do not regress passing checks. Keep semantic HTML, responsive behavior, and (if present) dark-mode support intact.');
+    A.push('');
+    A.push('## Definition of done');
+    A.push('');
+    A.push('- Every error- and warning-level issue is addressed or has a documented reason it cannot be.');
+    A.push('- Cross-cutting issues are fixed at the shared layer; ' + unitWordShort + '-specific ones are fixed without regressing the ' + unitWordShort + 's that already pass.');
+    A.push('- A short summary maps each change back to the issue it resolves (category + title + which ' + unitWordShort + 's).');
+    A.push('');
+    files.push({ path: 'AGENT_PROMPT.md', text: A.join('\n') });
+
+    // ---- GUIDELINES.md ----------------------------------------------------
+    var G = [];
+    G.push('# Guidelines');
+    G.push('');
+    G.push('Derived from analyzing **' + (opts.startUrl || meta.url || host) + '** across ' + scopeSentence + ', plus general best practice.');
+    G.push('');
+    G.push('## 1. Design tokens to honor');
+    G.push('');
+    G.push('Reuse these existing values instead of introducing new ones (snapshot from the primary ' + unitWordShort + '):');
+    G.push('');
+    _tokenLinesFor(raw).forEach(function(l) { G.push(l); });
+    G.push('');
+    G.push('## 2. Priorities — worst offenders across ' + unitWordShort + 's');
+    G.push('');
+    if (allGroups.length === 0) {
+      G.push('No issues at the current severity filter (' + severityFilter + ').');
+    } else {
+      allGroups.slice(0, 12).forEach(function(ag) {
+        G.push('- ' + _sevIcon(ag.g.severity) + ' **[' + ag.cat.label + ']** ' + ag.g.title + ' — affects ' + scopeBadge(ag.g) + ' (`' + ag.cat.docPath + '`)');
+      });
+      if (allGroups.length > 12) G.push('- _…and ' + (allGroups.length - 12) + ' more in the per-category documents._');
+    }
+    G.push('');
+    G.push('## 3. How to solve by scope');
+    G.push('');
+    G.push('- **Affects all/most ' + unitWordShort + 's** → fix once at the shared layer (' + (mode === 'crawl' ? 'shared component / template / global CSS' : 'base styles that hold at every breakpoint') + ').');
+    if (mode === 'viewport' || mode === 'matrix') G.push('- **Affects only some viewports** → responsive / conditional fix (media query or responsive utility); never regress a passing viewport.');
+    if (mode === 'crawl' || mode === 'matrix') G.push('- **Affects only some pages** → fix in those pages / their template, not globally.');
+    G.push('');
+    G.push('## 4. General principles');
+    G.push('');
+    _generalPrincipleLines(raw).forEach(function(l) { G.push(l); });
+    G.push('');
+    files.push({ path: 'GUIDELINES.md', text: G.join('\n') });
+
+    // ---- findings/00-index.md (worst-offenders ranking) -------------------
+    var IX = [];
+    IX.push('# Findings index — worst offenders first');
+    IX.push('');
+    IX.push('Severity filter: **' + severityFilter + '** · checked across ' + scopeSentence + ' · ' + allGroups.length + ' distinct issues.');
+    IX.push('');
+    IX.push('| Affects | Sev | Category | Issue | Doc |');
+    IX.push('|---------|-----|----------|-------|-----|');
+    allGroups.forEach(function(ag) {
+      var t = ag.g.title.length > 70 ? ag.g.title.substring(0, 67) + '…' : ag.g.title;
+      IX.push('| ' + ag.g.n + '/' + M + ' | ' + _sevIcon(ag.g.severity) + ' | ' + ag.cat.label + ' | ' + t.replace(/\|/g, '\\|') + ' | `' + ag.cat.docNum + '-' + ag.cat.slug + '.md` |');
+    });
+    if (allGroups.length === 0) IX.push('| — | — | — | _no issues at this filter_ | — |');
+    IX.push('');
+    files.push({ path: 'findings/00-index.md', text: IX.join('\n') });
+
+    // ---- findings/NN-<category>.md ---------------------------------------
+    cats.forEach(function(c) {
+      var D = [];
+      D.push('# ' + c.label);
+      D.push('');
+      D.push('**Distinct issues:** ' + c.groups.length + ' · **Errors:** ' + c.errors + ' · **Warnings:** ' + c.warnings + ' · **Info:** ' + c.infos + ' · checked across ' + scopeSentence);
+      D.push('');
+      if (c.groups.length === 0) {
+        D.push('_No issues in this category at the current severity filter (' + severityFilter + ')._');
+      } else {
+        c.groups.forEach(function(g) {
+          D.push('## ' + _sevIcon(g.severity) + ' [' + g.severity + '] ' + g.title);
+          D.push('');
+          D.push('**Affects:** ' + scopeBadge(g));
+          D.push('');
+          if (g.n > 1) {
+            var rows = breakdownLines(g);
+            if (rows.length > 1) {
+              D.push('**Per-' + unitWordShort + ':**');
+              rows.forEach(function(r) { D.push(r); });
+              D.push('');
+            }
+          }
+          if (g.fix) { D.push('**Fix:** ' + g.fix); D.push(''); }
+          if (g.presetRef) { D.push('**Example:** ' + g.presetRef); D.push(''); }
+          var selLines = _selectorBlockLines(g.ref);
+          if (selLines.length) { selLines.forEach(function(l) { D.push(l); }); D.push(''); }
+          var src = _sourceMd(g.ref);
+          if (src) { D.push(src); D.push(''); }
+        });
+      }
+      files.push({ path: c.docPath, text: D.join('\n') });
+    });
+
+    // ---- units/<unit>.md (per-unit findings) ------------------------------
+    units.forEach(function(u) {
+      var U = [];
+      U.push('# ' + u.label);
+      U.push('');
+      U.push('**Score:** ' + u.report.overall + '/100 (' + u.report.grade + ')');
+      U.push('');
+      var any = false;
+      (u.report.categories || []).forEach(function(c) {
+        var shown = (c.findings || []).filter(function(f) { return passSev(f.severity); });
+        if (!shown.length) return;
+        any = true;
+        U.push('## ' + c.label + ' — ' + c.score + '/100');
+        U.push('');
+        var order = { error: 0, warning: 1, info: 2, pass: 3 };
+        shown.slice().sort(function(a, b) { return (order[a.severity] || 9) - (order[b.severity] || 9); }).forEach(function(f) {
+          U.push('### ' + _sevIcon(f.severity) + ' [' + f.severity + '] ' + f.title);
+          U.push('');
+          if (f.detail) { U.push(f.detail); U.push(''); }
+          if (f.fix) { U.push('**Fix:** ' + f.fix); U.push(''); }
+          var sl = _selectorBlockLines(f);
+          if (sl.length) { sl.forEach(function(l) { U.push(l); }); U.push(''); }
+          var sr = _sourceMd(f);
+          if (sr) { U.push(sr); U.push(''); }
+        });
+      });
+      if (!any) U.push('_No issues at the current severity filter — all checks passed._');
+      files.push({ path: 'units/' + u._docSlug + '.md', text: U.join('\n') });
+    });
+
+    // ---- assets + THIRD_PARTY --------------------------------------------
+    if (hasShot) {
+      var comma = shot.indexOf(',');
+      var b64 = comma >= 0 ? shot.substring(comma + 1) : '';
+      var ext = /^data:image\/jpe?g/.test(shot) ? 'jpg' : /^data:image\/webp/.test(shot) ? 'webp' : 'png';
+      if (b64) assets.push({ path: 'assets/clean-screenshot.' + ext, b64: b64 });
+    }
+    files.push({ path: 'THIRD_PARTY.md', text: _thirdPartyLines().join('\n') });
+
+    return { folder: folder, files: files, assets: assets };
+  }
+
+  return { renderReport: renderReport, renderMarkdown: renderMarkdown, renderCrawlSummary: renderCrawlSummary, renderCrawlPageTab: renderCrawlPageTab, buildLlmPack: buildLlmPack, buildLlmPackMulti: buildLlmPackMulti };
 })();
 </file>
 
@@ -43968,7 +44340,7 @@ window.MilgViewer = (function() {
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.21 loaded');
+console.log('[milg] analyzer.js v3.11.22 loaded');
 
 (function() {
   "use strict";
@@ -45523,16 +45895,62 @@ console.log('[milg] analyzer.js v3.11.21 loaded');
       });
       return _jszipPromise;
     }
+    function _llmPageLabel(p) {
+      var path; try { path = new URL(p.url).pathname || '/'; } catch (e) { path = p.url; }
+      if (path === '/') path = '/ (home)';
+      return (p.title ? p.title.substring(0, 40) + ' — ' : '') + path;
+    }
+    function _llmHostOf(u) { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e) { return 'site'; } }
+    // Assemble the right pack for the current state: single page, multi-viewport
+    // (deep scan), crawl (pages), or the full page×viewport matrix (crawl + deep scan).
+    // Every viewport/page is RE-SCORED (scoring is cheap) so each unit has real findings.
+    function _buildLlmPackForCurrent(severity) {
+      var session = MilgCrawlUI.getCrawlSession && MilgCrawlUI.getCrawlSession();
+      if (session) {
+        var done = (session.pages || []).filter(function(p) { return p.status === 'done' && p.reportData; });
+        if (!done.length) return null;
+        var hasDeep = done.some(function(p) { return p.rawData && p.rawData.deepScan && p.rawData.deepScan.viewportData && p.rawData.deepScan.viewportData.filter(Boolean).length > 1; });
+        var units = [], maxVp = 1;
+        done.forEach(function(p, pi) {
+          var vps = (p.rawData && p.rawData.deepScan && p.rawData.deepScan.viewportData) ? p.rawData.deepScan.viewportData.filter(Boolean) : null;
+          if (hasDeep && vps && vps.length) {
+            maxVp = Math.max(maxVp, vps.length);
+            vps.forEach(function(vd, vi) { units.push({ id: 'p' + pi + 'v' + vi, label: _llmPageLabel(p) + ' @ ' + vd.label + ' ' + vd.width, report: MilgScoring.runScoring(vd.data) }); });
+          } else {
+            units.push({ id: 'p' + pi, label: _llmPageLabel(p), report: p.reportData });
+          }
+        });
+        return MilgReport.buildLlmPackMulti({
+          mode: hasDeep ? 'matrix' : 'crawl', units: units, primaryReport: done[0].reportData,
+          host: _llmHostOf(session.startUrl), startUrl: session.startUrl,
+          aggregateScore: session.summary ? session.summary.averageScore : null,
+          dims: { pages: done.length, viewports: hasDeep ? maxVp : null }, severityFilter: severity
+        });
+      }
+      if (reportData && reportData.raw && reportData.raw.deepScan && reportData.raw.deepScan.viewportData) {
+        var vd = reportData.raw.deepScan.viewportData.filter(Boolean);
+        if (vd.length > 1) {
+          var vunits = vd.map(function(v, i) { return { id: 'v' + i, label: v.label + ' (' + v.width + 'px)', report: MilgScoring.runScoring(v.data) }; });
+          return MilgReport.buildLlmPackMulti({
+            mode: 'viewport', units: vunits, primaryReport: reportData,
+            host: _llmHostOf(reportData.meta && reportData.meta.url), aggregateScore: reportData.overall,
+            dims: { viewports: vd.length }, severityFilter: severity
+          });
+        }
+      }
+      return reportData ? MilgReport.buildLlmPack(reportData, { severityFilter: severity }) : null;
+    }
     var _llmPackBtn = document.getElementById('llmPackBtn');
     if (_llmPackBtn) _llmPackBtn.addEventListener('click', function() {
-      if (MilgCrawlUI.getCrawlSession && MilgCrawlUI.getCrawlSession()) { showToast('LLM pack is for single-page reports'); return; }
-      if (!reportData) return;
+      var _session = MilgCrawlUI.getCrawlSession && MilgCrawlUI.getCrawlSession();
+      if (!reportData && !_session) return;
       var filter = document.getElementById('exportSeverityFilter');
       var severity = filter ? filter.value : 'all';
       var lbl = _llmPackBtn.querySelector('.btn-label');
       _llmPackBtn.disabled = true; if (lbl) lbl.textContent = 'Building…';
       _loadJSZip().then(function(JSZip) {
-        var pack = MilgReport.buildLlmPack(reportData, { severityFilter: severity });
+        var pack = _buildLlmPackForCurrent(severity);
+        if (!pack) throw new Error('no analysis to export');
         var zip = new JSZip();
         var root = zip.folder(pack.folder);
         pack.files.forEach(function(f) { root.file(f.path, f.text); });
@@ -45857,7 +46275,7 @@ console.log('[milg] analyzer.js v3.11.21 loaded');
   <title>make-it-look-good — Design Analyzer</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='2' y='2' width='12' height='12' rx='2' fill='%232563eb'/><rect x='18' y='2' width='12' height='12' rx='2' fill='%2393c5fd'/><rect x='2' y='18' width='12' height='12' rx='2' fill='%2393c5fd'/><rect x='18' y='18' width='12' height='12' rx='2' fill='%232563eb'/></svg>">
   <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="analyzer.css?v=3.11.21">
+  <link rel="stylesheet" href="analyzer.css?v=3.11.22">
 </head>
 <body class="analyzer-body">
 
@@ -45886,7 +46304,7 @@ console.log('[milg] analyzer.js v3.11.21 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.11.21</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.11.22</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -46300,33 +46718,33 @@ console.log('[milg] analyzer.js v3.11.21 loaded');
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=3.11.21"></script>
-  <script src="scoring/contrast.js?v=3.11.21"></script>
-  <script src="scoring/typography.js?v=3.11.21"></script>
-  <script src="scoring/spacing.js?v=3.11.21"></script>
-  <script src="scoring/touch.js?v=3.11.21"></script>
-  <script src="scoring/accessibility.js?v=3.11.21"></script>
-  <script src="scoring/responsive.js?v=3.11.21"></script>
-  <script src="scoring/consistency.js?v=3.11.21"></script>
-  <script src="scoring/cognitive.js?v=3.11.21"></script>
-  <script src="scoring/layout.js?v=3.11.21"></script>
-  <script src="scoring/performance.js?v=3.11.21"></script>
-  <script src="scoring/readability.js?v=3.11.21"></script>
-  <script src="scoring/filters.js?v=3.11.21"></script>
-  <script src="scoring/balance.js?v=3.11.21"></script>
+  <script src="scoring/registry.js?v=3.11.22"></script>
+  <script src="scoring/contrast.js?v=3.11.22"></script>
+  <script src="scoring/typography.js?v=3.11.22"></script>
+  <script src="scoring/spacing.js?v=3.11.22"></script>
+  <script src="scoring/touch.js?v=3.11.22"></script>
+  <script src="scoring/accessibility.js?v=3.11.22"></script>
+  <script src="scoring/responsive.js?v=3.11.22"></script>
+  <script src="scoring/consistency.js?v=3.11.22"></script>
+  <script src="scoring/cognitive.js?v=3.11.22"></script>
+  <script src="scoring/layout.js?v=3.11.22"></script>
+  <script src="scoring/performance.js?v=3.11.22"></script>
+  <script src="scoring/readability.js?v=3.11.22"></script>
+  <script src="scoring/filters.js?v=3.11.22"></script>
+  <script src="scoring/balance.js?v=3.11.22"></script>
   <!-- Queue + Report rendering + UI -->
-  <script src="analyzer-queue.js?v=3.11.21"></script>
-  <script src="analyzer-report.js?v=3.11.21"></script>
-  <script src="analyzer-crawl.js?v=3.11.21"></script>
-  <script src="analyzer-extract.js?v=3.11.21"></script>
-  <script src="analyzer-region.js?v=3.11.21"></script>
-  <script src="analyzer-capture.js?v=3.11.21"></script>
-  <script src="analyzer-iframe.js?v=3.11.21"></script>
-  <script src="analyzer-proxy.js?v=3.11.21"></script>
-  <script src="analyzer-crawl-ui.js?v=3.11.21"></script>
-  <script src="analyzer-contrast-verify.js?v=3.11.21"></script>
-  <script src="analyzer-viewer.js?v=3.11.21"></script>
-  <script src="analyzer.js?v=3.11.21"></script>
+  <script src="analyzer-queue.js?v=3.11.22"></script>
+  <script src="analyzer-report.js?v=3.11.22"></script>
+  <script src="analyzer-crawl.js?v=3.11.22"></script>
+  <script src="analyzer-extract.js?v=3.11.22"></script>
+  <script src="analyzer-region.js?v=3.11.22"></script>
+  <script src="analyzer-capture.js?v=3.11.22"></script>
+  <script src="analyzer-iframe.js?v=3.11.22"></script>
+  <script src="analyzer-proxy.js?v=3.11.22"></script>
+  <script src="analyzer-crawl-ui.js?v=3.11.22"></script>
+  <script src="analyzer-contrast-verify.js?v=3.11.22"></script>
+  <script src="analyzer-viewer.js?v=3.11.22"></script>
+  <script src="analyzer.js?v=3.11.22"></script>
 </body>
 </html>
 </file>

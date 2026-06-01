@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.21 loaded');
+console.log('[milg] analyzer.js v3.11.22 loaded');
 
 (function() {
   "use strict";
@@ -1557,16 +1557,62 @@ console.log('[milg] analyzer.js v3.11.21 loaded');
       });
       return _jszipPromise;
     }
+    function _llmPageLabel(p) {
+      var path; try { path = new URL(p.url).pathname || '/'; } catch (e) { path = p.url; }
+      if (path === '/') path = '/ (home)';
+      return (p.title ? p.title.substring(0, 40) + ' — ' : '') + path;
+    }
+    function _llmHostOf(u) { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e) { return 'site'; } }
+    // Assemble the right pack for the current state: single page, multi-viewport
+    // (deep scan), crawl (pages), or the full page×viewport matrix (crawl + deep scan).
+    // Every viewport/page is RE-SCORED (scoring is cheap) so each unit has real findings.
+    function _buildLlmPackForCurrent(severity) {
+      var session = MilgCrawlUI.getCrawlSession && MilgCrawlUI.getCrawlSession();
+      if (session) {
+        var done = (session.pages || []).filter(function(p) { return p.status === 'done' && p.reportData; });
+        if (!done.length) return null;
+        var hasDeep = done.some(function(p) { return p.rawData && p.rawData.deepScan && p.rawData.deepScan.viewportData && p.rawData.deepScan.viewportData.filter(Boolean).length > 1; });
+        var units = [], maxVp = 1;
+        done.forEach(function(p, pi) {
+          var vps = (p.rawData && p.rawData.deepScan && p.rawData.deepScan.viewportData) ? p.rawData.deepScan.viewportData.filter(Boolean) : null;
+          if (hasDeep && vps && vps.length) {
+            maxVp = Math.max(maxVp, vps.length);
+            vps.forEach(function(vd, vi) { units.push({ id: 'p' + pi + 'v' + vi, label: _llmPageLabel(p) + ' @ ' + vd.label + ' ' + vd.width, report: MilgScoring.runScoring(vd.data) }); });
+          } else {
+            units.push({ id: 'p' + pi, label: _llmPageLabel(p), report: p.reportData });
+          }
+        });
+        return MilgReport.buildLlmPackMulti({
+          mode: hasDeep ? 'matrix' : 'crawl', units: units, primaryReport: done[0].reportData,
+          host: _llmHostOf(session.startUrl), startUrl: session.startUrl,
+          aggregateScore: session.summary ? session.summary.averageScore : null,
+          dims: { pages: done.length, viewports: hasDeep ? maxVp : null }, severityFilter: severity
+        });
+      }
+      if (reportData && reportData.raw && reportData.raw.deepScan && reportData.raw.deepScan.viewportData) {
+        var vd = reportData.raw.deepScan.viewportData.filter(Boolean);
+        if (vd.length > 1) {
+          var vunits = vd.map(function(v, i) { return { id: 'v' + i, label: v.label + ' (' + v.width + 'px)', report: MilgScoring.runScoring(v.data) }; });
+          return MilgReport.buildLlmPackMulti({
+            mode: 'viewport', units: vunits, primaryReport: reportData,
+            host: _llmHostOf(reportData.meta && reportData.meta.url), aggregateScore: reportData.overall,
+            dims: { viewports: vd.length }, severityFilter: severity
+          });
+        }
+      }
+      return reportData ? MilgReport.buildLlmPack(reportData, { severityFilter: severity }) : null;
+    }
     var _llmPackBtn = document.getElementById('llmPackBtn');
     if (_llmPackBtn) _llmPackBtn.addEventListener('click', function() {
-      if (MilgCrawlUI.getCrawlSession && MilgCrawlUI.getCrawlSession()) { showToast('LLM pack is for single-page reports'); return; }
-      if (!reportData) return;
+      var _session = MilgCrawlUI.getCrawlSession && MilgCrawlUI.getCrawlSession();
+      if (!reportData && !_session) return;
       var filter = document.getElementById('exportSeverityFilter');
       var severity = filter ? filter.value : 'all';
       var lbl = _llmPackBtn.querySelector('.btn-label');
       _llmPackBtn.disabled = true; if (lbl) lbl.textContent = 'Building…';
       _loadJSZip().then(function(JSZip) {
-        var pack = MilgReport.buildLlmPack(reportData, { severityFilter: severity });
+        var pack = _buildLlmPackForCurrent(severity);
+        if (!pack) throw new Error('no analysis to export');
         var zip = new JSZip();
         var root = zip.folder(pack.folder);
         pack.files.forEach(function(f) { root.file(f.path, f.text); });

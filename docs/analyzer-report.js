@@ -989,6 +989,71 @@ window.MilgReport = (function() {
     var loc = f.locator; if (!loc || !loc.bboxes) return 0;
     return loc.bboxes.length;
   }
+  function _sevRank(sev) { return sev === 'error' ? 0 : sev === 'warning' ? 1 : sev === 'info' ? 2 : 3; }
+  // Stable identity for deduping a finding across viewports/pages. Prefer the
+  // element's primary selector (groups the same element across units); else fall
+  // back to a number-stripped title template (merges "contrast 3.2:1" and "4:1").
+  function _normTitle(t) { return String(t || '').replace(/\d+(\.\d+)?/g, '#').replace(/\s+/g, ' ').trim(); }
+  function _findingDedupKey(catLabel, f) {
+    var primarySel = (f.locator && f.locator.selector) ? f.locator.selector : null;
+    return catLabel + (primarySel ? ' :: sel :: ' + primarySel : ' :: ttl :: ' + _normTitle(f.title));
+  }
+  // Markdown lines for a finding's selector block (or affected-element count).
+  function _selectorBlockLines(f) {
+    var sels = _findingSelectors(f);
+    if (sels.length) {
+      var out = ['**Selector(s):**'];
+      sels.forEach(function(s) { out.push('- `' + s + '`'); });
+      var extra = _findingBboxCount(f) - sels.length;
+      if (extra > 0) out.push('- _…and ' + extra + ' more matched element(s)_');
+      return out;
+    }
+    var bc = _findingBboxCount(f);
+    return bc > 0 ? ['**Affected elements:** ' + bc + ' location(s).'] : [];
+  }
+  function _sourceMd(f) {
+    if (!f.source) return null;
+    var sp = String(f.source).split(' — ');
+    return '**Source:** ' + (sp[1] ? '[' + sp[0] + '](' + sp[1] + ')' : sp[0]);
+  }
+  // Concrete, reusable design-token snapshot (shared by single + multi packs).
+  function _tokenLinesFor(raw) {
+    var L = [];
+    var ty = raw.typography || {}, sp = raw.spacing || {}, st = raw.structure || {};
+    L.push('- **Body type:** ' + (ty.bodyFontSize || '?') + ' / line-height ' + (ty.bodyLineHeight || '?'));
+    if (ty.fontFamilies && ty.fontFamilies.length) L.push('- **Font families:** ' + ty.fontFamilies.join(', '));
+    if (ty.headings && ty.headings.length) {
+      var _hseen = {}, _hscale = [];
+      ty.headings.forEach(function(h) { var k = h.tag + ' ' + h.fontSize; if (!_hseen[k]) { _hseen[k] = 1; _hscale.push(k); } });
+      L.push('- **Heading scale:** ' + _hscale.join(' · '));
+    }
+    if (ty.fontWeights && ty.fontWeights.length) L.push('- **Weights in use:** ' + ty.fontWeights.map(function(w) { return w.value; }).filter(Boolean).join(', '));
+    if (sp.maxContentWidth) L.push('- **Max content width:** ' + sp.maxContentWidth);
+    var topPad = (sp.paddings || [])[0]; if (topPad) L.push('- **Common padding:** ' + topPad.value);
+    var topGap = (sp.gaps || [])[0]; if (topGap) L.push('- **Common gap:** ' + topGap.value);
+    var textC = (raw.colors && raw.colors.textColors || []).map(function(c) { return c.value; }).filter(Boolean).slice(0, 6);
+    var bgC = (raw.colors && raw.colors.bgColors || []).map(function(c) { return c.value; }).filter(Boolean).slice(0, 6);
+    if (textC.length) L.push('- **Text colors:** ' + textC.join(', '));
+    if (bgC.length) L.push('- **Background colors:** ' + bgC.join(', '));
+    L.push('- **CSS framework:** ' + (st.cssFramework || 'unknown'));
+    L.push('- **Responsive utilities:** ' + (st.responsiveClasses ? 'yes' : 'no') + ' · **Dark mode:** ' + (st.darkModeClasses ? 'yes' : 'no'));
+    if (st.totalElements) L.push('- **DOM size:** ' + st.totalElements + ' elements');
+    return L;
+  }
+  // General design principles (shared). Responsive/dark-mode lines are conditional.
+  function _generalPrincipleLines(raw) {
+    var L = [];
+    L.push('- **Contrast:** body/normal text needs a contrast ratio ≥ 4.5:1; large text (≥ 24px, or ≥ 19px bold) needs ≥ 3:1. UI/graphical boundaries need ≥ 3:1. (WCAG 2.2 §1.4.3 / §1.4.11)');
+    L.push('- **Touch targets:** interactive controls should be ≥ 44×44px with adequate spacing. (WCAG 2.2 §2.5.8, Apple HIG)');
+    L.push('- **Type:** keep a consistent modular scale; body ≥ 16px; line-height ~1.4–1.6 for body; line length ~45–75 characters.');
+    L.push('- **Spacing:** use a consistent spacing rhythm (e.g. 4/8px base); align elements to a shared grid; avoid arbitrary one-off margins.');
+    L.push('- **Hierarchy:** one h1 per page; never skip heading levels; use size, weight, and spacing to signal importance.');
+    L.push('- **Semantics & a11y:** prefer landmark elements (header/nav/main/footer), label all form controls, give every meaningful image alt text, ensure visible focus indicators.');
+    L.push('- **Consistency:** limit the palette and type set; reuse component patterns; keep interaction (hover/focus/active) states consistent.');
+    if (raw.structure && raw.structure.responsiveClasses) L.push('- **Responsive:** the page uses responsive utilities — verify fixes hold across breakpoints, not just the analyzed width.');
+    if (raw.structure && raw.structure.darkModeClasses) L.push('- **Dark mode:** the page supports dark mode — re-check contrast and color choices in both themes.');
+    return L;
+  }
 
   function buildLlmPack(report, options) {
     var opts = options || {};
@@ -1021,30 +1086,7 @@ window.MilgReport = (function() {
     // Stable doc number per category (1-based, in report order).
     cats.forEach(function(c, i) { c.docNum = String(i + 1).padStart(2, '0'); c.docPath = 'findings/' + c.docNum + '-' + c.slug + '.md'; });
 
-    // ---- Design tokens (concrete, reusable) -------------------------------
-    function tokenLines() {
-      var L = [];
-      var ty = raw.typography || {}, sp = raw.spacing || {}, st = raw.structure || {};
-      L.push('- **Body type:** ' + (ty.bodyFontSize || '?') + ' / line-height ' + (ty.bodyLineHeight || '?'));
-      if (ty.fontFamilies && ty.fontFamilies.length) L.push('- **Font families:** ' + ty.fontFamilies.join(', '));
-      if (ty.headings && ty.headings.length) {
-        var _hseen = {}, _hscale = [];
-        ty.headings.forEach(function(h) { var k = h.tag + ' ' + h.fontSize; if (!_hseen[k]) { _hseen[k] = 1; _hscale.push(k); } });
-        L.push('- **Heading scale:** ' + _hscale.join(' · '));
-      }
-      if (ty.fontWeights && ty.fontWeights.length) L.push('- **Weights in use:** ' + ty.fontWeights.map(function(w) { return w.value; }).filter(Boolean).join(', '));
-      if (sp.maxContentWidth) L.push('- **Max content width:** ' + sp.maxContentWidth);
-      var topPad = (sp.paddings || [])[0]; if (topPad) L.push('- **Common padding:** ' + topPad.value);
-      var topGap = (sp.gaps || [])[0]; if (topGap) L.push('- **Common gap:** ' + topGap.value);
-      var textC = (raw.colors && raw.colors.textColors || []).map(function(c) { return c.value; }).filter(Boolean).slice(0, 6);
-      var bgC = (raw.colors && raw.colors.bgColors || []).map(function(c) { return c.value; }).filter(Boolean).slice(0, 6);
-      if (textC.length) L.push('- **Text colors:** ' + textC.join(', '));
-      if (bgC.length) L.push('- **Background colors:** ' + bgC.join(', '));
-      L.push('- **CSS framework:** ' + (st.cssFramework || 'unknown'));
-      L.push('- **Responsive utilities:** ' + (st.responsiveClasses ? 'yes' : 'no') + ' · **Dark mode:** ' + (st.darkModeClasses ? 'yes' : 'no'));
-      if (st.totalElements) L.push('- **DOM size:** ' + st.totalElements + ' elements');
-      return L;
-    }
+    var tokenLines = function() { return _tokenLinesFor(raw); };
 
     // ---- README.md (overview + index) -------------------------------------
     var R = [];
@@ -1153,15 +1195,7 @@ window.MilgReport = (function() {
     G.push('');
     G.push('## 3. General principles');
     G.push('');
-    G.push('- **Contrast:** body/normal text needs a contrast ratio ≥ 4.5:1; large text (≥ 24px, or ≥ 19px bold) needs ≥ 3:1. UI/graphical boundaries need ≥ 3:1. (WCAG 2.2 §1.4.3 / §1.4.11)');
-    G.push('- **Touch targets:** interactive controls should be ≥ 44×44px with adequate spacing. (WCAG 2.2 §2.5.8, Apple HIG)');
-    G.push('- **Type:** keep a consistent modular scale; body ≥ 16px; line-height ~1.4–1.6 for body; line length ~45–75 characters.');
-    G.push('- **Spacing:** use a consistent spacing rhythm (e.g. 4/8px base); align elements to a shared grid; avoid arbitrary one-off margins.');
-    G.push('- **Hierarchy:** one h1 per page; never skip heading levels; use size, weight, and spacing to signal importance.');
-    G.push('- **Semantics & a11y:** prefer landmark elements (header/nav/main/footer), label all form controls, give every meaningful image alt text, ensure visible focus indicators.');
-    G.push('- **Consistency:** limit the palette and type set; reuse component patterns; keep interaction (hover/focus/active) states consistent.');
-    if (raw.structure && raw.structure.responsiveClasses) G.push('- **Responsive:** the page uses responsive utilities — verify fixes hold across breakpoints, not just the analyzed width.');
-    if (raw.structure && raw.structure.darkModeClasses) G.push('- **Dark mode:** the page supports dark mode — re-check contrast and color choices in both themes.');
+    _generalPrincipleLines(raw).forEach(function(l) { G.push(l); });
     G.push('');
     files.push({ path: 'GUIDELINES.md', text: G.join('\n') });
 
@@ -1199,22 +1233,10 @@ window.MilgReport = (function() {
           if (f.detail) { D.push(f.detail); D.push(''); }
           if (f.fix) { D.push('**Fix:** ' + f.fix); D.push(''); }
           if (f.presetRef) { D.push('**Example:** ' + f.presetRef); D.push(''); }
-          var sels = _findingSelectors(f);
-          if (sels.length) {
-            D.push('**Selector(s):**');
-            sels.forEach(function(s) { D.push('- `' + s + '`'); });
-            var extra = _findingBboxCount(f) - sels.length;
-            if (extra > 0) D.push('- _…and ' + extra + ' more matched element(s)_');
-            D.push('');
-          } else {
-            var bc = _findingBboxCount(f);
-            if (bc > 0) { D.push('**Affected elements:** ' + bc + ' location(s) on the page.'); D.push(''); }
-          }
-          if (f.source) {
-            var sp = String(f.source).split(' — ');
-            D.push('**Source:** ' + (sp[1] ? '[' + sp[0] + '](' + sp[1] + ')' : sp[0]));
-            D.push('');
-          }
+          var selLines = _selectorBlockLines(f);
+          if (selLines.length) { selLines.forEach(function(l) { D.push(l); }); D.push(''); }
+          var src = _sourceMd(f);
+          if (src) { D.push(src); D.push(''); }
         });
       }
       files.push({ path: c.docPath, text: D.join('\n') });
@@ -1243,5 +1265,300 @@ window.MilgReport = (function() {
     return { folder: folder, files: files, assets: assets };
   }
 
-  return { renderReport: renderReport, renderMarkdown: renderMarkdown, renderCrawlSummary: renderCrawlSummary, renderCrawlPageTab: renderCrawlPageTab, buildLlmPack: buildLlmPack };
+  function _thirdPartyLines() {
+    return ['# Third-party software', '',
+      'This .zip was assembled in the browser with **JSZip**.', '',
+      'JSZip — © Stuart Knightley and JSZip contributors. Dual-licensed under the MIT license or GPLv3; used here under the **MIT license**.',
+      'Project: https://github.com/Stuk/jszip — License: https://github.com/Stuk/jszip/blob/main/LICENSE.markdown', ''];
+  }
+
+  // Multi-unit LLM pack — deep-scan viewports, crawl pages, or the full page×viewport
+  // matrix. input.units = [{ id, label, report }], each report a FULL scored report
+  // (the caller re-scores every viewport/page). Findings are deduped across units via
+  // _findingDedupKey (selector → normalized title) and annotated "affects N/M", so the
+  // broadest "worst offenders" sort to the top. Also emits per-unit docs.
+  function buildLlmPackMulti(input) {
+    var opts = input || {};
+    var severityFilter = opts.severityFilter || 'all';
+    var passSev = _passSevFn(severityFilter);
+    var units = (opts.units || []).filter(function(u) { return u && u.report; });
+    var M = units.length;
+    var mode = opts.mode || 'viewport';                       // 'viewport' | 'crawl' | 'matrix'
+    var unitWord = mode === 'crawl' ? 'page' : mode === 'matrix' ? 'page×viewport combination' : 'viewport';
+    var unitWordShort = mode === 'crawl' ? 'page' : mode === 'matrix' ? 'combo' : 'viewport';
+    var primary = opts.primaryReport || (units[0] && units[0].report) || {};
+    var raw = primary.raw || {};
+    var meta = primary.meta || {};
+    var profile = raw.profile || primary.profile || 'general';
+    var _fwRaw = raw.structure && raw.structure.cssFramework;
+    var fw = (_fwRaw && _fwRaw !== 'unknown') ? _fwRaw : 'the existing CSS framework';
+    var host = opts.host || 'site';
+    if (!opts.host) { try { host = new URL(meta.url).hostname.replace(/^www\./, ''); } catch (e) {} }
+    var folder = 'milg-llm-pack-' + _slug(host) + (mode === 'crawl' ? '-site' : mode === 'matrix' ? '-site-viewports' : '-viewports');
+    var dims = opts.dims || {};
+    var files = [], assets = [];
+    var shot = raw.screenshotClean || (raw.screenshots && raw.screenshots[0]) || null;
+    var hasShot = !!(shot && /^data:image\//.test(shot));
+    // Unique per-unit doc slug (labels can collide, e.g. same page title twice).
+    var _slugCount = {};
+    units.forEach(function(u) {
+      var base = _slug(u.label) || 'unit', s = base, n = 1;
+      while (_slugCount[s]) { s = base + '-' + (n++); }
+      _slugCount[s] = 1; u._docSlug = s;
+    });
+
+    // ---- Aggregate findings across units → per category, deduped groups ----
+    var catOrder = [], catMap = {};
+    function ensureCat(label, weight, score) {
+      if (!catMap[label]) { catMap[label] = { label: label, weight: weight, score: score, groups: {} }; catOrder.push(label); }
+      return catMap[label];
+    }
+    (primary.categories || []).forEach(function(c) { ensureCat(c.label, c.weight, c.score); });
+    units.forEach(function(u) {
+      (u.report.categories || []).forEach(function(c) {
+        var cm = ensureCat(c.label, c.weight, c.score);
+        (c.findings || []).forEach(function(f) {
+          if (!passSev(f.severity)) return;
+          var key = _findingDedupKey(c.label, f);
+          var g = cm.groups[key];
+          if (!g) { g = cm.groups[key] = { title: f.title, fix: f.fix, presetRef: f.presetRef, source: f.source, severity: f.severity, ref: f, units: {}, occ: [] }; }
+          if (_sevRank(f.severity) < _sevRank(g.severity)) { g.severity = f.severity; g.title = f.title; g.fix = f.fix; g.source = f.source; g.presetRef = f.presetRef; g.ref = f; }
+          g.units[u.id] = u.label;
+          g.occ.push({ label: u.label, detail: f.detail || '', title: f.title });
+        });
+      });
+    });
+    var cats = catOrder.map(function(label, i) {
+      var cm = catMap[label];
+      var groups = Object.keys(cm.groups).map(function(k) { var g = cm.groups[k]; g.n = Object.keys(g.units).length; return g; });
+      groups.sort(function(a, b) { return (b.n - a.n) || (_sevRank(a.severity) - _sevRank(b.severity)) || (b.occ.length - a.occ.length); });
+      return { label: label, weight: cm.weight, slug: _slug(label), docNum: String(i + 1).padStart(2, '0'), groups: groups,
+        errors: groups.filter(function(g) { return g.severity === 'error'; }).length,
+        warnings: groups.filter(function(g) { return g.severity === 'warning'; }).length,
+        infos: groups.filter(function(g) { return g.severity === 'info'; }).length };
+    });
+    cats.forEach(function(c) { c.docPath = 'findings/' + c.docNum + '-' + c.slug + '.md'; });
+    var allGroups = [];
+    cats.forEach(function(c) { c.groups.forEach(function(g) { allGroups.push({ cat: c, g: g }); }); });
+    allGroups.sort(function(a, b) { return (b.g.n - a.g.n) || (_sevRank(a.g.severity) - _sevRank(b.g.severity)) || (b.g.occ.length - a.g.occ.length); });
+
+    function scopeBadge(g) {
+      if (g.n >= M) return 'all ' + M + ' ' + unitWordShort + (M !== 1 ? 's' : '');
+      var labels = Object.keys(g.units).map(function(id) { return g.units[id]; });
+      return g.n + '/' + M + ' ' + unitWordShort + (M !== 1 ? 's' : '') + ' — ' + labels.join(', ');
+    }
+    function breakdownLines(g) {
+      var seen = {}, rows = [];
+      g.occ.forEach(function(o) {
+        var txt = o.detail || o.title;
+        var line = '- ' + o.label + (txt ? ': ' + txt : '');
+        if (!seen[line]) { seen[line] = 1; rows.push(line); }
+      });
+      return rows;
+    }
+    var scopeSentence = mode === 'crawl' ? (M + ' page' + (M !== 1 ? 's' : ''))
+      : mode === 'matrix' ? ((dims.pages || '?') + ' pages × ' + (dims.viewports || '?') + ' viewports = ' + M + ' scored combinations')
+      : (M + ' viewport' + (M !== 1 ? 's' : ''));
+
+    // ---- README.md --------------------------------------------------------
+    var R = [];
+    R.push('# Design analysis pack — ' + host + (mode === 'crawl' ? ' (site crawl)' : mode === 'matrix' ? ' (site × viewports)' : ' (multi-viewport)'));
+    R.push('');
+    R.push('> Generated by the [make-it-look-good](https://github.com/jdeworks/make-it-look-good) Design Analyzer (rule-based scoring, no AI). Hand this to a coding/design agent — start with **AGENT_PROMPT.md**.');
+    R.push('');
+    R.push('- **' + (mode === 'crawl' ? 'Start URL' : 'URL') + ':** ' + (opts.startUrl || meta.url || 'n/a'));
+    R.push('- **Checked across:** ' + scopeSentence + ' (each scored independently)');
+    R.push('- **Audience profile:** ' + profile);
+    if (opts.aggregateScore != null) R.push('- **Average score:** ' + opts.aggregateScore + '/100');
+    R.push('- **Severity filter for this pack:** ' + severityFilter);
+    R.push('- **Distinct issues after dedup:** ' + allGroups.length);
+    R.push('');
+    R.push('## Contents');
+    R.push('');
+    R.push('| File | Purpose |');
+    R.push('|------|---------|');
+    R.push('| `AGENT_PROMPT.md` | Base prompt — give this to the agent first |');
+    R.push('| `GUIDELINES.md` | Tokens to honor + cross-cutting priorities + how to solve by scope |');
+    R.push('| `findings/00-index.md` | Every distinct issue, worst-offenders first, with "affects N/M" |');
+    R.push('| `findings/NN-<category>.md` | Per category: each issue + scope badge + per-' + unitWordShort + ' breakdown + fix |');
+    R.push('| `units/<' + unitWordShort + '>.md` | Per-' + unitWordShort + ' findings (the individual ' + unitWord + ' view) |');
+    if (hasShot) R.push('| `assets/clean-screenshot.*` | Clean full-page screenshot for visual context |');
+    R.push('');
+    R.push('## ' + (mode === 'crawl' ? 'Pages' : mode === 'matrix' ? 'Units (page × viewport)' : 'Viewports') + ' analyzed');
+    R.push('');
+    R.push('| Unit | Score | Doc |');
+    R.push('|------|-------|-----|');
+    units.forEach(function(u) { R.push('| ' + u.label + ' | ' + u.report.overall + '/100 (' + u.report.grade + ') | `units/' + u._docSlug + '.md` |'); });
+    R.push('');
+    files.push({ path: 'README.md', text: R.join('\n') });
+
+    // ---- AGENT_PROMPT.md --------------------------------------------------
+    var A = [];
+    A.push('# Agent prompt');
+    A.push('');
+    A.push('You are a senior frontend / UX engineer. You have a design-analysis pack for **' + (opts.startUrl || meta.url || host) + '**, produced by a rule-based analyzer (deterministic WCAG / design-heuristic checks — no AI judgement, so every finding is a concrete, measurable issue).');
+    A.push('');
+    A.push('## What was checked');
+    A.push('');
+    A.push('The design was analyzed across **' + scopeSentence + '**, and **each ' + unitWord + ' was scored independently**. Findings were then **deduplicated across ' + unitWordShort + 's** — every issue in `findings/` carries an "Affects: N/M" badge plus a per-' + unitWordShort + ' breakdown, so you can see whether a problem is universal or only shows up in one place.');
+    A.push('');
+    A.push('## Objective');
+    A.push('');
+    A.push('Raise the design quality across ' + (mode === 'crawl' ? 'the whole site' : 'all ' + unitWordShort + 's') + ' by resolving the findings, without changing content/copy/intent, and staying consistent with the existing design tokens and ' + fw + '.');
+    A.push('');
+    A.push('## What you have');
+    A.push('');
+    A.push('- `GUIDELINES.md` — design tokens to reuse, the cross-cutting priorities, and how to solve issues by scope. **Read this first.**');
+    A.push('- `findings/00-index.md` — every distinct issue, ordered worst-offenders-first (broadest reach, then severity).');
+    A.push('- `findings/NN-<category>.md` — per category; each issue has an **Affects** badge, a per-' + unitWordShort + ' breakdown, a recommended **Fix**, **Selector(s)**, and a source link.');
+    A.push('- `units/<' + unitWordShort + '>.md` — the individual findings for each ' + unitWord + ', if you need to drill into one.');
+    if (hasShot) A.push('- `assets/clean-screenshot.*` — a full-page screenshot for visual reference.');
+    A.push('');
+    A.push('## How to work');
+    A.push('');
+    A.push('1. Read `GUIDELINES.md` so every change is consistent with the existing tokens.');
+    A.push('2. Start at the top of `findings/00-index.md`. An issue that **affects all ' + unitWordShort + 's** is the highest-leverage fix — resolving it once clears it everywhere.');
+    A.push('3. Solve each issue according to its scope:');
+    A.push('   - **Cross-cutting** (affects all/most ' + unitWordShort + 's): fix once at the shared layer — ' + (mode === 'crawl' ? 'the shared component, template, or global stylesheet' : 'base styles that hold at every breakpoint') + '.');
+    if (mode === 'viewport' || mode === 'matrix') A.push('   - **Viewport-specific** (affects only some viewports, e.g. Phone): use a responsive / conditional rule (media query or responsive utility) so you do **not** regress the viewports where it already passes.');
+    if (mode === 'crawl' || mode === 'matrix') A.push('   - **Page-specific** (affects only some pages): fix it in those pages or their template, not globally.');
+    A.push('4. Use the per-' + unitWordShort + ' breakdown under each issue to see exactly where — and at what magnitude — it occurs.');
+    A.push('5. Do not regress passing checks. Keep semantic HTML, responsive behavior, and (if present) dark-mode support intact.');
+    A.push('');
+    A.push('## Definition of done');
+    A.push('');
+    A.push('- Every error- and warning-level issue is addressed or has a documented reason it cannot be.');
+    A.push('- Cross-cutting issues are fixed at the shared layer; ' + unitWordShort + '-specific ones are fixed without regressing the ' + unitWordShort + 's that already pass.');
+    A.push('- A short summary maps each change back to the issue it resolves (category + title + which ' + unitWordShort + 's).');
+    A.push('');
+    files.push({ path: 'AGENT_PROMPT.md', text: A.join('\n') });
+
+    // ---- GUIDELINES.md ----------------------------------------------------
+    var G = [];
+    G.push('# Guidelines');
+    G.push('');
+    G.push('Derived from analyzing **' + (opts.startUrl || meta.url || host) + '** across ' + scopeSentence + ', plus general best practice.');
+    G.push('');
+    G.push('## 1. Design tokens to honor');
+    G.push('');
+    G.push('Reuse these existing values instead of introducing new ones (snapshot from the primary ' + unitWordShort + '):');
+    G.push('');
+    _tokenLinesFor(raw).forEach(function(l) { G.push(l); });
+    G.push('');
+    G.push('## 2. Priorities — worst offenders across ' + unitWordShort + 's');
+    G.push('');
+    if (allGroups.length === 0) {
+      G.push('No issues at the current severity filter (' + severityFilter + ').');
+    } else {
+      allGroups.slice(0, 12).forEach(function(ag) {
+        G.push('- ' + _sevIcon(ag.g.severity) + ' **[' + ag.cat.label + ']** ' + ag.g.title + ' — affects ' + scopeBadge(ag.g) + ' (`' + ag.cat.docPath + '`)');
+      });
+      if (allGroups.length > 12) G.push('- _…and ' + (allGroups.length - 12) + ' more in the per-category documents._');
+    }
+    G.push('');
+    G.push('## 3. How to solve by scope');
+    G.push('');
+    G.push('- **Affects all/most ' + unitWordShort + 's** → fix once at the shared layer (' + (mode === 'crawl' ? 'shared component / template / global CSS' : 'base styles that hold at every breakpoint') + ').');
+    if (mode === 'viewport' || mode === 'matrix') G.push('- **Affects only some viewports** → responsive / conditional fix (media query or responsive utility); never regress a passing viewport.');
+    if (mode === 'crawl' || mode === 'matrix') G.push('- **Affects only some pages** → fix in those pages / their template, not globally.');
+    G.push('');
+    G.push('## 4. General principles');
+    G.push('');
+    _generalPrincipleLines(raw).forEach(function(l) { G.push(l); });
+    G.push('');
+    files.push({ path: 'GUIDELINES.md', text: G.join('\n') });
+
+    // ---- findings/00-index.md (worst-offenders ranking) -------------------
+    var IX = [];
+    IX.push('# Findings index — worst offenders first');
+    IX.push('');
+    IX.push('Severity filter: **' + severityFilter + '** · checked across ' + scopeSentence + ' · ' + allGroups.length + ' distinct issues.');
+    IX.push('');
+    IX.push('| Affects | Sev | Category | Issue | Doc |');
+    IX.push('|---------|-----|----------|-------|-----|');
+    allGroups.forEach(function(ag) {
+      var t = ag.g.title.length > 70 ? ag.g.title.substring(0, 67) + '…' : ag.g.title;
+      IX.push('| ' + ag.g.n + '/' + M + ' | ' + _sevIcon(ag.g.severity) + ' | ' + ag.cat.label + ' | ' + t.replace(/\|/g, '\\|') + ' | `' + ag.cat.docNum + '-' + ag.cat.slug + '.md` |');
+    });
+    if (allGroups.length === 0) IX.push('| — | — | — | _no issues at this filter_ | — |');
+    IX.push('');
+    files.push({ path: 'findings/00-index.md', text: IX.join('\n') });
+
+    // ---- findings/NN-<category>.md ---------------------------------------
+    cats.forEach(function(c) {
+      var D = [];
+      D.push('# ' + c.label);
+      D.push('');
+      D.push('**Distinct issues:** ' + c.groups.length + ' · **Errors:** ' + c.errors + ' · **Warnings:** ' + c.warnings + ' · **Info:** ' + c.infos + ' · checked across ' + scopeSentence);
+      D.push('');
+      if (c.groups.length === 0) {
+        D.push('_No issues in this category at the current severity filter (' + severityFilter + ')._');
+      } else {
+        c.groups.forEach(function(g) {
+          D.push('## ' + _sevIcon(g.severity) + ' [' + g.severity + '] ' + g.title);
+          D.push('');
+          D.push('**Affects:** ' + scopeBadge(g));
+          D.push('');
+          if (g.n > 1) {
+            var rows = breakdownLines(g);
+            if (rows.length > 1) {
+              D.push('**Per-' + unitWordShort + ':**');
+              rows.forEach(function(r) { D.push(r); });
+              D.push('');
+            }
+          }
+          if (g.fix) { D.push('**Fix:** ' + g.fix); D.push(''); }
+          if (g.presetRef) { D.push('**Example:** ' + g.presetRef); D.push(''); }
+          var selLines = _selectorBlockLines(g.ref);
+          if (selLines.length) { selLines.forEach(function(l) { D.push(l); }); D.push(''); }
+          var src = _sourceMd(g.ref);
+          if (src) { D.push(src); D.push(''); }
+        });
+      }
+      files.push({ path: c.docPath, text: D.join('\n') });
+    });
+
+    // ---- units/<unit>.md (per-unit findings) ------------------------------
+    units.forEach(function(u) {
+      var U = [];
+      U.push('# ' + u.label);
+      U.push('');
+      U.push('**Score:** ' + u.report.overall + '/100 (' + u.report.grade + ')');
+      U.push('');
+      var any = false;
+      (u.report.categories || []).forEach(function(c) {
+        var shown = (c.findings || []).filter(function(f) { return passSev(f.severity); });
+        if (!shown.length) return;
+        any = true;
+        U.push('## ' + c.label + ' — ' + c.score + '/100');
+        U.push('');
+        var order = { error: 0, warning: 1, info: 2, pass: 3 };
+        shown.slice().sort(function(a, b) { return (order[a.severity] || 9) - (order[b.severity] || 9); }).forEach(function(f) {
+          U.push('### ' + _sevIcon(f.severity) + ' [' + f.severity + '] ' + f.title);
+          U.push('');
+          if (f.detail) { U.push(f.detail); U.push(''); }
+          if (f.fix) { U.push('**Fix:** ' + f.fix); U.push(''); }
+          var sl = _selectorBlockLines(f);
+          if (sl.length) { sl.forEach(function(l) { U.push(l); }); U.push(''); }
+          var sr = _sourceMd(f);
+          if (sr) { U.push(sr); U.push(''); }
+        });
+      });
+      if (!any) U.push('_No issues at the current severity filter — all checks passed._');
+      files.push({ path: 'units/' + u._docSlug + '.md', text: U.join('\n') });
+    });
+
+    // ---- assets + THIRD_PARTY --------------------------------------------
+    if (hasShot) {
+      var comma = shot.indexOf(',');
+      var b64 = comma >= 0 ? shot.substring(comma + 1) : '';
+      var ext = /^data:image\/jpe?g/.test(shot) ? 'jpg' : /^data:image\/webp/.test(shot) ? 'webp' : 'png';
+      if (b64) assets.push({ path: 'assets/clean-screenshot.' + ext, b64: b64 });
+    }
+    files.push({ path: 'THIRD_PARTY.md', text: _thirdPartyLines().join('\n') });
+
+    return { folder: folder, files: files, assets: assets };
+  }
+
+  return { renderReport: renderReport, renderMarkdown: renderMarkdown, renderCrawlSummary: renderCrawlSummary, renderCrawlPageTab: renderCrawlPageTab, buildLlmPack: buildLlmPack, buildLlmPackMulti: buildLlmPackMulti };
 })();

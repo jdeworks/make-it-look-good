@@ -85,3 +85,58 @@ test('LLM pack: builder manifest + real button download', async ({ page }) => {
     expect(listing).toMatch(/THIRD_PARTY\.md/);
   }
 });
+
+test('LLM pack multi (viewport): dedup, affects N/M, per-unit docs', async ({ page }) => {
+  test.setTimeout(120000);
+  await page.goto(ANALYZER_URL);
+  await page.check('#screenshotCheck');
+  await page.click('[data-tab="tabUrl"]');
+  await page.fill('#urlInput', FIXTURE_URL);
+  await page.click('#analyzeUrlBtn');
+  await page.waitForSelector('.report-container.visible', { timeout: 90000 });
+  await page.waitForTimeout(2000);
+
+  // Build a 2-viewport pack: unit A (Desktop) = full report; unit B (Phone) = same
+  // report with the FIRST category's findings removed → those findings become
+  // "Desktop only" (1/2), the rest "all 2 viewports" (2/2).
+  const m = await page.evaluate(() => {
+    const r = window.__milgLastReport;
+    const clone = () => ({ overall: r.overall, grade: r.grade, gradeLabel: r.gradeLabel, meta: r.meta, raw: r.raw,
+      categories: r.categories.map((c) => ({ label: c.label, weight: c.weight, score: c.score, findings: c.findings.slice() })) });
+    const a = clone();                 // Desktop — full
+    const b = clone(); b.categories[0].findings = []; // Phone — first category cleared
+    const firstCat = r.categories[0].label;
+    const p = MilgReport.buildLlmPackMulti({
+      mode: 'viewport',
+      units: [{ id: 'v0', label: 'Desktop (1280px)', report: a }, { id: 'v1', label: 'Phone (375px)', report: b }],
+      primaryReport: r, host: 'example', aggregateScore: r.overall, dims: { viewports: 2 }, severityFilter: 'all',
+    });
+    const byPath = {}; p.files.forEach((f) => { byPath[f.path] = f.text; });
+    return {
+      folder: p.folder,
+      paths: p.files.map((f) => f.path),
+      unitDocs: p.files.filter((f) => /^units\//.test(f.path)).map((f) => f.path),
+      readme: byPath['README.md'],
+      agent: byPath['AGENT_PROMPT.md'],
+      index: byPath['findings/00-index.md'],
+      firstCat,
+      firstCatDoc: byPath['findings/01-' + (r.categories[0].label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''))  + '.md'],
+    };
+  });
+  console.log('MULTI_PATHS', JSON.stringify(m.paths, null, 2));
+  console.log('MULTI_INDEX', m.index);
+
+  expect(m.folder).toMatch(/-viewports$/);
+  expect(m.unitDocs.length).toBe(2);              // one per viewport
+  expect(m.readme).toMatch(/Checked across:\*\* 2 viewports/);
+  expect(m.agent).toMatch(/scored independently/);
+  expect(m.agent).toMatch(/Viewport-specific/);   // mode-specific solve strategy present
+  // Affects column shows both the universal (2/2) and the desktop-only (1/2) issues.
+  expect(m.index).toMatch(/\| 2\/2 \|/);
+  expect(m.index).toMatch(/\| 1\/2 \|/);
+  // The first category's issues are Desktop-only → badge "1/2 ... Desktop".
+  if (m.firstCatDoc) {
+    expect(m.firstCatDoc).toMatch(/\*\*Affects:\*\*/);
+    expect(m.firstCatDoc).toMatch(/Desktop/);
+  }
+});
