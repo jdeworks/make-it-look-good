@@ -132,7 +132,7 @@ window.MilgViewer = (function() {
       '<select class="milg-viewer-zoom-select" title="Zoom level">' +
         '<option value="0.75">75%</option><option value="1" selected>100%</option><option value="1.5">150%</option><option value="2">200%</option><option value="2.5">250%</option><option value="3">300%</option>' +
       '</select>' +
-      '<button class="milg-viewer-close" title="Close (Esc)">&times;</button>';
+      '<button class="milg-viewer-close" title="Close (Esc)" aria-label="Close viewer">&times;</button>';
 
     _overlay.appendChild(toolbar);
 

@@ -6,7 +6,7 @@
   <title>make-it-look-good — Design Analyzer</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='2' y='2' width='12' height='12' rx='2' fill='%232563eb'/><rect x='18' y='2' width='12' height='12' rx='2' fill='%2393c5fd'/><rect x='2' y='18' width='12' height='12' rx='2' fill='%2393c5fd'/><rect x='18' y='18' width='12' height='12' rx='2' fill='%232563eb'/></svg>">
   <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="analyzer.css?v=3.11.24">
+  <link rel="stylesheet" href="analyzer.css?v=3.11.25">
 </head>
 <body class="analyzer-body">
 
@@ -35,7 +35,7 @@
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.11.24</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.11.25</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -80,7 +80,7 @@
       </div>
       <div class="viewport-row" id="viewportRow" style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap">
         <label style="font-size:12px;color:var(--text-secondary);white-space:nowrap">Viewport:</label>
-        <select id="viewportSelect" class="btn" style="padding:4px 24px 4px 8px;font-size:12px;appearance:auto;cursor:pointer;min-height:36px">
+        <select id="viewportSelect" class="btn" aria-label="Analysis viewport" style="padding:4px 24px 4px 8px;font-size:12px;appearance:auto;cursor:pointer;min-height:36px">
           <option value="current" selected>Current window size</option>
           <option value="375x812">Phone (375×812)</option>
           <option value="768x1024">Tablet (768×1024)</option>
@@ -138,9 +138,9 @@
             <input type="text" id="crawlBlacklist" placeholder="/blog/*, /login" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-family:var(--mono);color:var(--text);background:var(--bg);outline:none">
           </div>
         </div>
-        <div id="crawlProgressArea" style="display:none;margin-top:8px">
+        <div id="crawlProgressArea" aria-live="polite" style="display:none;margin-top:8px">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-            <span id="crawlProgressLabel" style="font-size:12px;font-weight:600;color:var(--text-secondary)">Discovering pages...</span>
+            <span id="crawlProgressLabel" role="status" style="font-size:12px;font-weight:600;color:var(--text-secondary)">Discovering pages...</span>
             <span id="crawlProgressCount" style="font-size:12px;color:var(--text-secondary)"></span>
           </div>
           <div class="progress-bar" style="margin-bottom:8px"><div class="progress-fill" id="crawlProgressFill"></div></div>
@@ -173,11 +173,11 @@
         <button class="btn" id="cancelCrawlBtn" style="display:none;min-height:44px">Cancel</button>
       </div>
       <div id="urlStatus" style="margin-top:12px;font-size:13px;color:var(--text-secondary);display:none"></div>
-      <div class="analysis-progress" id="analysisProgress" style="display:none">
+      <div class="analysis-progress" id="analysisProgress" aria-live="polite" style="display:none">
         <div class="analysis-progress-bar">
           <div class="analysis-progress-fill" id="progressFill"></div>
         </div>
-        <div class="analysis-progress-label" id="progressLabel">Preparing...</div>
+        <div class="analysis-progress-label" id="progressLabel" role="status">Preparing...</div>
       </div>
     </div>
 
@@ -220,7 +220,7 @@
             </label>
             <input type="number" id="snippetCrawlMaxPages" min="1" max="10" value="5" style="display:none;width:50px;padding:2px 6px;font-size:12px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);text-align:center" title="Max pages to crawl">
           </div>
-          <button class="btn" id="copySnippetBtn">
+          <button class="btn" id="copySnippetBtn" aria-label="Copy snippet to clipboard">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
             Copy snippet
           </button>
@@ -244,7 +244,7 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a8 8 0 0 0-8 8c0 3.4 2.1 6.3 5 7.5V20h6v-2.5c2.9-1.2 5-4.1 5-7.5a8 8 0 0 0-8-8z"/><line x1="10" y1="22" x2="14" y2="22"/></svg>
             Analyze
           </button>
-          <button class="btn" id="importSnippetFileBtn" title="Import a JSON file downloaded by the snippet (single page or crawl)">
+          <button class="btn" id="importSnippetFileBtn" title="Import a JSON file downloaded by the snippet (single page or crawl)" aria-label="Import JSON file">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             Import File
           </button>
@@ -293,7 +293,7 @@
         </select>
         <button class="btn btn-icon" id="profileInfoBtn" title="What do these profiles do?" aria-label="Profile info" style="padding:6px;min-width:44px;min-height:44px;font-size:15px;font-weight:700">?</button>
       </div>
-      <button class="btn" id="newAnalysisBtn">
+      <button class="btn" id="newAnalysisBtn" aria-label="Start new analysis">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         New Analysis
       </button>
@@ -305,7 +305,7 @@
     <!-- Profile explanation (hidden by default) -->
     <div class="profile-explanation" id="profileExplanation" style="display:none">
       <button class="profile-explanation-close" onclick="document.getElementById('profileExplanation').style.display='none'" aria-label="Close">&times;</button>
-      <h4>Audience Profiles — Evidence-Based Thresholds</h4>
+      <h2>Audience Profiles — Evidence-Based Thresholds</h2>
       <p>Each profile adjusts scoring thresholds based on published accessibility research. Switching re-scores instantly.</p>
       <table>
         <tr><th></th><th>Contrast</th><th>Font min</th><th>Touch</th><th>Key change</th></tr>
@@ -342,25 +342,25 @@
     <details class="export-details" open>
       <summary class="export-summary">Export &amp; Share</summary>
     <div class="report-controls-row">
-      <button class="btn" id="exportJsonBtn" title="Save full analysis as compressed .milg file (screenshots, masks, verify data — re-importable)">
+      <button class="btn" id="exportJsonBtn" title="Save full analysis as compressed .milg file (screenshots, masks, verify data — re-importable)" aria-label="Export analysis as .milg file">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         <span class="btn-label">Export .milg</span>
       </button>
-      <button class="btn" id="markdownBtn" title="Download full Markdown report with embedded images">
+      <button class="btn" id="markdownBtn" title="Download full Markdown report with embedded images" aria-label="Export Markdown report">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
         <span class="btn-label">Export .md</span>
       </button>
       <span style="border-left:1px solid var(--border);height:24px;margin:0 4px"></span>
-      <select id="exportSeverityFilter" class="btn" title="Filter findings for LLM copy" style="padding:4px 24px 4px 8px;font-size:12px;appearance:auto;cursor:pointer">
+      <select id="exportSeverityFilter" class="btn" title="Filter findings for LLM copy" aria-label="Filter findings by severity" style="padding:4px 24px 4px 8px;font-size:12px;appearance:auto;cursor:pointer">
         <option value="all">All findings</option>
         <option value="warning">Warnings + Errors</option>
         <option value="error">Errors only</option>
       </select>
-      <button class="btn" id="copyMdBtn" title="Copy findings as Markdown for LLM — images and masks excluded, only actionable issues. Respects the severity filter.">
+      <button class="btn" id="copyMdBtn" title="Copy findings as Markdown for LLM — images and masks excluded, only actionable issues. Respects the severity filter." aria-label="Copy findings for LLM">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
         <span class="btn-label">Copy for LLM</span>
       </button>
-      <button class="btn" id="llmPackBtn" title="Download a structured LLM instruction pack (.zip): per-category finding docs + an agent prompt + design guidelines. Respects the severity filter.">
+      <button class="btn" id="llmPackBtn" title="Download a structured LLM instruction pack (.zip): per-category finding docs + an agent prompt + design guidelines. Respects the severity filter." aria-label="Download LLM instruction pack (zip)">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><line x1="12" y1="22" x2="12" y2="12"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/></svg>
         <span class="btn-label">LLM pack (.zip)</span>
       </button>
@@ -450,35 +450,35 @@
   </div>
 
   <!-- Toast -->
-  <div class="toast" id="toast"></div>
+  <div class="toast" id="toast" aria-live="polite" aria-atomic="true" role="status"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=3.11.24"></script>
-  <script src="scoring/contrast.js?v=3.11.24"></script>
-  <script src="scoring/typography.js?v=3.11.24"></script>
-  <script src="scoring/spacing.js?v=3.11.24"></script>
-  <script src="scoring/touch.js?v=3.11.24"></script>
-  <script src="scoring/accessibility.js?v=3.11.24"></script>
-  <script src="scoring/responsive.js?v=3.11.24"></script>
-  <script src="scoring/consistency.js?v=3.11.24"></script>
-  <script src="scoring/cognitive.js?v=3.11.24"></script>
-  <script src="scoring/layout.js?v=3.11.24"></script>
-  <script src="scoring/performance.js?v=3.11.24"></script>
-  <script src="scoring/readability.js?v=3.11.24"></script>
-  <script src="scoring/filters.js?v=3.11.24"></script>
-  <script src="scoring/balance.js?v=3.11.24"></script>
+  <script src="scoring/registry.js?v=3.11.25"></script>
+  <script src="scoring/contrast.js?v=3.11.25"></script>
+  <script src="scoring/typography.js?v=3.11.25"></script>
+  <script src="scoring/spacing.js?v=3.11.25"></script>
+  <script src="scoring/touch.js?v=3.11.25"></script>
+  <script src="scoring/accessibility.js?v=3.11.25"></script>
+  <script src="scoring/responsive.js?v=3.11.25"></script>
+  <script src="scoring/consistency.js?v=3.11.25"></script>
+  <script src="scoring/cognitive.js?v=3.11.25"></script>
+  <script src="scoring/layout.js?v=3.11.25"></script>
+  <script src="scoring/performance.js?v=3.11.25"></script>
+  <script src="scoring/readability.js?v=3.11.25"></script>
+  <script src="scoring/filters.js?v=3.11.25"></script>
+  <script src="scoring/balance.js?v=3.11.25"></script>
   <!-- Queue + Report rendering + UI -->
-  <script src="analyzer-queue.js?v=3.11.24"></script>
-  <script src="analyzer-report.js?v=3.11.24"></script>
-  <script src="analyzer-crawl.js?v=3.11.24"></script>
-  <script src="analyzer-extract.js?v=3.11.24"></script>
-  <script src="analyzer-region.js?v=3.11.24"></script>
-  <script src="analyzer-capture.js?v=3.11.24"></script>
-  <script src="analyzer-iframe.js?v=3.11.24"></script>
-  <script src="analyzer-proxy.js?v=3.11.24"></script>
-  <script src="analyzer-crawl-ui.js?v=3.11.24"></script>
-  <script src="analyzer-contrast-verify.js?v=3.11.24"></script>
-  <script src="analyzer-viewer.js?v=3.11.24"></script>
-  <script src="analyzer.js?v=3.11.24"></script>
+  <script src="analyzer-queue.js?v=3.11.25"></script>
+  <script src="analyzer-report.js?v=3.11.25"></script>
+  <script src="analyzer-crawl.js?v=3.11.25"></script>
+  <script src="analyzer-extract.js?v=3.11.25"></script>
+  <script src="analyzer-region.js?v=3.11.25"></script>
+  <script src="analyzer-capture.js?v=3.11.25"></script>
+  <script src="analyzer-iframe.js?v=3.11.25"></script>
+  <script src="analyzer-proxy.js?v=3.11.25"></script>
+  <script src="analyzer-crawl-ui.js?v=3.11.25"></script>
+  <script src="analyzer-contrast-verify.js?v=3.11.25"></script>
+  <script src="analyzer-viewer.js?v=3.11.25"></script>
+  <script src="analyzer.js?v=3.11.25"></script>
 </body>
 </html>
