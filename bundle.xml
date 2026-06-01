@@ -6805,36 +6805,6 @@ function scoreTypography(data) {
 })();
 </file>
 
-<file path="docs/tests/fixtures/carousel-vexpand.html">
-<!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"><title>Vertical Expand Test</title>
-<style>
-  body { font-family: sans-serif; margin: 0; padding: 20px; background: #fff; }
-  h1 { color: #111; }
-  /* vertical clip: short container, tall transformed inner stack.
-     Expansion -> overflow:visible + transform:none grows page HEIGHT. */
-  .vclip { overflow: hidden; width: 500px; height: 150px; border: 1px solid #ccc; margin: 16px 0; }
-  .vstack { transform: translateY(-600px); }
-  .vrow { height: 150px; padding: 16px; box-sizing: border-box; }
-  .r1 { background: #eef2ff; } .r2 { background: #ecfdf5; } .r3 { background: #fef2f2; }
-  .r4 { background: #fefce8; } .r5 { background: #f5f3ff; }
-  h2 { color: #1e3a8a; margin: 0 0 6px; } p { color: #374151; }
-</style></head><body>
-  <h1>Vertical Expand Page</h1>
-  <a href="#n">Skip nav</a>
-  <div class="vclip">
-    <div class="vstack">
-      <div class="vrow r1"><h2>Row One Heading</h2><p>First row content text here.</p></div>
-      <div class="vrow r2"><h2>Row Two Heading</h2><p>Second row content currently shown.</p></div>
-      <div class="vrow r3"><h2>Row Three Heading</h2><p>Third row clipped below the fold.</p></div>
-      <div class="vrow r4"><h2>Row Four Heading</h2><p>Fourth row content clipped here.</p></div>
-      <div class="vrow r5"><h2>Row Five Heading</h2><p>Fifth row content clipped here.</p></div>
-    </div>
-  </div>
-  <p>Below the clipped region paragraph.</p>
-</body></html>
-</file>
-
 <file path="docs/tests/edge-a11y.html">
 <!-- Edge Case: Accessibility Checks -->
 <!-- Tests: semantic HTML, headings, alt text, labels, focus, lang, skip link, ARIA, link text, autocomplete, color-only -->
@@ -26025,105 +25995,6 @@ const tokens = {
 - `components/modals-and-dialogs.md` — confirmation dialogs for destructive actions
 </file>
 
-<file path="tests/viewer-overlay-alignment.spec.js">
-// @ts-check
-// Regression guard for two silently-regressing viewer geometry bugs:
-//   Bug 1 — region overlay boxes drift (proportional): the region SVG was sized to
-//           the scroll FRAME (width/height:100%) instead of the IMAGE's rendered box,
-//           so when the image was smaller/larger than the frame the SVG scaled
-//           differently from the image → overlay rects offset proportionally.
-//   Bug 2 — main screenshot zoom cut off the right side: the .milg-viewer-frame
-//           (display:inline-block; max-width:95vw) stayed ~95vw while the image grew
-//           on zoom, so the image overflowed the frame and most of it was unreachable.
-//
-// Both are invisible to functional tests but are pure geometry, so we assert the
-// numbers directly: SVG render box == image render box (region), viewBox == image
-// natural dims, and frame width == image width at high zoom.
-const { test, expect } = require('@playwright/test');
-
-const ANALYZER_URL = 'http://localhost:8384/analyzer.html';
-const BASE_URL = 'http://localhost:8384';
-// Vertical-clip carousel: region image is narrower than the viewer AND taller than the
-// frame's max-height cap — exactly the condition that exposed Bug 1.
-const FIXTURE = `${BASE_URL}/tests/fixtures/carousel-vexpand.html`;
-
-test('viewer overlay geometry: region SVG tracks image, zoom does not clip', async ({ page }) => {
-  test.setTimeout(180000);
-
-  await page.goto(ANALYZER_URL);
-  await page.check('#screenshotCheck');
-  await page.click('[data-tab="tabUrl"]');
-  await page.fill('#urlInput', FIXTURE);
-  await page.click('#analyzeUrlBtn');
-  await page.waitForSelector('.report-container.visible', { timeout: 120000 });
-
-  // Open the viewer
-  const img = page.locator('.report-screenshots img').first();
-  await img.waitFor({ state: 'visible', timeout: 10000 });
-  await img.click();
-  await page.waitForSelector('.milg-viewer-overlay.visible', { timeout: 10000 });
-  await page.waitForTimeout(500);
-
-  // --- MAIN: viewBox must equal the displayed image's natural dimensions ---
-  const main = await page.evaluate(() => {
-    const im = document.querySelector('.milg-viewer-img');
-    const svg = document.querySelector('svg.milg-viewer-svg');
-    return { natural: { w: im.naturalWidth, h: im.naturalHeight }, viewBox: svg.getAttribute('viewBox') };
-  });
-  expect(main.viewBox).toBe(`0 0 ${main.natural.w} ${main.natural.h}`);
-
-  // Activate a filter so region overlays render.
-  const allBtn = page.locator('.milg-viewer-filter-btn[data-filter-value="all"]').first();
-  if (await allBtn.count()) { await allBtn.click(); await page.waitForTimeout(400); }
-
-  // --- BUG 1: region SVG render box must match the region IMAGE render box exactly ---
-  const regions = await page.evaluate(() => {
-    return Array.from(document.querySelectorAll('.milg-viewer-region-section')).map(s => {
-      const im = s.querySelector('img');
-      const svg = s.querySelector('svg');
-      const ir = im.getBoundingClientRect(), sr = svg.getBoundingClientRect();
-      return {
-        img: { w: Math.round(ir.width), h: Math.round(ir.height), left: Math.round(ir.left), top: Math.round(ir.top) },
-        svg: { w: Math.round(sr.width), h: Math.round(sr.height), left: Math.round(sr.left), top: Math.round(sr.top) },
-        natural: { w: im.naturalWidth, h: im.naturalHeight },
-        viewBox: svg.getAttribute('viewBox'),
-      };
-    });
-  });
-  expect(regions.length).toBeGreaterThan(0);
-  for (const r of regions) {
-    // Region image must be narrower than the viewer here (the bug-triggering case)
-    // — but the assertion holds regardless: SVG box == image box, within 1px.
-    expect(Math.abs(r.svg.w - r.img.w)).toBeLessThanOrEqual(1);
-    expect(Math.abs(r.svg.h - r.img.h)).toBeLessThanOrEqual(1);
-    expect(Math.abs(r.svg.left - r.img.left)).toBeLessThanOrEqual(1);
-    expect(Math.abs(r.svg.top - r.img.top)).toBeLessThanOrEqual(1);
-    // viewBox encodes the canvas dims == image natural dims
-    expect(r.viewBox).toBe(`0 0 ${r.natural.w} ${r.natural.h}`);
-  }
-
-  // --- BUG 2: at high zoom the frame must grow to the image, not clip it ---
-  await page.locator('.milg-viewer-zoom-select').selectOption('3');
-  await page.waitForTimeout(400);
-  const zoom = await page.evaluate(() => {
-    const fr = document.querySelector('.milg-viewer-frame');
-    const im = document.querySelector('.milg-viewer-img');
-    const svg = document.querySelector('svg.milg-viewer-svg');
-    const f = fr.getBoundingClientRect(), i = im.getBoundingClientRect(), s = svg.getBoundingClientRect();
-    return {
-      frame: { w: Math.round(f.width), h: Math.round(f.height) },
-      img: { w: Math.round(i.width), h: Math.round(i.height) },
-      svg: { w: Math.round(s.width), h: Math.round(s.height) },
-    };
-  });
-  // Frame must be at least as wide as the image (no right-side cutoff) and SVG must
-  // still track the image so overlays stay aligned when zoomed.
-  expect(zoom.frame.w).toBeGreaterThanOrEqual(zoom.img.w - 1);
-  expect(Math.abs(zoom.svg.w - zoom.img.w)).toBeLessThanOrEqual(1);
-  expect(Math.abs(zoom.svg.h - zoom.img.h)).toBeLessThanOrEqual(1);
-});
-</file>
-
 <file path="typography/font-pairing.md">
 # Font Pairing
 
@@ -29069,6 +28940,36 @@ footer a { color: #64748b; text-decoration: none; margin-right: 12px; }
 </body></html>
 </file>
 
+<file path="docs/tests/fixtures/carousel-vexpand.html">
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Vertical Expand Test</title>
+<style>
+  body { font-family: sans-serif; margin: 0; padding: 20px; background: #fff; }
+  h1 { color: #111; }
+  /* vertical clip: short container, tall transformed inner stack.
+     Expansion -> overflow:visible + transform:none grows page HEIGHT. */
+  .vclip { overflow: hidden; width: 500px; height: 150px; border: 1px solid #ccc; margin: 16px 0; }
+  .vstack { transform: translateY(-600px); }
+  .vrow { height: 150px; padding: 16px; box-sizing: border-box; }
+  .r1 { background: #eef2ff; } .r2 { background: #ecfdf5; } .r3 { background: #fef2f2; }
+  .r4 { background: #fefce8; } .r5 { background: #f5f3ff; }
+  h2 { color: #1e3a8a; margin: 0 0 6px; } p { color: #374151; }
+</style></head><body>
+  <h1>Vertical Expand Page</h1>
+  <a href="#n">Skip nav</a>
+  <div class="vclip">
+    <div class="vstack">
+      <div class="vrow r1"><h2>Row One Heading</h2><p>First row content text here.</p></div>
+      <div class="vrow r2"><h2>Row Two Heading</h2><p>Second row content currently shown.</p></div>
+      <div class="vrow r3"><h2>Row Three Heading</h2><p>Third row clipped below the fold.</p></div>
+      <div class="vrow r4"><h2>Row Four Heading</h2><p>Fourth row content clipped here.</p></div>
+      <div class="vrow r5"><h2>Row Five Heading</h2><p>Fifth row content clipped here.</p></div>
+    </div>
+  </div>
+  <p>Below the clipped region paragraph.</p>
+</body></html>
+</file>
+
 <file path="docs/tests/fixtures/carousel.html">
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8"><title>Carousel Test</title>
@@ -31177,6 +31078,105 @@ test.describe('Verify debug overlay cycle', () => {
     expect(cycle.states[2].mode).toBe('none');
     expect(cycle.states[2].overlays).toBe(0);
   });
+});
+</file>
+
+<file path="tests/viewer-overlay-alignment.spec.js">
+// @ts-check
+// Regression guard for two silently-regressing viewer geometry bugs:
+//   Bug 1 — region overlay boxes drift (proportional): the region SVG was sized to
+//           the scroll FRAME (width/height:100%) instead of the IMAGE's rendered box,
+//           so when the image was smaller/larger than the frame the SVG scaled
+//           differently from the image → overlay rects offset proportionally.
+//   Bug 2 — main screenshot zoom cut off the right side: the .milg-viewer-frame
+//           (display:inline-block; max-width:95vw) stayed ~95vw while the image grew
+//           on zoom, so the image overflowed the frame and most of it was unreachable.
+//
+// Both are invisible to functional tests but are pure geometry, so we assert the
+// numbers directly: SVG render box == image render box (region), viewBox == image
+// natural dims, and frame width == image width at high zoom.
+const { test, expect } = require('@playwright/test');
+
+const ANALYZER_URL = 'http://localhost:8384/analyzer.html';
+const BASE_URL = 'http://localhost:8384';
+// Vertical-clip carousel: region image is narrower than the viewer AND taller than the
+// frame's max-height cap — exactly the condition that exposed Bug 1.
+const FIXTURE = `${BASE_URL}/tests/fixtures/carousel-vexpand.html`;
+
+test('viewer overlay geometry: region SVG tracks image, zoom does not clip', async ({ page }) => {
+  test.setTimeout(180000);
+
+  await page.goto(ANALYZER_URL);
+  await page.check('#screenshotCheck');
+  await page.click('[data-tab="tabUrl"]');
+  await page.fill('#urlInput', FIXTURE);
+  await page.click('#analyzeUrlBtn');
+  await page.waitForSelector('.report-container.visible', { timeout: 120000 });
+
+  // Open the viewer
+  const img = page.locator('.report-screenshots img').first();
+  await img.waitFor({ state: 'visible', timeout: 10000 });
+  await img.click();
+  await page.waitForSelector('.milg-viewer-overlay.visible', { timeout: 10000 });
+  await page.waitForTimeout(500);
+
+  // --- MAIN: viewBox must equal the displayed image's natural dimensions ---
+  const main = await page.evaluate(() => {
+    const im = document.querySelector('.milg-viewer-img');
+    const svg = document.querySelector('svg.milg-viewer-svg');
+    return { natural: { w: im.naturalWidth, h: im.naturalHeight }, viewBox: svg.getAttribute('viewBox') };
+  });
+  expect(main.viewBox).toBe(`0 0 ${main.natural.w} ${main.natural.h}`);
+
+  // Activate a filter so region overlays render.
+  const allBtn = page.locator('.milg-viewer-filter-btn[data-filter-value="all"]').first();
+  if (await allBtn.count()) { await allBtn.click(); await page.waitForTimeout(400); }
+
+  // --- BUG 1: region SVG render box must match the region IMAGE render box exactly ---
+  const regions = await page.evaluate(() => {
+    return Array.from(document.querySelectorAll('.milg-viewer-region-section')).map(s => {
+      const im = s.querySelector('img');
+      const svg = s.querySelector('svg');
+      const ir = im.getBoundingClientRect(), sr = svg.getBoundingClientRect();
+      return {
+        img: { w: Math.round(ir.width), h: Math.round(ir.height), left: Math.round(ir.left), top: Math.round(ir.top) },
+        svg: { w: Math.round(sr.width), h: Math.round(sr.height), left: Math.round(sr.left), top: Math.round(sr.top) },
+        natural: { w: im.naturalWidth, h: im.naturalHeight },
+        viewBox: svg.getAttribute('viewBox'),
+      };
+    });
+  });
+  expect(regions.length).toBeGreaterThan(0);
+  for (const r of regions) {
+    // Region image must be narrower than the viewer here (the bug-triggering case)
+    // — but the assertion holds regardless: SVG box == image box, within 1px.
+    expect(Math.abs(r.svg.w - r.img.w)).toBeLessThanOrEqual(1);
+    expect(Math.abs(r.svg.h - r.img.h)).toBeLessThanOrEqual(1);
+    expect(Math.abs(r.svg.left - r.img.left)).toBeLessThanOrEqual(1);
+    expect(Math.abs(r.svg.top - r.img.top)).toBeLessThanOrEqual(1);
+    // viewBox encodes the canvas dims == image natural dims
+    expect(r.viewBox).toBe(`0 0 ${r.natural.w} ${r.natural.h}`);
+  }
+
+  // --- BUG 2: at high zoom the frame must grow to the image, not clip it ---
+  await page.locator('.milg-viewer-zoom-select').selectOption('3');
+  await page.waitForTimeout(400);
+  const zoom = await page.evaluate(() => {
+    const fr = document.querySelector('.milg-viewer-frame');
+    const im = document.querySelector('.milg-viewer-img');
+    const svg = document.querySelector('svg.milg-viewer-svg');
+    const f = fr.getBoundingClientRect(), i = im.getBoundingClientRect(), s = svg.getBoundingClientRect();
+    return {
+      frame: { w: Math.round(f.width), h: Math.round(f.height) },
+      img: { w: Math.round(i.width), h: Math.round(i.height) },
+      svg: { w: Math.round(s.width), h: Math.round(s.height) },
+    };
+  });
+  // Frame must be at least as wide as the image (no right-side cutoff) and SVG must
+  // still track the image so overlays stay aligned when zoomed.
+  expect(zoom.frame.w).toBeGreaterThanOrEqual(zoom.img.w - 1);
+  expect(Math.abs(zoom.svg.w - zoom.img.w)).toBeLessThanOrEqual(1);
+  expect(Math.abs(zoom.svg.h - zoom.img.h)).toBeLessThanOrEqual(1);
 });
 </file>
 
@@ -33380,6 +33380,15 @@ body.dark-ui .crawl-issue-group .severity-badge.warning { background:#451a00; co
   background: rgba(0,0,0,0.7); color: rgba(255,255,255,0.7);
   padding: 8px 16px; border-radius: 8px; font-size: 12px;
   pointer-events: none; white-space: nowrap;
+}
+/* Attention pulse on the "Pixel Verified" filter button — the right-click mask/zones
+   cycle lives only on this overlay. Finite iterations so it draws the eye then settles. */
+@keyframes milg-verify-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
+  50% { box-shadow: 0 0 0 4px rgba(34,197,94,0.5); }
+}
+.milg-viewer-filter-btn.milg-viewer-verify-hl {
+  animation: milg-verify-pulse 1.1s ease-in-out 4;
 }
 .milg-viewer-tooltip {
   position: fixed; z-index: 10001;
@@ -40944,7 +40953,7 @@ window.MilgViewer = (function() {
         });
       }
       verifyPill = '<span class="milg-viewer-sep"></span>' +
-        '<button class="milg-viewer-filter-btn milg-viewer-sev-verify" data-filter-type="verify" data-filter-value="all">Pixel Verified <span class="milg-viewer-count">' + vResults.length + '</span></button>' +
+        '<button class="milg-viewer-filter-btn milg-viewer-sev-verify milg-viewer-verify-hl" data-filter-type="verify" data-filter-value="all" title="Right-click a box here to cycle mask → zones → off">Pixel Verified <span class="milg-viewer-count">' + vResults.length + '</span></button>' +
         (vFails > 0 ? '<button class="milg-viewer-filter-btn milg-viewer-sev-error" data-filter-type="verify" data-filter-value="fails">Pixel Fails <span class="milg-viewer-count">' + vFails + '</span></button>' : '') +
         layerPills;
     }
@@ -41942,6 +41951,24 @@ window.MilgViewer = (function() {
       rect._sectionOffset = (vr.sectionIdx && _meta.viewportHeight) ? vr.sectionIdx * Math.round(_meta.viewportHeight * vScaleX) : 0;
     });
     console.log('[milg-viewer] Verify rects created:', svg.querySelectorAll('rect[data-verify]').length, 'noBbox:', _vrNoBbox, 'regionExcluded:', _vrRegionExcluded);
+
+    // Discoverability hint: the right-click none→mask→zones cycle ONLY exists on these
+    // pixel-verify boxes — on the findings overlay right-click opens the copy-debug menu
+    // instead. Surface that here so users don't right-click finding boxes expecting it.
+    (function() {
+      var _content = _overlay && _overlay.querySelector('.milg-viewer-content');
+      if (!_content) return;
+      var _old = _content.querySelector('.milg-viewer-hint'); if (_old) _old.parentNode.removeChild(_old);
+      var _vRects = svg.querySelectorAll('rect[data-verify]');
+      if (!_vRects.length) return;
+      var _withDebug = 0; _vRects.forEach(function(r) { if (r._debug) _withDebug++; });
+      var _hint = document.createElement('div');
+      _hint.className = 'milg-viewer-hint';
+      _hint.textContent = _withDebug > 0
+        ? 'Right-click a box: cycle mask → zones → off   ·   Left-click: sample points'
+        : 'Left-click a box: sample points';
+      _content.appendChild(_hint);
+    })();
 
     // BBox edge contrast results — render as dashed yellow rects
     var bboxEdgeResults = (_reportData && _reportData._bboxEdgeResults) || [];
@@ -43354,7 +43381,7 @@ window.MilgViewer = (function() {
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.19 loaded');
+console.log('[milg] analyzer.js v3.11.20 loaded');
 
 (function() {
   "use strict";
@@ -45192,7 +45219,7 @@ console.log('[milg] analyzer.js v3.11.19 loaded');
   <title>make-it-look-good — Design Analyzer</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='2' y='2' width='12' height='12' rx='2' fill='%232563eb'/><rect x='18' y='2' width='12' height='12' rx='2' fill='%2393c5fd'/><rect x='2' y='18' width='12' height='12' rx='2' fill='%2393c5fd'/><rect x='18' y='18' width='12' height='12' rx='2' fill='%232563eb'/></svg>">
   <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="analyzer.css">
+  <link rel="stylesheet" href="analyzer.css?v=3.11.20">
 </head>
 <body class="analyzer-body">
 
@@ -45221,7 +45248,7 @@ console.log('[milg] analyzer.js v3.11.19 loaded');
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.11.19</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.11.20</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -45631,33 +45658,33 @@ console.log('[milg] analyzer.js v3.11.19 loaded');
   <div class="toast" id="toast"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=3.11.19"></script>
-  <script src="scoring/contrast.js?v=3.11.19"></script>
-  <script src="scoring/typography.js?v=3.11.19"></script>
-  <script src="scoring/spacing.js?v=3.11.19"></script>
-  <script src="scoring/touch.js?v=3.11.19"></script>
-  <script src="scoring/accessibility.js?v=3.11.19"></script>
-  <script src="scoring/responsive.js?v=3.11.19"></script>
-  <script src="scoring/consistency.js?v=3.11.19"></script>
-  <script src="scoring/cognitive.js?v=3.11.19"></script>
-  <script src="scoring/layout.js?v=3.11.19"></script>
-  <script src="scoring/performance.js?v=3.11.19"></script>
-  <script src="scoring/readability.js?v=3.11.19"></script>
-  <script src="scoring/filters.js?v=3.11.19"></script>
-  <script src="scoring/balance.js?v=3.11.19"></script>
+  <script src="scoring/registry.js?v=3.11.20"></script>
+  <script src="scoring/contrast.js?v=3.11.20"></script>
+  <script src="scoring/typography.js?v=3.11.20"></script>
+  <script src="scoring/spacing.js?v=3.11.20"></script>
+  <script src="scoring/touch.js?v=3.11.20"></script>
+  <script src="scoring/accessibility.js?v=3.11.20"></script>
+  <script src="scoring/responsive.js?v=3.11.20"></script>
+  <script src="scoring/consistency.js?v=3.11.20"></script>
+  <script src="scoring/cognitive.js?v=3.11.20"></script>
+  <script src="scoring/layout.js?v=3.11.20"></script>
+  <script src="scoring/performance.js?v=3.11.20"></script>
+  <script src="scoring/readability.js?v=3.11.20"></script>
+  <script src="scoring/filters.js?v=3.11.20"></script>
+  <script src="scoring/balance.js?v=3.11.20"></script>
   <!-- Queue + Report rendering + UI -->
-  <script src="analyzer-queue.js?v=3.11.19"></script>
-  <script src="analyzer-report.js?v=3.11.19"></script>
-  <script src="analyzer-crawl.js?v=3.11.19"></script>
-  <script src="analyzer-extract.js?v=3.11.19"></script>
-  <script src="analyzer-region.js?v=3.11.19"></script>
-  <script src="analyzer-capture.js?v=3.11.19"></script>
-  <script src="analyzer-iframe.js?v=3.11.19"></script>
-  <script src="analyzer-proxy.js?v=3.11.19"></script>
-  <script src="analyzer-crawl-ui.js?v=3.11.19"></script>
-  <script src="analyzer-contrast-verify.js?v=3.11.19"></script>
-  <script src="analyzer-viewer.js?v=3.11.19"></script>
-  <script src="analyzer.js?v=3.11.19"></script>
+  <script src="analyzer-queue.js?v=3.11.20"></script>
+  <script src="analyzer-report.js?v=3.11.20"></script>
+  <script src="analyzer-crawl.js?v=3.11.20"></script>
+  <script src="analyzer-extract.js?v=3.11.20"></script>
+  <script src="analyzer-region.js?v=3.11.20"></script>
+  <script src="analyzer-capture.js?v=3.11.20"></script>
+  <script src="analyzer-iframe.js?v=3.11.20"></script>
+  <script src="analyzer-proxy.js?v=3.11.20"></script>
+  <script src="analyzer-crawl-ui.js?v=3.11.20"></script>
+  <script src="analyzer-contrast-verify.js?v=3.11.20"></script>
+  <script src="analyzer-viewer.js?v=3.11.20"></script>
+  <script src="analyzer.js?v=3.11.20"></script>
 </body>
 </html>
 </file>

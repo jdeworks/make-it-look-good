@@ -122,7 +122,7 @@ window.MilgViewer = (function() {
         });
       }
       verifyPill = '<span class="milg-viewer-sep"></span>' +
-        '<button class="milg-viewer-filter-btn milg-viewer-sev-verify" data-filter-type="verify" data-filter-value="all">Pixel Verified <span class="milg-viewer-count">' + vResults.length + '</span></button>' +
+        '<button class="milg-viewer-filter-btn milg-viewer-sev-verify milg-viewer-verify-hl" data-filter-type="verify" data-filter-value="all" title="Right-click a box here to cycle mask → zones → off">Pixel Verified <span class="milg-viewer-count">' + vResults.length + '</span></button>' +
         (vFails > 0 ? '<button class="milg-viewer-filter-btn milg-viewer-sev-error" data-filter-type="verify" data-filter-value="fails">Pixel Fails <span class="milg-viewer-count">' + vFails + '</span></button>' : '') +
         layerPills;
     }
@@ -1120,6 +1120,24 @@ window.MilgViewer = (function() {
       rect._sectionOffset = (vr.sectionIdx && _meta.viewportHeight) ? vr.sectionIdx * Math.round(_meta.viewportHeight * vScaleX) : 0;
     });
     console.log('[milg-viewer] Verify rects created:', svg.querySelectorAll('rect[data-verify]').length, 'noBbox:', _vrNoBbox, 'regionExcluded:', _vrRegionExcluded);
+
+    // Discoverability hint: the right-click none→mask→zones cycle ONLY exists on these
+    // pixel-verify boxes — on the findings overlay right-click opens the copy-debug menu
+    // instead. Surface that here so users don't right-click finding boxes expecting it.
+    (function() {
+      var _content = _overlay && _overlay.querySelector('.milg-viewer-content');
+      if (!_content) return;
+      var _old = _content.querySelector('.milg-viewer-hint'); if (_old) _old.parentNode.removeChild(_old);
+      var _vRects = svg.querySelectorAll('rect[data-verify]');
+      if (!_vRects.length) return;
+      var _withDebug = 0; _vRects.forEach(function(r) { if (r._debug) _withDebug++; });
+      var _hint = document.createElement('div');
+      _hint.className = 'milg-viewer-hint';
+      _hint.textContent = _withDebug > 0
+        ? 'Right-click a box: cycle mask → zones → off   ·   Left-click: sample points'
+        : 'Left-click a box: sample points';
+      _content.appendChild(_hint);
+    })();
 
     // BBox edge contrast results — render as dashed yellow rects
     var bboxEdgeResults = (_reportData && _reportData._bboxEdgeResults) || [];
