@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.20 loaded');
+console.log('[milg] analyzer.js v3.11.21 loaded');
 
 (function() {
   "use strict";
@@ -1532,6 +1532,57 @@ console.log('[milg] analyzer.js v3.11.20 loaded');
         document.execCommand('copy');
         document.body.removeChild(ta);
         showToast('Markdown copied to clipboard');
+      });
+    });
+
+    // LLM pack (.zip) — structured agent bundle: per-category finding docs + agent
+    // prompt + guidelines + clean screenshot. JSZip is loaded from CDN on first use
+    // (with a fetch+eval fallback for CSP). See README "Third-party libraries".
+    var _jszipPromise = null;
+    function _loadJSZip() {
+      if (window.JSZip) return Promise.resolve(window.JSZip);
+      if (_jszipPromise) return _jszipPromise;
+      var SRC = 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js';
+      _jszipPromise = new Promise(function(resolve, reject) {
+        var s = document.createElement('script');
+        s.src = SRC;
+        s.onload = function() { window.JSZip ? resolve(window.JSZip) : reject(new Error('JSZip loaded but missing')); };
+        s.onerror = function() {
+          fetch(SRC).then(function(r) { return r.text(); }).then(function(code) {
+            (new Function(code))();
+            window.JSZip ? resolve(window.JSZip) : reject(new Error('JSZip eval failed'));
+          }).catch(reject);
+        };
+        document.head.appendChild(s);
+      });
+      return _jszipPromise;
+    }
+    var _llmPackBtn = document.getElementById('llmPackBtn');
+    if (_llmPackBtn) _llmPackBtn.addEventListener('click', function() {
+      if (MilgCrawlUI.getCrawlSession && MilgCrawlUI.getCrawlSession()) { showToast('LLM pack is for single-page reports'); return; }
+      if (!reportData) return;
+      var filter = document.getElementById('exportSeverityFilter');
+      var severity = filter ? filter.value : 'all';
+      var lbl = _llmPackBtn.querySelector('.btn-label');
+      _llmPackBtn.disabled = true; if (lbl) lbl.textContent = 'Building…';
+      _loadJSZip().then(function(JSZip) {
+        var pack = MilgReport.buildLlmPack(reportData, { severityFilter: severity });
+        var zip = new JSZip();
+        var root = zip.folder(pack.folder);
+        pack.files.forEach(function(f) { root.file(f.path, f.text); });
+        pack.assets.forEach(function(a) { root.file(a.path, a.b64, { base64: true }); });
+        return zip.generateAsync({ type: 'blob', compression: 'DEFLATE' }).then(function(blob) {
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement('a');
+          a.href = url; a.download = pack.folder + '.zip'; a.click();
+          URL.revokeObjectURL(url);
+          showToast('LLM pack downloaded (' + pack.files.length + ' docs, ' + severity + ')');
+        });
+      }).catch(function(err) {
+        console.error('[milg] LLM pack failed', err);
+        showToast('LLM pack failed: ' + (err && err.message ? err.message : 'JSZip unavailable'));
+      }).then(function() {
+        _llmPackBtn.disabled = false; if (lbl) lbl.textContent = 'LLM pack (.zip)';
       });
     });
 

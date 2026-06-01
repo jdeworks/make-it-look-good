@@ -955,5 +955,293 @@ window.MilgReport = (function() {
       '</button>';
   }
 
-  return { renderReport: renderReport, renderMarkdown: renderMarkdown, renderCrawlSummary: renderCrawlSummary, renderCrawlPageTab: renderCrawlPageTab };
+  // ─────────────────────────────────────────────────────────────────────────
+  // LLM instruction pack — a structured, agent-oriented bundle of the analysis.
+  // Returns a manifest { folder, files:[{path,text}], assets:[{path,b64}] } that
+  // analyzer.js zips with JSZip. Unlike the flat "Copy for LLM" markdown, this
+  // splits findings into per-category docs, ships an agent prompt + guidelines,
+  // and surfaces the per-finding selectors/bboxes that renderMarkdown drops.
+  // ─────────────────────────────────────────────────────────────────────────
+  function _slug(s) {
+    return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').substring(0, 48) || 'item';
+  }
+  function _sevIcon(sev) { return sev === 'error' ? '❌' : sev === 'warning' ? '⚠️' : sev === 'pass' ? '✅' : 'ℹ️'; }
+  function _passSevFn(filter) {
+    // 'pass' findings are never actionable instructions — exclude them from every filter.
+    return function(sev) {
+      if (sev === 'pass') return false;
+      if (filter === 'error') return sev === 'error';
+      if (filter === 'warning') return sev === 'error' || sev === 'warning';
+      return true; // 'all' = errors + warnings + info
+    };
+  }
+  // Collect unique, non-empty CSS selectors from a finding's locator.
+  function _findingSelectors(f) {
+    var loc = f.locator; if (!loc) return [];
+    var out = [];
+    if (loc.selector) out.push(loc.selector);
+    (loc.selectors || []).forEach(function(s) { if (s) out.push(s); });
+    var seen = {}, uniq = [];
+    out.forEach(function(s) { if (!seen[s]) { seen[s] = 1; uniq.push(s); } });
+    return uniq.slice(0, 12);
+  }
+  function _findingBboxCount(f) {
+    var loc = f.locator; if (!loc || !loc.bboxes) return 0;
+    return loc.bboxes.length;
+  }
+
+  function buildLlmPack(report, options) {
+    var opts = options || {};
+    var severityFilter = opts.severityFilter || 'all';
+    var passSev = _passSevFn(severityFilter);
+    var meta = report.meta || {};
+    var raw = report.raw || {};
+    var profile = raw.profile || report.profile || 'general';
+    var host = 'site';
+    try { host = new URL(meta.url).hostname.replace(/^www\./, ''); } catch (e) { if (meta.url) host = _slug(meta.url); }
+    var folder = 'milg-llm-pack-' + _slug(host);
+    var files = [];
+    var assets = [];
+
+    // Per-category counts (independent of the severity filter, for the index).
+    var cats = (report.categories || []).map(function(cat, i) {
+      var fnd = cat.findings || [];
+      return {
+        idx: i,
+        label: cat.label,
+        score: cat.score,
+        weight: cat.weight,
+        findings: fnd,
+        errors: fnd.filter(function(f) { return f.severity === 'error'; }).length,
+        warnings: fnd.filter(function(f) { return f.severity === 'warning'; }).length,
+        infos: fnd.filter(function(f) { return f.severity === 'info'; }).length,
+        slug: _slug(cat.label)
+      };
+    });
+    // Stable doc number per category (1-based, in report order).
+    cats.forEach(function(c, i) { c.docNum = String(i + 1).padStart(2, '0'); c.docPath = 'findings/' + c.docNum + '-' + c.slug + '.md'; });
+
+    // ---- Design tokens (concrete, reusable) -------------------------------
+    function tokenLines() {
+      var L = [];
+      var ty = raw.typography || {}, sp = raw.spacing || {}, st = raw.structure || {};
+      L.push('- **Body type:** ' + (ty.bodyFontSize || '?') + ' / line-height ' + (ty.bodyLineHeight || '?'));
+      if (ty.fontFamilies && ty.fontFamilies.length) L.push('- **Font families:** ' + ty.fontFamilies.join(', '));
+      if (ty.headings && ty.headings.length) {
+        var _hseen = {}, _hscale = [];
+        ty.headings.forEach(function(h) { var k = h.tag + ' ' + h.fontSize; if (!_hseen[k]) { _hseen[k] = 1; _hscale.push(k); } });
+        L.push('- **Heading scale:** ' + _hscale.join(' · '));
+      }
+      if (ty.fontWeights && ty.fontWeights.length) L.push('- **Weights in use:** ' + ty.fontWeights.map(function(w) { return w.value; }).filter(Boolean).join(', '));
+      if (sp.maxContentWidth) L.push('- **Max content width:** ' + sp.maxContentWidth);
+      var topPad = (sp.paddings || [])[0]; if (topPad) L.push('- **Common padding:** ' + topPad.value);
+      var topGap = (sp.gaps || [])[0]; if (topGap) L.push('- **Common gap:** ' + topGap.value);
+      var textC = (raw.colors && raw.colors.textColors || []).map(function(c) { return c.value; }).filter(Boolean).slice(0, 6);
+      var bgC = (raw.colors && raw.colors.bgColors || []).map(function(c) { return c.value; }).filter(Boolean).slice(0, 6);
+      if (textC.length) L.push('- **Text colors:** ' + textC.join(', '));
+      if (bgC.length) L.push('- **Background colors:** ' + bgC.join(', '));
+      L.push('- **CSS framework:** ' + (st.cssFramework || 'unknown'));
+      L.push('- **Responsive utilities:** ' + (st.responsiveClasses ? 'yes' : 'no') + ' · **Dark mode:** ' + (st.darkModeClasses ? 'yes' : 'no'));
+      if (st.totalElements) L.push('- **DOM size:** ' + st.totalElements + ' elements');
+      return L;
+    }
+
+    // ---- README.md (overview + index) -------------------------------------
+    var R = [];
+    R.push('# Design analysis pack — ' + host);
+    R.push('');
+    R.push('> Generated by the [make-it-look-good](https://github.com/jdeworks/make-it-look-good) Design Analyzer (rule-based scoring, no AI). This pack is meant to be handed to a coding/design agent — start with **AGENT_PROMPT.md**.');
+    R.push('');
+    R.push('- **URL:** ' + (meta.url || 'n/a'));
+    if (meta.title) R.push('- **Title:** ' + meta.title);
+    R.push('- **Analyzed:** ' + (meta.timestamp ? new Date(meta.timestamp).toLocaleString() : 'n/a'));
+    R.push('- **Viewport:** ' + (meta.viewportWidth || '?') + '×' + (meta.viewportHeight || '?') + 'px');
+    R.push('- **Audience profile:** ' + profile);
+    R.push('- **Overall score:** ' + report.overall + '/100 (' + report.grade + ' — ' + report.gradeLabel + ')');
+    R.push('- **Severity filter for this pack:** ' + severityFilter);
+    R.push('');
+    R.push('## Contents');
+    R.push('');
+    R.push('| File | Purpose |');
+    R.push('|------|---------|');
+    R.push('| `AGENT_PROMPT.md` | Base prompt — give this to the agent first |');
+    R.push('| `GUIDELINES.md` | Design tokens to honor + priorities from this analysis + general principles |');
+    R.push('| `findings/00-index.md` | Index of every finding, grouped by category |');
+    R.push('| `findings/NN-<category>.md` | One document per category, each finding with fix + selectors |');
+    if (assets.length || (raw.screenshotClean || (raw.screenshots && raw.screenshots[0]))) R.push('| `assets/clean-screenshot.png` | Full-page clean screenshot for visual context |');
+    R.push('');
+    R.push('## Category scores');
+    R.push('');
+    R.push('| Category | Score | Weight | Issues | Document |');
+    R.push('|----------|-------|--------|--------|----------|');
+    cats.forEach(function(c) {
+      var iss = [];
+      if (c.errors) iss.push(c.errors + ' error' + (c.errors > 1 ? 's' : ''));
+      if (c.warnings) iss.push(c.warnings + ' warning' + (c.warnings > 1 ? 's' : ''));
+      R.push('| ' + c.label + ' | ' + c.score + '/100 | ' + c.weight + '% | ' + (iss.length ? iss.join(', ') : 'all passed') + ' | `' + c.docPath + '` |');
+    });
+    R.push('');
+    R.push('## Design tokens (snapshot)');
+    R.push('');
+    tokenLines().forEach(function(l) { R.push(l); });
+    R.push('');
+    files.push({ path: 'README.md', text: R.join('\n') });
+
+    // ---- AGENT_PROMPT.md --------------------------------------------------
+    var totalErr = cats.reduce(function(a, c) { return a + c.errors; }, 0);
+    var totalWarn = cats.reduce(function(a, c) { return a + c.warnings; }, 0);
+    var _fwRaw = raw.structure && raw.structure.cssFramework;
+    var fw = (_fwRaw && _fwRaw !== 'unknown') ? _fwRaw : 'the existing CSS framework';
+    var A = [];
+    A.push('# Agent prompt');
+    A.push('');
+    A.push('You are a senior frontend / UX engineer. You have been given a design-analysis pack for **' + (meta.url || host) + '**, produced by a rule-based analyzer (deterministic checks against WCAG and common design heuristics — there is no AI judgement in the findings, so each one is a concrete, measurable issue).');
+    A.push('');
+    A.push('## Objective');
+    A.push('');
+    A.push('Raise the design quality of this page from its current **' + report.overall + '/100 (' + report.grade + ')** by resolving the findings in this pack, without changing the page\'s content, copy, or intent, and while staying consistent with its existing design tokens and ' + fw + '.');
+    A.push('');
+    A.push('## What you have');
+    A.push('');
+    A.push('- `GUIDELINES.md` — the design tokens you must reuse, the priorities from this analysis, and the general principles to apply. **Read this before editing.**');
+    A.push('- `findings/00-index.md` — every finding, grouped by category, with severity counts.');
+    A.push('- `findings/NN-<category>.md` — one document per category. Each finding has: a severity, a description, a recommended **Fix**, the **Selector(s)** the issue was found on, and (where relevant) a source spec link.');
+    if (raw.screenshotClean || (raw.screenshots && raw.screenshots[0])) A.push('- `assets/clean-screenshot.png` — a full-page screenshot of the analyzed state for visual reference.');
+    A.push('');
+    A.push('## How to work');
+    A.push('');
+    A.push('1. Read `GUIDELINES.md` so every change you make is consistent with the existing tokens and the general principles.');
+    A.push('2. Work category-by-category, **errors first, then warnings, then info** (this pack contains ' + totalErr + ' error(s) and ' + totalWarn + ' warning(s)).');
+    A.push('3. For each finding: locate the element(s) using the listed **Selector(s)**, apply the recommended **Fix**, and prefer the design tokens in `GUIDELINES.md` over inventing new values.');
+    A.push('4. Do not regress passing checks. Keep semantic HTML, responsive behavior, and (if present) dark-mode support intact.');
+    A.push('5. When a fix is ambiguous, choose the option that best satisfies the cited spec (e.g. contrast ≥ 4.5:1 for body text, ≥ 3:1 for large text; touch targets ≥ 44×44px).');
+    A.push('');
+    A.push('## Definition of done');
+    A.push('');
+    A.push('- Every error- and warning-level finding is addressed or has a documented reason it cannot be.');
+    A.push('- Changes reuse existing design tokens; no new ad-hoc colors/sizes unless a finding requires it.');
+    A.push('- A short summary maps each change back to the finding it resolves (category + title).');
+    A.push('');
+    files.push({ path: 'AGENT_PROMPT.md', text: A.join('\n') });
+
+    // ---- GUIDELINES.md ----------------------------------------------------
+    var G = [];
+    G.push('# Guidelines');
+    G.push('');
+    G.push('Derived from the analysis of **' + (meta.url || host) + '** plus general design/accessibility best practice. Apply these whenever you resolve a finding.');
+    G.push('');
+    G.push('## 1. Design tokens to honor');
+    G.push('');
+    G.push('Reuse these existing values instead of introducing new ones:');
+    G.push('');
+    tokenLines().forEach(function(l) { G.push(l); });
+    G.push('');
+    G.push('## 2. Priorities from this analysis');
+    G.push('');
+    var prio = cats.slice().filter(function(c) { return c.errors + c.warnings > 0; })
+      .sort(function(a, b) { return (b.errors * 10 + b.warnings) - (a.errors * 10 + a.warnings); });
+    if (prio.length === 0) {
+      G.push('No error- or warning-level issues were found. Focus on the info-level suggestions in the per-category documents.');
+    } else {
+      prio.forEach(function(c) {
+        var bits = [];
+        if (c.errors) bits.push(c.errors + ' error' + (c.errors > 1 ? 's' : ''));
+        if (c.warnings) bits.push(c.warnings + ' warning' + (c.warnings > 1 ? 's' : ''));
+        G.push('- **' + c.label + '** (' + c.score + '/100, ' + bits.join(' + ') + ') → see `' + c.docPath + '`.');
+      });
+    }
+    G.push('');
+    G.push('## 3. General principles');
+    G.push('');
+    G.push('- **Contrast:** body/normal text needs a contrast ratio ≥ 4.5:1; large text (≥ 24px, or ≥ 19px bold) needs ≥ 3:1. UI/graphical boundaries need ≥ 3:1. (WCAG 2.2 §1.4.3 / §1.4.11)');
+    G.push('- **Touch targets:** interactive controls should be ≥ 44×44px with adequate spacing. (WCAG 2.2 §2.5.8, Apple HIG)');
+    G.push('- **Type:** keep a consistent modular scale; body ≥ 16px; line-height ~1.4–1.6 for body; line length ~45–75 characters.');
+    G.push('- **Spacing:** use a consistent spacing rhythm (e.g. 4/8px base); align elements to a shared grid; avoid arbitrary one-off margins.');
+    G.push('- **Hierarchy:** one h1 per page; never skip heading levels; use size, weight, and spacing to signal importance.');
+    G.push('- **Semantics & a11y:** prefer landmark elements (header/nav/main/footer), label all form controls, give every meaningful image alt text, ensure visible focus indicators.');
+    G.push('- **Consistency:** limit the palette and type set; reuse component patterns; keep interaction (hover/focus/active) states consistent.');
+    if (raw.structure && raw.structure.responsiveClasses) G.push('- **Responsive:** the page uses responsive utilities — verify fixes hold across breakpoints, not just the analyzed width.');
+    if (raw.structure && raw.structure.darkModeClasses) G.push('- **Dark mode:** the page supports dark mode — re-check contrast and color choices in both themes.');
+    G.push('');
+    files.push({ path: 'GUIDELINES.md', text: G.join('\n') });
+
+    // ---- findings/00-index.md --------------------------------------------
+    var IX = [];
+    IX.push('# Findings index');
+    IX.push('');
+    IX.push('Severity filter applied to this pack: **' + severityFilter + '**.');
+    IX.push('');
+    IX.push('| # | Category | Score | Errors | Warnings | Info | Document |');
+    IX.push('|---|----------|-------|--------|----------|------|----------|');
+    cats.forEach(function(c) {
+      IX.push('| ' + c.docNum + ' | ' + c.label + ' | ' + c.score + '/100 | ' + c.errors + ' | ' + c.warnings + ' | ' + c.infos + ' | `' + c.docNum + '-' + c.slug + '.md` |');
+    });
+    IX.push('');
+    files.push({ path: 'findings/00-index.md', text: IX.join('\n') });
+
+    // ---- findings/NN-<category>.md ---------------------------------------
+    cats.forEach(function(c) {
+      var D = [];
+      D.push('# ' + c.label);
+      D.push('');
+      D.push('**Score:** ' + c.score + '/100 · **Weight:** ' + c.weight + '% · **Errors:** ' + c.errors + ' · **Warnings:** ' + c.warnings + ' · **Info:** ' + c.infos);
+      D.push('');
+      var shown = (c.findings || []).filter(function(f) { return passSev(f.severity); });
+      if (shown.length === 0) {
+        var hasIssues = (c.findings || []).some(function(f) { return f.severity !== 'pass'; });
+        D.push(hasIssues ? '_All issues in this category are below the current severity filter (' + severityFilter + ')._' : '_No issues found in this category — all checks passed._');
+      } else {
+        // error → warning → info → pass
+        var order = { error: 0, warning: 1, info: 2, pass: 3 };
+        shown.slice().sort(function(a, b) { return (order[a.severity] || 9) - (order[b.severity] || 9); }).forEach(function(f) {
+          D.push('## ' + _sevIcon(f.severity) + ' [' + f.severity + '] ' + f.title);
+          D.push('');
+          if (f.detail) { D.push(f.detail); D.push(''); }
+          if (f.fix) { D.push('**Fix:** ' + f.fix); D.push(''); }
+          if (f.presetRef) { D.push('**Example:** ' + f.presetRef); D.push(''); }
+          var sels = _findingSelectors(f);
+          if (sels.length) {
+            D.push('**Selector(s):**');
+            sels.forEach(function(s) { D.push('- `' + s + '`'); });
+            var extra = _findingBboxCount(f) - sels.length;
+            if (extra > 0) D.push('- _…and ' + extra + ' more matched element(s)_');
+            D.push('');
+          } else {
+            var bc = _findingBboxCount(f);
+            if (bc > 0) { D.push('**Affected elements:** ' + bc + ' location(s) on the page.'); D.push(''); }
+          }
+          if (f.source) {
+            var sp = String(f.source).split(' — ');
+            D.push('**Source:** ' + (sp[1] ? '[' + sp[0] + '](' + sp[1] + ')' : sp[0]));
+            D.push('');
+          }
+        });
+      }
+      files.push({ path: c.docPath, text: D.join('\n') });
+    });
+
+    // ---- assets/clean-screenshot.png -------------------------------------
+    var shot = raw.screenshotClean || (raw.screenshots && raw.screenshots[0]) || null;
+    if (shot && /^data:image\//.test(shot)) {
+      var comma = shot.indexOf(',');
+      var b64 = comma >= 0 ? shot.substring(comma + 1) : '';
+      var ext = /^data:image\/jpe?g/.test(shot) ? 'jpg' : /^data:image\/webp/.test(shot) ? 'webp' : 'png';
+      if (b64) assets.push({ path: 'assets/clean-screenshot.' + ext, b64: b64 });
+    }
+
+    // ---- THIRD_PARTY.md (JSZip attribution) ------------------------------
+    var T = [];
+    T.push('# Third-party software');
+    T.push('');
+    T.push('This .zip was assembled in the browser with **JSZip**.');
+    T.push('');
+    T.push('JSZip — © Stuart Knightley and JSZip contributors. Dual-licensed under the MIT license or GPLv3; used here under the **MIT license**.');
+    T.push('Project: https://github.com/Stuk/jszip — License: https://github.com/Stuk/jszip/blob/main/LICENSE.markdown');
+    T.push('');
+    files.push({ path: 'THIRD_PARTY.md', text: T.join('\n') });
+
+    return { folder: folder, files: files, assets: assets };
+  }
+
+  return { renderReport: renderReport, renderMarkdown: renderMarkdown, renderCrawlSummary: renderCrawlSummary, renderCrawlPageTab: renderCrawlPageTab, buildLlmPack: buildLlmPack };
 })();

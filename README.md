@@ -229,6 +229,18 @@ Each file: 200–400 lines, concrete rules with numbers, CSS/Tailwind patterns, 
 | Enter animation | 200–300ms |
 | Exit animation | 150–200ms |
 
+## Third-party libraries
+
+The Design Analyzer (`docs/`) loads a few libraries from public CDNs at runtime; none are vendored into this repository. Credit and licenses:
+
+| Library | Used for | License |
+|---------|----------|---------|
+| [JSZip](https://github.com/Stuk/jszip) | Building the "LLM pack (.zip)" export in the browser | Dual [MIT or GPLv3](https://github.com/Stuk/jszip/blob/main/LICENSE.markdown); used here under **MIT**. © Stuart Knightley & JSZip contributors |
+| [Tailwind CSS (Play CDN)](https://tailwindcss.com) | Styling generated previews / fragment analysis | [MIT](https://github.com/tailwindlabs/tailwindcss/blob/master/LICENSE) |
+| [modern-screenshot](https://github.com/qq15725/modern-screenshot) | Full-page / region screenshot capture | [MIT](https://github.com/qq15725/modern-screenshot/blob/main/LICENSE) |
+
+Each generated LLM pack also ships a `THIRD_PARTY.md` repeating the JSZip attribution.
+
 ---
 
 If this helped you ship something that looks good, [give it a star](../../stargazers). Found an issue? [Open one](../../issues).
