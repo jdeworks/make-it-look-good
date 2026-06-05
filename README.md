@@ -50,7 +50,7 @@ repo. Start by asking what I'm building and how detailed I want the consultation
 (quick start / guided / thorough).
 ```
 
-The bundle (~194k tokens) includes the full consultation playbook, all 45 knowledge files, and a template catalog. To browse templates visually, use the [live preview tool](https://jdeworks.github.io/make-it-look-good/) and tell your AI which ones you like.
+The bundle (~164k tokens) includes the full consultation playbook, all 45 knowledge files, and the template catalog (`docs/presets/index.json`). To keep it pasteable it does **not** embed the template HTML — fetch a specific preset on demand from `https://raw.githubusercontent.com/jdeworks/make-it-look-good/dev/docs/presets/<element>/<variant>.html` (variants per `index.json`), or browse them in the [live preview tool](https://jdeworks.github.io/make-it-look-good/) and tell your AI which ones you like.
 
 **Option B — Local AI agent** (Claude Code, Cursor, Windsurf, Codex, etc.)
 
