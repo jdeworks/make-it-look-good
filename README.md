@@ -66,7 +66,7 @@ playbook — use it to help me make my website/UI look good. Follow the steps
 and start by asking what I'm building.
 ```
 
-A local agent gets the full file structure including all 170+ template HTML files. This is the recommended approach for hands-on design work.
+A local agent gets the full file structure including all 125 template HTML files. This is the recommended approach for hands-on design work.
 
 **Option C — Quick prompts** (if your AI already has the repo loaded)
 
@@ -91,7 +91,7 @@ Look at docs/presets/_index.md and give me a hero + pricing cards layout.
 
 ### Preview Tool
 
-Paste any HTML+Tailwind into the [live preview tool](https://jdeworks.github.io/make-it-look-good/) to see it rendered instantly. Toggle mobile/tablet/desktop views, dark mode, and share via URL. Includes 121 prebuilt templates across 38 elements with multiple design personalities.
+Paste any HTML+Tailwind into the [live preview tool](https://jdeworks.github.io/make-it-look-good/) to see it rendered instantly. Toggle mobile/tablet/desktop views, dark mode, and share via URL. Includes 125 prebuilt template files across 41 elements with multiple design personalities.
 
 ### Design Analyzer
 
@@ -176,7 +176,7 @@ The consultation flow is tested across 12 real-world scenarios — all pass all 
 
 ### Preset Library — [`docs/presets/_index.md`](docs/presets/_index.md)
 
-38+ presets with multiple personality variants (Clean, Minimalist, Playful). Interactive components also have React, Vue, and Svelte framework files.
+41 preset elements (125 variant HTML files across 6 categories) with multiple personality variants. Every element has a `clean` variant; most also have `minimalist` and `playful`, and a few add `before` or `editorial`. See [`docs/presets/index.json`](docs/presets/index.json) for the authoritative per-element list. Interactive components also have React, Vue, and Svelte framework files.
 
 | Category | Examples |
 |----------|---------|
@@ -189,7 +189,7 @@ The consultation flow is tested across 12 real-world scenarios — all pass all 
 
 All presets: dark mode, WCAG AA contrast, 44px touch targets, responsive. [Composition recipes](docs/presets/_index.md#composition-recipes) show how to combine them into full pages.
 
-### Knowledge Files — 44 topics
+### Knowledge Files — 45 topics
 
 | Area | Topics |
 |------|--------|

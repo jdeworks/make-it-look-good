@@ -1,6 +1,6 @@
 # Preset & Component Library
 
-> **Copy-paste-ready HTML+Tailwind components and full-page templates.** Each preset has multiple personality variants (Clean, Minimalist, Playful) as structurally different HTML — not just CSS changes.
+> **Copy-paste-ready HTML+Tailwind components and full-page templates.** 41 preset elements (125 variant HTML files across 6 categories). Every element has a `clean` variant; most also have `minimalist` and `playful` as structurally different HTML — not just CSS changes — and a few add `before` or `editorial`. A few elements are clean-only (agency-portfolio, app-showcase, scroll-reveal-landing). **Check `index.json` for the authoritative per-element variant list — do not assume a variant file exists.**
 
 ## Preview Links
 

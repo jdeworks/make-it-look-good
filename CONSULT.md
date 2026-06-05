@@ -191,7 +191,7 @@ Before diving into design questions, gauge how much guidance the user wants. **A
 
    *Why this matters:* A default blue-gray SaaS layout is technically correct but has zero personality. Users' brands are different — a children's app needs Playful, a law firm needs Editorial, a productivity tool needs Clean or Minimalist. The design vibe affects border-radius, shadow style, font weight, hover animations, spacing density, and color temperature. Don't just change the accent color — change the visual character.
 
-   *Personality presets:* Every element in `docs/presets/` has at least clean, minimalist, and playful variants as structurally different HTML. Check `docs/presets/index.json` for availability. If a personality file doesn't exist for a specific element, use the clean variant as base and apply the personality's visual characteristics manually.
+   *Personality presets:* Every element in `docs/presets/` has a `clean` variant; most also have `minimalist` and `playful` as structurally different HTML, except a few clean-only elements (e.g. agency-portfolio, app-showcase, scroll-reveal-landing). A handful of elements additionally have `before` or `editorial` variants. **Do NOT assume a given variant file exists — check `docs/presets/index.json` before referencing a preset path.** If a personality file doesn't exist for a specific element, use the clean variant as base and apply the personality's visual characteristics manually.
 
 4. **What's your tech stack?**
    - Plain HTML + CSS (will suggest Tailwind CDN)
@@ -411,10 +411,12 @@ Templates live in `docs/presets/{element}/{personality}.html`. Each element can 
 
 | Personality | Visual Character | Best For | Availability |
 |------------|-----------------|----------|-------------|
-| **clean** | Standard Tailwind, rounded-xl, subtle shadows, system sans | Safe default, B2B SaaS, internal tools | All 30 elements |
-| **minimalist** | No shadows, hairline borders, light fonts (300), extreme whitespace | Luxury, Japanese-inspired, portfolios, Scandinavian | All 30 elements |
-| **playful** | Big rounded corners (16-24px), colorful shadows, bouncy animations | Consumer apps, children's products, social platforms | All 30 elements |
+| **clean** | Standard Tailwind, rounded-xl, subtle shadows, system sans | Safe default, B2B SaaS, internal tools | All 41 elements |
+| **minimalist** | No shadows, hairline borders, light fonts (300), extreme whitespace | Luxury, Japanese-inspired, portfolios, Scandinavian | Most elements (not the 3 clean-only ones) |
+| **playful** | Big rounded corners (16-24px), colorful shadows, bouncy animations | Consumer apps, children's products, social platforms | Most elements (not the 3 clean-only ones) |
 | **editorial** | Serif headings (Playfair Display), no shadows, fine borders, muted palette | Publishing, blogs, law firms, premium brands | form, landing only (use clean + serif for others) |
+
+**Do NOT assume a given variant file exists — check `docs/presets/index.json` (the live source of truth) before referencing a preset path.** The 3 clean-only elements are agency-portfolio, app-showcase, and scroll-reveal-landing.
 
 ### Using Personality Templates
 
