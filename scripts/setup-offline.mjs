@@ -13,6 +13,15 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
 const VENDOR = join(ROOT, 'docs', 'vendor');
 const FONTS = join(VENDOR, 'fonts');
+const MONACO = join(VENDOR, 'monaco');
+
+// Monaco editor — vendored from cdnjs, preserving the min/vs/ path tree so a
+// single server-side rewrite of the version prefix fixes both the loader URL
+// and the require.config `vs` base in docs/index.html.
+const MONACO_VERSION = '0.52.2';
+const MONACO_CDN_BASE = `https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/${MONACO_VERSION}`;
+const MONACO_API = `https://api.cdnjs.com/libraries/monaco-editor/${MONACO_VERSION}?fields=files`;
+const MONACO_CONCURRENCY = 8;
 
 // A recent Chrome UA so Google Fonts returns modern woff2 @font-face rules.
 const CHROME_UA =
@@ -152,12 +161,97 @@ async function downloadFont() {
   }
 }
 
+// Download the Monaco min/vs/ tree from cdnjs, preserving relative paths.
+// Returns { ok, count, bytes }. ok=false on API failure or any file failures.
+async function downloadMonaco() {
+  let files;
+  try {
+    console.log(`Listing Monaco ${MONACO_VERSION} files via cdnjs API...`);
+    const res = await fetch(MONACO_API, { redirect: 'follow' });
+    if (!res.ok) throw new Error(`API HTTP ${res.status} ${res.statusText}`);
+    const json = await res.json();
+    if (!json || !Array.isArray(json.files)) throw new Error('cdnjs API returned no files array');
+    files = json.files.filter((f) => typeof f === 'string' && f.startsWith('min/vs/'));
+    if (files.length === 0) throw new Error('no min/vs/ files listed by cdnjs API');
+  } catch (e) {
+    console.error(`  ✗ Monaco file listing failed: ${e.message}`);
+    summary.push({ name: 'monaco/ (min/vs tree)', bytes: null, ok: false, note: e.message });
+    return { ok: false, count: 0, bytes: 0 };
+  }
+
+  console.log(`  Found ${files.length} min/vs/ files — downloading (concurrency ${MONACO_CONCURRENCY})...`);
+
+  async function fetchOne(rel) {
+    const url = `${MONACO_CDN_BASE}/${rel}`;
+    const dest = join(MONACO, rel);
+    await mkdir(dirname(dest), { recursive: true });
+    let lastErr;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const buf = await fetchBuffer(url);
+        await writeFile(dest, buf);
+        return buf.length;
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+    throw lastErr;
+  }
+
+  let totalBytes = 0;
+  let okCount = 0;
+  let failCount = 0;
+  for (let i = 0; i < files.length; i += MONACO_CONCURRENCY) {
+    const batch = files.slice(i, i + MONACO_CONCURRENCY);
+    const results = await Promise.allSettled(batch.map((rel) => fetchOne(rel)));
+    results.forEach((r, j) => {
+      if (r.status === 'fulfilled') {
+        okCount++;
+        totalBytes += r.value;
+      } else {
+        failCount++;
+        console.error(`  ✗ monaco/${batch[j]}: ${r.reason && r.reason.message ? r.reason.message : r.reason}`);
+      }
+    });
+    process.stdout.write(`\r  ...${okCount + failCount}/${files.length} downloaded`);
+  }
+  process.stdout.write('\n');
+
+  // Verify the two critical entrypoints exist and are non-trivial.
+  let verifyOk = true;
+  for (const rel of ['min/vs/loader.min.js', 'min/vs/editor/editor.main.js']) {
+    try {
+      const st = await stat(join(MONACO, rel));
+      if (st.size <= MIN_LIB_BYTES) {
+        verifyOk = false;
+        console.error(`  ! monaco/${rel} present but only ${st.size} B`);
+      }
+    } catch {
+      verifyOk = false;
+      console.error(`  ✗ monaco/${rel} missing after download`);
+    }
+  }
+
+  const ok = failCount === 0 && verifyOk;
+  summary.push({
+    name: `monaco/ (${okCount} files)`,
+    bytes: totalBytes,
+    ok,
+    note: ok
+      ? `${okCount}/${files.length} files, loader + editor.main verified`
+      : `${failCount} file(s) failed or entrypoint verification failed`,
+  });
+  console.log(`  ${ok ? '✓' : '!'} Monaco: ${okCount}/${files.length} files (${fmtBytes(totalBytes)})`);
+  return { ok, count: okCount, bytes: totalBytes };
+}
+
 async function main() {
   console.log('make-it-look-good — offline asset setup');
   console.log(`Vendoring into: ${VENDOR}\n`);
 
   await mkdir(VENDOR, { recursive: true });
   await mkdir(FONTS, { recursive: true });
+  await mkdir(MONACO, { recursive: true });
 
   console.log('Core libraries:');
   let coreFailures = 0;
@@ -168,6 +262,9 @@ async function main() {
 
   console.log('\nFonts (cosmetic — non-blocking):');
   const fontOk = await downloadFont();
+
+  console.log('\nMonaco editor (Live Preview):');
+  const monaco = await downloadMonaco();
 
   // Summary table.
   console.log('\n=== Summary ===');
@@ -180,6 +277,7 @@ async function main() {
   }
 
   console.log('');
+  console.log(`Monaco editor: ${monaco.count} files (${fmtBytes(monaco.bytes)})`);
   if (coreFailures > 0) {
     console.error(`FAILED: ${coreFailures} of ${CORE_ASSETS.length} core libraries did not download correctly.`);
     process.exit(1);
@@ -187,6 +285,11 @@ async function main() {
 
   console.log('All 3 core libraries vendored successfully.');
   if (!fontOk) console.log('Font: PARTIAL/SKIPPED (cosmetic — analyzer falls back to serif).');
+  if (!monaco.ok) {
+    console.error('Monaco: FAILED — Live Preview will not work offline. Re-run setup-offline once network is available.');
+    console.log('\n(Core libraries are still vendored — analyzer offline mode works.)');
+    process.exit(1);
+  }
   console.log('\nRun: node server.js --offline');
 }
 

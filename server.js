@@ -66,6 +66,17 @@ const OFFLINE_REWRITES = [
     'https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap',
     `${LOCAL_BASE}/vendor/fonts/playfair.css`,
   ],
+  // Monaco editor (Live Preview). This prefix is shared by index.html's
+  // loader.min.js URL AND the require.config `vs` base, so a single prefix
+  // replace fixes both. The vendored tree under docs/vendor/monaco/ preserves
+  // the cdnjs min/vs/ path structure, so e.g.
+  //   .../monaco-editor/0.52.2/min/vs/loader.min.js
+  // becomes
+  //   http://localhost:<PORT>/vendor/monaco/min/vs/loader.min.js
+  [
+    'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2',
+    `${LOCAL_BASE}/vendor/monaco`,
+  ],
 ];
 
 // Files whose CDN URLs must stay public (copied into a remote site's console).
@@ -273,6 +284,11 @@ if (OFFLINE) {
     console.error('Offline assets missing — run: node scripts/setup-offline.mjs');
     console.error('  Missing: ' + missing.join(', '));
     process.exit(1);
+  }
+  // Monaco is only needed for the Live Preview page — warn, don't fail.
+  if (!fs.existsSync(path.join(VENDOR_DIR, 'monaco', 'min', 'vs', 'loader.min.js'))) {
+    console.warn('Warning: Monaco editor not vendored — the Live Preview page (index.html) will not work offline.');
+    console.warn('  Run: node scripts/setup-offline.mjs');
   }
 }
 
