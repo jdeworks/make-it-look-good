@@ -41,6 +41,53 @@ function parseHost() {
 
 const HOST = parseHost();
 const DOCS_ROOT = path.join(__dirname, 'docs');
+const VENDOR_DIR = path.join(DOCS_ROOT, 'vendor');
+
+// --- Offline mode ---
+// When enabled, CDN URLs in served text assets are rewritten in-memory to point
+// at this server's /vendor/* (vendored via scripts/setup-offline.mjs). The
+// on-disk source files are NEVER modified — the GitHub Pages route keeps CDNs.
+function parseOffline() {
+  if (process.argv.slice(2).includes('--offline')) return true;
+  if (process.env.OFFLINE === '1') return true;
+  return false;
+}
+
+const OFFLINE = parseOffline();
+const LOCAL_BASE = `http://localhost:${PORT}`;
+
+// CDN URL -> local vendor URL. Order does not matter (no URL is a prefix of
+// another in a way that would cause a wrong partial replace).
+const OFFLINE_REWRITES = [
+  ['https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4', `${LOCAL_BASE}/vendor/tailwind-browser.js`],
+  ['https://cdn.jsdelivr.net/npm/modern-screenshot@4.6.8/dist/index.js', `${LOCAL_BASE}/vendor/modern-screenshot.js`],
+  ['https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js', `${LOCAL_BASE}/vendor/jszip.min.js`],
+  [
+    'https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap',
+    `${LOCAL_BASE}/vendor/fonts/playfair.css`,
+  ],
+];
+
+// Files whose CDN URLs must stay public (copied into a remote site's console).
+const OFFLINE_REWRITE_EXCLUDE = new Set(['analyzer-snippet-screenshots.js']);
+
+// The 3 core libs that must exist on disk for offline mode to be useful.
+const CORE_VENDOR_FILES = ['tailwind-browser.js', 'modern-screenshot.js', 'jszip.min.js'];
+
+function applyOfflineRewrites(src) {
+  let out = src;
+  for (const [from, to] of OFFLINE_REWRITES) {
+    out = out.split(from).join(to);
+  }
+  return out;
+}
+
+function checkOfflineAssets() {
+  const missing = CORE_VENDOR_FILES.filter(
+    (f) => !fs.existsSync(path.join(VENDOR_DIR, f))
+  );
+  return missing;
+}
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -150,19 +197,30 @@ function serveStatic(req, res, pathname) {
       return;
     }
 
-    // Special-case analyzer.js: transform in-memory to repoint the proxy.
-    if (path.basename(resolved) === 'analyzer.js') {
+    const base = path.basename(resolved);
+    const ext = path.extname(resolved).toLowerCase();
+    const isAnalyzerJs = base === 'analyzer.js';
+    const isTextAsset = ext === '.html' || ext === '.js' || ext === '.mjs' || ext === '.css';
+    const needsOfflineRewrite =
+      OFFLINE && isTextAsset && !OFFLINE_REWRITE_EXCLUDE.has(base);
+
+    // Read-and-transform path: analyzer.js (always, for the _pe proxy swap) and
+    // any text asset that needs CDN->local rewriting in offline mode. The two
+    // transforms compose for analyzer.js.
+    if (isAnalyzerJs || needsOfflineRewrite) {
       fs.readFile(resolved, 'utf8', (rErr, data) => {
         if (rErr) {
           res.writeHead(500, { 'Content-Type': 'text/plain' });
           res.end('Read error');
           return;
         }
-        const out = transformAnalyzerJs(data);
-        res.writeHead(200, {
-          'Content-Type': contentType(resolved),
-          'Cache-Control': 'no-store',
-        });
+        let out = data;
+        if (isAnalyzerJs) out = transformAnalyzerJs(out);
+        if (needsOfflineRewrite) out = applyOfflineRewrites(out);
+        const headers = { 'Content-Type': contentType(resolved) };
+        // analyzer.js is repointed per-server, so never cache it.
+        if (isAnalyzerJs) headers['Cache-Control'] = 'no-store';
+        res.writeHead(200, headers);
         res.end(out);
       });
       return;
@@ -208,8 +266,19 @@ const server = http.createServer((req, res) => {
   serveStatic(req, res, reqUrl.pathname);
 });
 
+// In offline mode, fail fast if the vendored core libs are missing.
+if (OFFLINE) {
+  const missing = checkOfflineAssets();
+  if (missing.length > 0) {
+    console.error('Offline assets missing — run: node scripts/setup-offline.mjs');
+    console.error('  Missing: ' + missing.join(', '));
+    process.exit(1);
+  }
+}
+
 server.listen(PORT, HOST, () => {
   console.log('make-it-look-good — local analyzer server (bound to ' + HOST + ')');
+  if (OFFLINE) console.log('  Mode:          OFFLINE (CDN URLs rewritten to /vendor/*)');
   console.log('  Analyzer:      http://localhost:' + PORT + '/analyzer.html');
   console.log('  Live preview:  http://localhost:' + PORT + '/index.html');
   console.log('  Proxy:         http://localhost:' + PORT + '/proxy?url=<target>');
