@@ -14062,6 +14062,31 @@ Features: 8 audience profiles (General, WCAG AAA, Elderly, Low Vision, Motor Imp
 
 Validated against 125 preset templates via headless browser testing (Puppeteer) — average score 88, min 69, max 100, with a 7-point gap between "before" (81 avg) and "clean" (88 avg) variants.
 
+### Run the analyzer locally / offline
+
+The analyzer normally runs on GitHub Pages, but you can run it locally — which also lets you analyze a page served on **localhost** (the hosted version's CORS proxy refuses localhost/private IPs).
+
+Requirements: Node 18+. No `npm install` needed — the server uses only Node built-ins.
+
+```bash
+node server.js
+# then open http://localhost:8765/analyzer.html
+```
+
+- Enter any `http://localhost:<port>/...` page as the URL target — the local server proxies the fetch, which the hosted version cannot do for localhost.
+- Flags: `--port <n>` (default 8765), `--host <addr>` (default 127.0.0.1; use 0.0.0.0 only on a trusted network — the proxy is intentionally unrestricted).
+
+#### Fully offline
+
+Vendor the CDN assets once (while you still have internet), then run with `--offline`:
+
+```bash
+node scripts/setup-offline.mjs   # downloads Tailwind, modern-screenshot, jszip, fonts, and Monaco into docs/vendor/
+node server.js --offline
+```
+
+Offline mode keeps everything working — screenshots, pixel-contrast, the .zip LLM-pack export, Tailwind rendering, and the Monaco editor in the Live Preview — with no network calls. Vendored files live in `docs/vendor/` (gitignored); the GitHub Pages deployment is unaffected and keeps loading them from their CDNs.
+
 ### Before & After Examples
 
 Each "before" shows a typical MVP. Each "after" is a structurally different redesign — not just CSS tweaks but genuinely different layouts. Multiple personalities (Clean, Minimalist, Playful, Editorial) show how the same content can look completely different.
