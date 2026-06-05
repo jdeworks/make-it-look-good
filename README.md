@@ -97,13 +97,13 @@ Paste any HTML+Tailwind into the [live preview tool](https://jdeworks.github.io/
 
 Score any website against evidence-based design rules with the [Design Analyzer](https://jdeworks.github.io/make-it-look-good/analyzer.html). **~60 checks across 14 scoring modules** — no AI, just math against WCAG 2.2, Material Design, NNGroup research, and typography best practices. Every finding links to its source.
 
-Three ways to analyze:
+Three input tabs:
 
-| Method | Best for | How |
+| Tab | Best for | How |
 |--------|----------|-----|
-| **Enter URL** | Phone, quick checks | Paste a URL — fetched via CORS proxy, scored automatically |
-| **Console Snippet** | Most accurate, localhost, behind login | Copy snippet → run in DevTools console → paste JSON |
-| **Paste HTML** | Static mockups | Paste HTML source, rendered in iframe |
+| **Enter URL** | Quick checks, whole sites (crawl) | Paste a URL — fetched via CORS proxy (or the local server for `localhost`), scored automatically |
+| **Console Snippet** | Most accurate; behind login, localhost, proxy-blocked sites | Copy snippet → run in DevTools console → paste or upload the JSON |
+| **Load Saved** | Re-opening a past analysis | Import a `.milg` / JSON export |
 
 Scoring modules: Color & Contrast (WCAG + APCA), Typography, Spacing & Layout, Touch & Interaction, Accessibility, Responsive Design, Visual Consistency, Cognitive Load, Layout Quality, Performance, Readability, Motion & Animation, Visual Balance.
 
