@@ -16,6 +16,7 @@ const TARGET_HTML = `<!doctype html><html><head><meta charset="utf-8"><title>csp
 <style>body{font-family:system-ui;margin:0;padding:40px;background:#fff;color:#111}h1{color:#2563eb}.card{padding:24px;border:1px solid #ddd;border-radius:12px;margin-top:20px}</style>
 </head><body><h1>CSP-locked target page</h1><p>Some body text with reasonable contrast for analysis.</p>
 <img id="testimg" src="/img.png" width="80" height="60" alt="same-origin image">
+<picture><source id="testsrc" srcset="/img.png"><img src="/img.png" width="40" height="30" alt="picture"></picture>
 <div class="card"><h2>A card</h2><p>More content so there is something to screenshot.</p><button>Click me</button></div>
 </body></html>`;
 // 8x8 solid PNG, served same-origin so canvas extraction (no fetch) can read it.
@@ -90,6 +91,10 @@ try {
   ok('same-origin image inlined from rendered pixels (no fetch)', inlineLogs.some(l => /Inlined [1-9]\d*\/\d+ images/.test(l)), inlineLogs[0] || '(no inline log)');
   const imgRestored = await page.evaluate(() => { const i = document.getElementById('testimg'); return i && /\/img\.png$/.test(i.getAttribute('src') || ''); });
   ok('original image src restored after capture', imgRestored);
+  const srcRestored = await page.evaluate(() => { const s = document.getElementById('testsrc'); return s && /\/img\.png$/.test(s.getAttribute('srcset') || ''); });
+  ok('<source> srcset restored after capture', srcRestored);
+  const diag = await page.evaluate(() => (window.__milgData && (window.__milgData.screenshotFull ? 'full:present' : 'full:MISSING')) || 'no-data');
+  ok('payload diagnostic log reflects a present screenshot', diag === 'full:present', diag);
   ok('NO request was made to the jsDelivr CDN by the snippet', cdnHits.filter(u => !u.includes('cdn-sanity')).length <= 1, `hits: ${cdnHits.length} (1 expected from the sanity probe)`);
 
   await page.close();

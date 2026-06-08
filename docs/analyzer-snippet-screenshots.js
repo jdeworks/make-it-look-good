@@ -7,7 +7,7 @@
 
 (function() {
   'use strict';
-  var _MILG_VERSION = 'v1.5';
+  var _MILG_VERSION = 'v1.6';
   console.log('%c[milg] Snippet version: ' + _MILG_VERSION, 'color: #64748b;');
 
   // --- Pixel verify option ---
@@ -248,6 +248,25 @@
           if (d2) { setImg(img, d2); inlined++; } else { setImg(img, PH); blocked++; }
         }));
       });
+      // Neutralize <picture>/<video> <source> elements: when the rasterizer re-renders,
+      // it could re-pick an external <source> over the <img> we just inlined and taint
+      // the whole canvas. We've inlined the <img>, so dropping the sources is safe.
+      Array.prototype.slice.call(document.querySelectorAll('source[srcset],source[src]')).forEach(function(s) {
+        window.__milgImgRestore.push({ t: 'src', el: s, srcset: s.getAttribute('srcset'), src: s.getAttribute('src') });
+        s.removeAttribute('srcset'); s.removeAttribute('src');
+      });
+      // SVG <image>: a single cross-origin one taints the canvas. Same-origin can be read;
+      // cross-origin (no CORS) → blank it. (Rare, but one is enough to kill the screenshot.)
+      Array.prototype.slice.call(document.querySelectorAll('image')).forEach(function(im) {
+        var href = im.getAttribute('href') || im.getAttribute('xlink:href');
+        if (!href || href.indexOf('data:') === 0) return;
+        var cross = false;
+        try { cross = new URL(href, location.href).origin !== location.origin; } catch (e) { cross = true; }
+        if (!cross) return;
+        total++; blocked++;
+        window.__milgImgRestore.push({ t: 'href', el: im, href: im.getAttribute('href'), xhref: im.getAttribute('xlink:href') });
+        im.removeAttribute('href'); im.removeAttribute('xlink:href');
+      });
       Array.prototype.slice.call(document.querySelectorAll('*')).forEach(function(el) {
         var bg; try { bg = getComputedStyle(el).backgroundImage; } catch (e) { return; }
         if (!bg || bg.indexOf('url(') === -1) return;
@@ -310,10 +329,14 @@
       try {
         if (window.__milgImgRestore) {
           window.__milgImgRestore.forEach(function(r) {
-            if (r.t === 'img') {
+            if (r.t === 'img' || r.t === 'src') {
               if (r.srcset == null) r.el.removeAttribute('srcset'); else r.el.setAttribute('srcset', r.srcset);
               if (r.src == null) r.el.removeAttribute('src'); else r.el.setAttribute('src', r.src);
             } else if (r.t === 'bg') { r.el.style.backgroundImage = r.bg; }
+            else if (r.t === 'href') {
+              if (r.href == null) r.el.removeAttribute('href'); else r.el.setAttribute('href', r.href);
+              if (r.xhref == null) r.el.removeAttribute('xlink:href'); else r.el.setAttribute('xlink:href', r.xhref);
+            }
           });
           window.__milgImgRestore = null;
         }
@@ -379,6 +402,18 @@
     var jsonKB = Math.round(json.length / 1024);
     var jsonMB = (json.length / 1024 / 1024).toFixed(1);
     console.log('[clipboard] JSON size: ' + jsonKB + ' KB (' + jsonMB + ' MB)');
+    // Diagnostic: exactly what's in the payload you copy (so a missing screenshot is obvious).
+    var _ssN = (data.screenshots || []).length;
+    var _fullKB = data.screenshotFull ? Math.round(data.screenshotFull.length / 1024) : 0;
+    var _cleanKB = data.screenshotClean ? Math.round(data.screenshotClean.length / 1024) : 0;
+    var _regN = (data.regionScreenshots || []).length;
+    console.log('%c[milg] Copied payload — screenshots:' + _ssN
+      + ', full:' + (_fullKB ? _fullKB + 'KB' : 'MISSING')
+      + ', clean:' + (_cleanKB ? _cleanKB + 'KB' : 'MISSING')
+      + ', regions:' + _regN
+      + ', total:' + jsonKB + 'KB. Access via window.__milgData_json',
+      data.screenshotFull ? 'color:#16a34a;font-weight:bold' : 'color:#b45309;font-weight:bold');
+    if (!data.screenshotFull) console.log('%c[milg] No screenshot in payload — the page render was likely tainted by a cross-origin image without CORS. The design data above is still valid.', 'color:#b45309');
     window.__milgData = data;
     window.__milgData_json = json;
 
