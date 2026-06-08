@@ -577,7 +577,14 @@ window.MilgCapture = (function() {
           }); // close _preloadFn callback
         };
         s.onerror = function() { _sendFn({ type: _msgType, screenshots: [], _iframeId: _mid }, true); };
-        document.head.appendChild(s);
+        // If the library is already present (snippet "Embed screenshot library" prepends
+        // it into the page realm), skip the CDN <script> entirely — it would be blocked by
+        // a strict CSP and never fire onload. Otherwise load it from the CDN as before.
+        if (window.modernScreenshot && window.modernScreenshot.domToCanvas) {
+          s.onload();
+        } else {
+          document.head.appendChild(s);
+        }
       });
     };
   }
