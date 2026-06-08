@@ -7,7 +7,7 @@
 
 (function() {
   'use strict';
-  var _MILG_VERSION = 'v1.6';
+  var _MILG_VERSION = 'v1.7';
   console.log('%c[milg] Snippet version: ' + _MILG_VERSION, 'color: #64748b;');
 
   // --- Pixel verify option ---
@@ -204,8 +204,19 @@
     // by any JS and become a placeholder. Mutations are hidden behind the capture overlay
     // and restored afterwards by _snippetSend. Self-contained (serialized via toString()).
     function _domPreload(_p, _proxyUrl, done) {
-      var PH = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="120" height="90"><rect width="120" height="90" fill="#e2e8f0"/><text x="60" y="49" font-size="11" fill="#94a3b8" text-anchor="middle" font-family="system-ui">image</text></svg>');
+      var PH = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="120" height="90"><rect width="120" height="90" fill="#f1f5f9"/><text x="60" y="49" font-size="11" fill="#94a3b8" text-anchor="middle" font-family="system-ui">image</text></svg>');
       window.__milgImgRestore = [];
+      function isCross(u) { try { return new URL(u, location.href).origin !== location.origin; } catch (e) { return true; } }
+      function firstUrl(v) { if (!v || v.indexOf('url(') === -1) return null; var m = v.match(/url\(["']?([^"')]+)["']?\)/); return m && m[1] ? m[1] : null; }
+      // Upfront check: a SINGLE cross-origin image without CORS taints the whole
+      // screenshot canvas (toDataURL throws). So we count them, then below inline every
+      // readable source and replace every unreadable one with a placeholder — guaranteeing
+      // nothing cross-origin is left to taint the render.
+      var _xo = 0;
+      Array.prototype.slice.call(document.querySelectorAll('img')).forEach(function(i) {
+        var s = i.currentSrc || i.src; if (s && s.indexOf('data:') !== 0 && s.indexOf('blob:') !== 0 && isCross(s)) _xo++;
+      });
+      if (_xo) console.log('%c[milg] ' + _xo + ' cross-origin image(s) on this page — inlining the readable ones, placeholdering the rest so none can taint the screenshot.', 'color:#2563eb');
       // Extract at ~2x the ON-SCREEN size, not full natural resolution. A page with
       // hundreds of full-res images makes the capture snapshot enormous → minutes of
       // rasterization or out-of-memory. The screenshot only needs display-size pixels.
@@ -268,16 +279,33 @@
         im.removeAttribute('href'); im.removeAttribute('xlink:href');
       });
       Array.prototype.slice.call(document.querySelectorAll('*')).forEach(function(el) {
-        var bg; try { bg = getComputedStyle(el).backgroundImage; } catch (e) { return; }
-        if (!bg || bg.indexOf('url(') === -1) return;
-        var m = bg.match(/url\(["']?([^"')]+)["']?\)/);
-        if (!m || !m[1] || m[1].indexOf('data:') === 0 || m[1].indexOf('blob:') === 0) return;
-        total++;
-        var _br = el.getBoundingClientRect();
-        pending.push(corsReload(m[1], _br.width, _br.height).then(function(d2) {
-          window.__milgImgRestore.push({ t: 'bg', el: el, bg: el.style.backgroundImage });
-          if (d2) { el.style.backgroundImage = bg.replace(m[1], d2); inlined++; } else { el.style.backgroundImage = 'none'; blocked++; }
-        }));
+        var cs; try { cs = getComputedStyle(el); } catch (e) { return; }
+        // background-image: inline from rendered pixels; unreadable → drop (no taint).
+        var bgUrl = firstUrl(cs.backgroundImage);
+        if (bgUrl && bgUrl.indexOf('data:') !== 0 && bgUrl.indexOf('blob:') !== 0) {
+          var bg = cs.backgroundImage;
+          total++;
+          var _br = el.getBoundingClientRect();
+          pending.push(corsReload(bgUrl, _br.width, _br.height).then(function(d2) {
+            window.__milgImgRestore.push({ t: 'bg', el: el, bg: el.style.backgroundImage });
+            if (d2) { el.style.backgroundImage = bg.replace(bgUrl, d2); inlined++; } else { el.style.backgroundImage = 'none'; blocked++; }
+          }));
+        }
+        // mask / border-image / list-style-image: only a CROSS-ORIGIN one can taint, and
+        // inlining them is rarely worth it — just blank those so they can't poison capture.
+        ['maskImage', 'webkitMaskImage', 'borderImageSource', 'listStyleImage'].forEach(function(prop) {
+          var u = firstUrl(cs[prop]);
+          if (!u || u.indexOf('data:') === 0 || u.indexOf('blob:') === 0 || !isCross(u)) return;
+          window.__milgImgRestore.push({ t: 'style', el: el, prop: prop, val: el.style[prop] });
+          el.style[prop] = 'none'; total++; blocked++;
+        });
+      });
+      // <video> posters: a cross-origin poster taints the canvas too.
+      Array.prototype.slice.call(document.querySelectorAll('video[poster]')).forEach(function(v) {
+        var p = v.getAttribute('poster');
+        if (!p || p.indexOf('data:') === 0 || !isCross(p)) return;
+        window.__milgImgRestore.push({ t: 'attr', el: v, name: 'poster', val: p });
+        v.removeAttribute('poster'); total++; blocked++;
       });
       function finish() {
         if (total) console.log('%c[milg] Inlined ' + inlined + '/' + total + ' images from rendered pixels (no network)' + (blocked ? ' — ' + blocked + ' blocked: cross-origin without CORS → placeholder' : ''), blocked ? 'color:#b45309' : 'color:#16a34a');
@@ -333,6 +361,8 @@
               if (r.srcset == null) r.el.removeAttribute('srcset'); else r.el.setAttribute('srcset', r.srcset);
               if (r.src == null) r.el.removeAttribute('src'); else r.el.setAttribute('src', r.src);
             } else if (r.t === 'bg') { r.el.style.backgroundImage = r.bg; }
+            else if (r.t === 'style') { r.el.style[r.prop] = r.val; }
+            else if (r.t === 'attr') { if (r.val == null) r.el.removeAttribute(r.name); else r.el.setAttribute(r.name, r.val); }
             else if (r.t === 'href') {
               if (r.href == null) r.el.removeAttribute('href'); else r.el.setAttribute('href', r.href);
               if (r.xhref == null) r.el.removeAttribute('xlink:href'); else r.el.setAttribute('xlink:href', r.xhref);
