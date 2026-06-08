@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.31 loaded');
+console.log('[milg] analyzer.js v3.11.32 loaded');
 
 (function() {
   "use strict";
@@ -1123,7 +1123,7 @@ console.log('[milg] analyzer.js v3.11.31 loaded');
     var _embeddedLibCache = null;
     function _getEmbeddedLib(cb) {
       if (_embeddedLibCache) { cb(_embeddedLibCache); return; }
-      fetch(EMBED_LIB_URL + '?v=3.11.31')
+      fetch(EMBED_LIB_URL + '?v=3.11.32')
         .then(function(r) { return r.ok ? r.text() : ''; })
         .then(function(t) {
           if (t && t.indexOf('modernScreenshot') !== -1) { _embeddedLibCache = t; cb(t); }
@@ -1889,12 +1889,14 @@ console.log('[milg] analyzer.js v3.11.31 loaded');
     // Check for HTML from editor "Analyze preview" button — auto-analyze with screenshots
     if (location.hash === '#analyze-html') {
       try {
-        var previewHtml = sessionStorage.getItem('milg-preview-html');
+        // localStorage (not sessionStorage): set by the editor in another tab via
+        // window.open, where sessionStorage isn't reliably shared across browsers.
+        var previewHtml = localStorage.getItem('milg-preview-html');
         if (previewHtml) {
-          sessionStorage.removeItem('milg-preview-html');
+          localStorage.removeItem('milg-preview-html');
           var previewCtx = {};
-          try { previewCtx = JSON.parse(sessionStorage.getItem('milg-preview-context') || '{}'); } catch(e) {}
-          sessionStorage.removeItem('milg-preview-context');
+          try { previewCtx = JSON.parse(localStorage.getItem('milg-preview-context') || '{}'); } catch(e) {}
+          localStorage.removeItem('milg-preview-context');
           var ctxLabel = (previewCtx.dark ? ' (dark mode)' : '') + (previewCtx.effectName && previewCtx.effectName !== 'None' ? ' + ' + previewCtx.effectName : '');
           inputSection.innerHTML = '<div style="text-align:center;padding:64px 24px"><div class="analysis-progress" style="display:block;max-width:400px;margin:0 auto"><div class="analysis-progress-bar"><div class="analysis-progress-fill" style="width:30%;animation:pulse 1.5s ease infinite"></div></div><div class="analysis-progress-label" style="margin-top:12px;font-size:14px">Analyzing editor preview' + ctxLabel + '...</div></div></div>';
           MilgIframe.analyzeHtml(previewHtml, {

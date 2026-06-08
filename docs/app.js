@@ -276,6 +276,19 @@ input,select,textarea{border-radius:1px!important}
 // --- Preview rendering ---
 const darkVariantCSS = '@custom-variant dark (&:where(.dark, .dark *));';
 
+// Thin, theme-matched scrollbar for the rendered-template preview iframe (its own
+// document, so it can't use the app's CSS vars). Semi-transparent grey tuned per mode.
+function previewScrollbarCSS(dark) {
+  const thumb = dark ? 'rgba(255,255,255,0.28)' : 'rgba(0,0,0,0.28)';
+  const thumbHover = dark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.45)';
+  return 'html{scrollbar-width:thin;scrollbar-color:' + thumb + ' transparent}'
+    + '::-webkit-scrollbar{width:10px;height:10px}'
+    + '::-webkit-scrollbar-track{background:transparent}'
+    + '::-webkit-scrollbar-thumb{background:' + thumb + ';border-radius:5px}'
+    + '::-webkit-scrollbar-thumb:hover{background:' + thumbHover + '}'
+    + '::-webkit-scrollbar-corner{background:transparent}';
+}
+
 function updatePreview() {
   const html = editor.value;
   const darkClass = darkMode ? ' class="dark"' : '';
@@ -303,7 +316,7 @@ function updatePreview() {
     '  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n' +
     '  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>\n' +
     '  <style type="text/tailwindcss">\n' + darkVariantCSS + '\n  </style>\n' +
-    '  <style>\nbody { margin: 0; }\n  </style>\n' +
+    '  <style>\nbody { margin: 0; }\n' + previewScrollbarCSS(darkMode) + '\n  </style>\n' +
     (visualStyles[currentStyleIndex].css ? '  <style>' + visualStyles[currentStyleIndex].css + '</style>\n' : '') +
     '</head>\n<body>\n' +
     processedHtml + '\n' +
@@ -1669,10 +1682,13 @@ function analyzeCurrentPreview() {
     var html = editor.value;
     if (!html || html.trim().length < 10) { btn.classList.remove('active'); alert('No content to analyze. Add some HTML first.'); return; }
 
-    // Store HTML + current rendering context in sessionStorage
-    sessionStorage.setItem('milg-preview-html', html);
+    // Store HTML + current rendering context in localStorage. Use localStorage (not
+    // sessionStorage) because the analyzer opens in a NEW tab: Chrome clones
+    // sessionStorage to window.open'd tabs but Firefox/Safari don't, so sessionStorage
+    // silently arrives empty there. localStorage is shared across same-origin tabs.
+    localStorage.setItem('milg-preview-html', html);
     // Pass dark mode and effect CSS so the analyzer renders the same way the preview does
-    sessionStorage.setItem('milg-preview-context', JSON.stringify({
+    localStorage.setItem('milg-preview-context', JSON.stringify({
       dark: darkMode,
       effectCSS: visualStyles[currentStyleIndex] ? visualStyles[currentStyleIndex].css : '',
       effectName: visualStyles[currentStyleIndex] ? visualStyles[currentStyleIndex].name : 'None'

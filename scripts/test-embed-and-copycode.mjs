@@ -145,7 +145,35 @@ try {
   await new Promise(r => setTimeout(r, 500));
   ok('small paste → NO trust modal', !(await dialogShown()));
 
+  // ---- Test 7: toolbar overflow → horizontal scroll container ----
+  const ctrlOverflow = await page.$eval('.preview-controls', el => getComputedStyle(el).overflowX);
+  ok('toolbar controls scroll horizontally (overflow-x auto/scroll)', ctrlOverflow === 'auto' || ctrlOverflow === 'scroll');
+  const ctrlWraps = await page.$eval('.preview-controls', el => getComputedStyle(el).flexWrap);
+  ok('toolbar controls do NOT wrap (preview height stable)', ctrlWraps === 'nowrap');
+
+  // ---- Test 8: rendered-template preview iframe gets the custom scrollbar ----
+  const srcdoc = await page.$eval('#preview', el => el.getAttribute('srcdoc') || '');
+  ok('preview iframe injects custom scrollbar CSS', /::-webkit-scrollbar\b/.test(srcdoc) && /scrollbar-width:\s*thin/.test(srcdoc));
+
   await page.close();
+
+  // ---- Test 9: analyze-preview hand-off via localStorage (cross-browser) ----
+  {
+    const ap2 = await browser.newPage();
+    await ap2.goto(`${base}/analyzer.html`, { waitUntil: 'networkidle2' });
+    await ap2.evaluate(() => {
+      localStorage.setItem('milg-preview-html', '<!doctype html><html><body style="padding:40px"><h1 style="color:#2563eb">Hi</h1><p>Body text for analysis here.</p></body></html>');
+      localStorage.setItem('milg-preview-context', JSON.stringify({ dark: false, effectCSS: '', effectName: 'None' }));
+      location.hash = 'analyze-html';
+    });
+    await ap2.reload({ waitUntil: 'networkidle2' });
+    let handoff = false;
+    try { await ap2.waitForFunction(() => /Analyzing editor preview/i.test(document.body.innerText || ''), { timeout: 15000 }); handoff = true; } catch (_) {}
+    const consumed = await ap2.evaluate(() => !localStorage.getItem('milg-preview-html'));
+    ok('analyze-preview hand-off via localStorage triggers analysis', handoff);
+    ok('hand-off consumes (removes) the stored HTML', consumed);
+    await ap2.close();
+  }
 } catch (e) {
   console.error('TEST ERROR:', e.message);
   results.push([false, 'harness error: ' + e.message, '']);
