@@ -7,7 +7,7 @@
 
 (function() {
   'use strict';
-  var _MILG_VERSION = 'v1.2';
+  var _MILG_VERSION = 'v1.3';
   console.log('%c[milg] Snippet version: ' + _MILG_VERSION, 'color: #64748b;');
 
   // --- Pixel verify option ---
@@ -115,7 +115,8 @@
     _overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,0.6);display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui,sans-serif;';
     _overlay.innerHTML = '<div style="width:40px;height:40px;border:3px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:milg-spin 0.8s linear infinite"></div>' +
       '<div id="milg-ss-status" style="color:#fff;margin-top:16px;font-size:14px;font-weight:500">Preparing screenshots...</div>' +
-      '<div style="color:rgba(255,255,255,0.6);margin-top:6px;font-size:12px">Scrolling page to load all content, then capturing</div>' +
+      '<div style="color:rgba(255,255,255,0.6);margin-top:6px;font-size:12px">Scrolling to load content, then capturing — can take up to a minute on large or image-heavy pages</div>' +
+      '<div style="color:rgba(255,255,255,0.4);margin-top:4px;font-size:11px">Content-Security-Policy errors in the console are expected here and are harmless</div>' +
       '<style>@keyframes milg-spin{to{transform:rotate(360deg)}}</style>';
     document.body.appendChild(_overlay);
     var _origScrollY = window.scrollY;

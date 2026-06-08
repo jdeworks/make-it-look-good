@@ -257,9 +257,15 @@ window.MilgCapture = (function() {
           // Preload images via proxy → data URI, then capture
           _preloadFn(_prog, _proxyUrl, function() {
             // Phase A: Clean screenshot (page as-rendered, before overflow expansion)
-            _prog("Capturing clean screenshot...");
+            _prog("Rendering screenshot (0s)…");
             console.log("[iframe-ss] Capturing clean screenshot at " + _sc + "x...");
+            // Heartbeat: domToCanvas is one long async call with no internal progress,
+            // so tick an elapsed-seconds counter to the overlay — otherwise an
+            // image-heavy or CSP-locked page looks frozen for up to 45s.
+            var _hbT = Date.now();
+            var _hb = setInterval(function() { _prog("Rendering screenshot (" + Math.round((Date.now() - _hbT) / 1000) + "s)… image-heavy or CSP-locked pages take longer"); }, 1500);
             ms.domToCanvas(document.documentElement, { scale: _sc, timeout: 45000 }).then(function(_cleanCanvas) {
+              if (typeof _hb !== "undefined") clearInterval(_hb);
               var _cleanUri; try { _cleanUri = _cleanCanvas.toDataURL("image/webp", _q); } catch (e) { _cleanUri = ""; }
               var _cleanW = _cleanCanvas.width, _cleanH = _cleanCanvas.height;
               console.log("[iframe-ss] Clean screenshot: " + _cleanW + "x" + _cleanH);
@@ -573,7 +579,12 @@ window.MilgCapture = (function() {
                   }); // end document.fonts.ready.then
                 }).catch(function(e) { console.warn("[iframe-ss] expanded capture failed:", e); _sendFn({ type: _msgType, screenshots: [], _iframeId: _mid }, true); });
               }); // close _buildRegionScreenshots callback
-            }).catch(function(e) { console.warn("[iframe-ss] clean capture failed:", e); _sendFn({ type: _msgType, screenshots: [], _iframeId: _mid }, true); });
+            }).catch(function(e) {
+              if (typeof _hb !== "undefined") clearInterval(_hb);
+              console.warn("[iframe-ss] clean capture failed:", e);
+              console.warn("%c[milg] Screenshot unavailable for this page. This usually means cross-origin images couldn't be inlined under the site's Content-Security-Policy (the 'Refused to connect/load' errors above). The extracted design data is still accurate — just paste it into the analyzer; only the visual screenshot/pixel-verify is missing.", "color:#b45309");
+              _sendFn({ type: _msgType, screenshots: [], _iframeId: _mid }, true);
+            });
           }); // close _preloadFn callback
         };
         s.onerror = function() { _sendFn({ type: _msgType, screenshots: [], _iframeId: _mid }, true); };
