@@ -7,7 +7,7 @@
 
 (function() {
   'use strict';
-  var _MILG_VERSION = 'v1.1';
+  var _MILG_VERSION = 'v1.2';
   console.log('%c[milg] Snippet version: ' + _MILG_VERSION, 'color: #64748b;');
 
   // --- Pixel verify option ---
@@ -67,6 +67,12 @@
   // Inline modern-screenshot library (loaded from separate file at build time)
   // This block is replaced by scripts/build-screenshot-snippet.sh
   // __INLINE_MODERN_SCREENSHOT_START__
+  if (window.modernScreenshot && window.modernScreenshot.domToCanvas) {
+    // Library already present — inlined by the analyzer's "Embed screenshot library"
+    // option, which prepends the lib so screenshots work on sites that block the CDN (strict CSP).
+    console.log('%cUsing embedded screenshot library (no CDN needed).', 'color: #16a34a;');
+    var _msLoaded = Promise.resolve();
+  } else {
   try {
     var _msScript = document.createElement('script');
     _msScript.src = 'https://cdn.jsdelivr.net/npm/modern-screenshot@4.6.8/dist/index.js';
@@ -80,6 +86,7 @@
           .then(function(r) { return r.text(); })
           .then(function(code) { (new Function(code))(); resolve(); })
           .catch(function() {
+            console.log('%c→ Tip: re-generate the snippet with "Embed screenshot library" checked in the analyzer to capture screenshots on CSP-locked sites like this one.', 'color: #2563eb; font-weight: bold;');
             console.log('%c\u26A0 Screenshot library unavailable on this site (CSP blocks external scripts and eval).', 'color: #b45309;');
             console.log('%cScreenshots skipped. The design data extraction still works \u2014 just paste into the analyzer.', 'color: #64748b;');
             reject();
@@ -88,6 +95,7 @@
     });
     document.head.appendChild(_msScript);
   } catch(e) { var _msLoaded = Promise.reject(); }
+  }
 
   _msLoaded.then(function() {
     var ms = window.modernScreenshot;

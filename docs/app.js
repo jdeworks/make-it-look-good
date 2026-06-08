@@ -14,6 +14,9 @@ let sourceMap = null;
 // --- Monaco editor ---
 let monacoEditor = null;
 let suppressChangeEvent = false;
+// Set when a large (>200 char) paste lands in the editor. The next preview render
+// is gated through the trust dialog so untrusted pasted HTML isn't auto-rendered.
+let pasteGuardArmed = false;
 
 function initMonaco() {
   if (typeof monaco === 'undefined') return; // Monaco not loaded (mobile/slow)
@@ -54,6 +57,16 @@ function initMonaco() {
       syncMobileToolbar();
     }
     debouncedUpdate();
+  });
+
+  // Guard against pasting untrusted HTML (e.g. someone else's "Copy code" output):
+  // arm a trust prompt before the pasted content is rendered. Small pastes (typical
+  // edits, <200 chars) skip the prompt so normal editing isn't interrupted.
+  monacoEditor.onDidPaste((e) => {
+    try {
+      const pasted = monacoEditor.getModel().getValueInRange(e.range);
+      if (pasted && pasted.length > 200) pasteGuardArmed = true;
+    } catch (_) { /* range unavailable — ignore */ }
   });
 }
 
@@ -307,7 +320,20 @@ function updatePreview() {
 
 function debouncedUpdate() {
   clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(updatePreview, 300);
+  debounceTimer = setTimeout(() => {
+    if (pasteGuardArmed) {
+      pasteGuardArmed = false;
+      const html = editor.value;
+      const hasScripts = /<script[\s>]/i.test(html);
+      showTrustDialog(html, hasScripts, {
+        paste: true,
+        onConfirm: updatePreview,
+        onCancel: () => showToast('Pasted content not rendered'),
+      });
+      return;
+    }
+    updatePreview();
+  }, 300);
 }
 
 let userEdited = false;
@@ -346,7 +372,17 @@ function updateTemplateNav() {
   presetsBtn.classList.toggle('has-nav', hasNav || hasName);
 }
 
+function updateShareButton() {
+  const btn = document.getElementById('shareBtn');
+  if (!btn) return;
+  const isPreset = currentElement && currentPersonality && !userEdited;
+  const labelSpan = btn.querySelector('.share-label');
+  if (labelSpan) labelSpan.textContent = isPreset ? 'Share' : 'Copy code';
+  btn.title = isPreset ? 'Copy shareable link' : 'Copy the full edited HTML to the clipboard';
+}
+
 function updateTemplateName() {
+  updateShareButton();
   const el = document.getElementById('templateName');
   if (!currentPresetName || !manifestData) {
     el.textContent = '';
@@ -878,35 +914,28 @@ function shareDesign() {
     showToast('Nothing to share — add some HTML first');
     return;
   }
-  try {
-    let fragment;
-    let label;
-    if (currentElement && currentPersonality && !userEdited) {
-      // Share as config — encodes element, personality, color, style
-      let cfg = currentElement + '/' + currentPersonality;
-      const defaultColor = getElementPrimary(currentElement, currentPersonality);
-      if (currentColorName && currentColorName !== defaultColor) {
-        cfg += '/' + currentColorName;
-      }
-      if (currentStyleIndex > 0) {
-        // Pad color slot if needed
-        if (!cfg.includes('/', cfg.indexOf('/') + 1)) cfg += '/' + defaultColor;
-        cfg += '/' + visualStyles[currentStyleIndex].name.toLowerCase();
-      }
-      fragment = 'preset:' + cfg;
-      label = 'Preset link copied';
-    } else {
-      fragment = 'code:' + btoa(unescape(encodeURIComponent(html)));
-      label = 'Link copied to clipboard';
+  if (currentElement && currentPersonality && !userEdited) {
+    // Unchanged preset → short, restorable link (element/personality/color/style).
+    let cfg = currentElement + '/' + currentPersonality;
+    const defaultColor = getElementPrimary(currentElement, currentPersonality);
+    if (currentColorName && currentColorName !== defaultColor) {
+      cfg += '/' + currentColorName;
     }
-    const url = window.location.origin + window.location.pathname + '#' + fragment;
-    navigator.clipboard.writeText(url).then(() => {
-      showToast(label);
-    }).catch(() => {
-      prompt('Copy this link:', url);
-    });
-  } catch (e) {
-    showToast('HTML too large to share via URL');
+    if (currentStyleIndex > 0) {
+      // Pad color slot if needed
+      if (!cfg.includes('/', cfg.indexOf('/') + 1)) cfg += '/' + defaultColor;
+      cfg += '/' + visualStyles[currentStyleIndex].name.toLowerCase();
+    }
+    const url = window.location.origin + window.location.pathname + '#preset:' + cfg;
+    navigator.clipboard.writeText(url)
+      .then(() => showToast('Preset link copied'))
+      .catch(() => prompt('Copy this link:', url));
+  } else {
+    // Uniquely edited HTML → URLs can't reliably hold it, so copy the full HTML
+    // to the clipboard. Paste it back into the editor to restore.
+    navigator.clipboard.writeText(html)
+      .then(() => showToast('Full HTML copied — paste it into the editor to restore'))
+      .catch(() => prompt('Copy this HTML:', html));
   }
 }
 
@@ -958,7 +987,9 @@ async function loadFromHash() {
   showTrustDialog(decoded, hasScripts);
 }
 
-function showTrustDialog(html, hasScripts) {
+function showTrustDialog(html, hasScripts, opts) {
+  opts = opts || {};
+  const isPaste = !!opts.paste;
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;z-index:999;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;padding:16px;';
   const card = document.createElement('div');
@@ -966,10 +997,13 @@ function showTrustDialog(html, hasScripts) {
 
   const iconColor = hasScripts ? '#dc2626' : '#f59e0b';
   const iconBg = hasScripts ? '#fef2f2' : '#fffbeb';
-  const title = hasScripts ? 'Shared content contains scripts' : 'Load shared content?';
+  const source = isPaste ? 'pasted' : 'shared';
+  const title = hasScripts
+    ? (isPaste ? 'Pasted content contains scripts' : 'Shared content contains scripts')
+    : (isPaste ? 'Render pasted content?' : 'Load shared content?');
   const desc = hasScripts
-    ? 'This shared link includes <code>&lt;script&gt;</code> tags that will execute code in a sandboxed iframe. Only load this if you trust the person who sent it.'
-    : 'This shared link contains HTML from an external source. It will be rendered in a sandboxed iframe.';
+    ? 'This ' + source + ' content includes <code>&lt;script&gt;</code> tags that will execute code in a sandboxed iframe. Only continue if you trust where it came from.'
+    : 'This ' + source + ' content contains HTML from an external source. It will be rendered in a sandboxed iframe.';
 
   card.innerHTML = ''
     + '<div style="display:flex;align-items:start;gap:12px;">'
@@ -991,11 +1025,13 @@ function showTrustDialog(html, hasScripts) {
 
   card.querySelector('#trust-cancel').onclick = function() {
     overlay.remove();
+    if (opts.onCancel) { opts.onCancel(); return; }
     // Clear hash so it doesn't re-prompt on reload
     history.replaceState(null, '', window.location.pathname);
   };
   card.querySelector('#trust-load').onclick = function() {
     overlay.remove();
+    if (opts.onConfirm) { opts.onConfirm(); return; }
     editor.value = html;
     updatePreview();
   };

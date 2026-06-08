@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.28 loaded');
+console.log('[milg] analyzer.js v3.11.29 loaded');
 
 (function() {
   "use strict";
@@ -1112,19 +1112,41 @@ console.log('[milg] analyzer.js v3.11.28 loaded');
     var sharedScreenshotCheck = document.getElementById('screenshotCheck');
     var snippetCrawlCheck = document.getElementById('snippetCrawlCheck');
     var snippetCrawlMaxPages = document.getElementById('snippetCrawlMaxPages');
+    var embedScreenshotLibCheck = document.getElementById('embedScreenshotLibCheck');
+    var embedScreenshotLibNote = document.getElementById('embedScreenshotLibNote');
+
+    // Vendored modern-screenshot, fetched once and prepended to the snippet when
+    // "Embed screenshot library" is on, so the snippet's loader finds the global
+    // already defined and skips the CDN (works on strict-CSP sites).
+    var _embeddedLibCache = null;
+    function _getEmbeddedLib(cb) {
+      if (_embeddedLibCache !== null) { cb(_embeddedLibCache); return; }
+      fetch('vendor/modern-screenshot.js?v=' + Math.floor(Date.now() / 3600000))
+        .then(function(r) { return r.ok ? r.text() : ''; })
+        .then(function(t) { _embeddedLibCache = t || ''; cb(_embeddedLibCache); })
+        .catch(function() { _embeddedLibCache = ''; cb(''); });
+    }
 
     function reloadSnippet() {
       var crawlOn = snippetCrawlCheck && snippetCrawlCheck.checked;
       var withScreenshots = sharedScreenshotCheck && sharedScreenshotCheck.checked;
       var wantInlineVerify = document.getElementById('pixelVerifyCheck') && document.getElementById('pixelVerifyCheck').checked;
+      var embedLib = withScreenshots && embedScreenshotLibCheck && embedScreenshotLibCheck.checked;
       loadSnippet(snippetCode, withScreenshots, function() {
-        var prefix = '';
-        if (wantInlineVerify) prefix += 'window.__milgPixelVerify=true;\n';
-        if (crawlOn) {
-          var maxP = (snippetCrawlMaxPages && parseInt(snippetCrawlMaxPages.value)) || 5;
-          prefix += 'window.__milgCrawlSite=true; window.__milgCrawlMaxPages=' + maxP + ';\n';
+        function finish(libText) {
+          var prefix = '';
+          if (libText) {
+            // Define window.modernScreenshot before the snippet IIFE runs.
+            prefix += '/* modern-screenshot embedded by analyzer (works on CSP-locked sites) */\n' + libText + '\n;\n';
+          }
+          if (wantInlineVerify) prefix += 'window.__milgPixelVerify=true;\n';
+          if (crawlOn) {
+            var maxP = (snippetCrawlMaxPages && parseInt(snippetCrawlMaxPages.value)) || 5;
+            prefix += 'window.__milgCrawlSite=true; window.__milgCrawlMaxPages=' + maxP + ';\n';
+          }
+          if (prefix) snippetCode.textContent = prefix + snippetCode.textContent;
         }
-        if (prefix) snippetCode.textContent = prefix + snippetCode.textContent;
+        if (embedLib) _getEmbeddedLib(finish); else finish('');
       });
     }
     reloadSnippet();
@@ -1132,14 +1154,30 @@ console.log('[milg] analyzer.js v3.11.28 loaded');
     // Pixel verify requires screenshots — disable when screenshots unchecked
     var pixelVerifyCheck = document.getElementById('pixelVerifyCheck');
     function syncPixelVerify() {
-      if (!pixelVerifyCheck || !sharedScreenshotCheck) return;
-      if (!sharedScreenshotCheck.checked) {
-        pixelVerifyCheck.checked = false;
-        pixelVerifyCheck.disabled = true;
-        pixelVerifyCheck.parentElement.style.opacity = '0.4';
-      } else {
-        pixelVerifyCheck.disabled = false;
-        pixelVerifyCheck.parentElement.style.opacity = '';
+      var on = sharedScreenshotCheck && sharedScreenshotCheck.checked;
+      if (pixelVerifyCheck && sharedScreenshotCheck) {
+        if (!on) {
+          pixelVerifyCheck.checked = false;
+          pixelVerifyCheck.disabled = true;
+          pixelVerifyCheck.parentElement.style.opacity = '0.4';
+        } else {
+          pixelVerifyCheck.disabled = false;
+          pixelVerifyCheck.parentElement.style.opacity = '';
+        }
+      }
+      // Embedding the screenshot library only makes sense when screenshots are on.
+      if (embedScreenshotLibCheck) {
+        if (!on) {
+          embedScreenshotLibCheck.checked = false;
+          embedScreenshotLibCheck.disabled = true;
+          if (embedScreenshotLibCheck.parentElement) embedScreenshotLibCheck.parentElement.style.opacity = '0.4';
+        } else {
+          embedScreenshotLibCheck.disabled = false;
+          if (embedScreenshotLibCheck.parentElement) embedScreenshotLibCheck.parentElement.style.opacity = '';
+        }
+      }
+      if (embedScreenshotLibNote) {
+        embedScreenshotLibNote.style.display = (on && embedScreenshotLibCheck && embedScreenshotLibCheck.checked) ? '' : 'none';
       }
     }
     syncPixelVerify();
@@ -1152,6 +1190,12 @@ console.log('[milg] analyzer.js v3.11.28 loaded');
     }
     if (pixelVerifyCheck) {
       pixelVerifyCheck.addEventListener('change', reloadSnippet);
+    }
+    if (embedScreenshotLibCheck) {
+      embedScreenshotLibCheck.addEventListener('change', function() {
+        if (embedScreenshotLibNote) embedScreenshotLibNote.style.display = embedScreenshotLibCheck.checked ? '' : 'none';
+        reloadSnippet();
+      });
     }
     if (snippetCrawlCheck) {
       snippetCrawlCheck.addEventListener('change', function() {
