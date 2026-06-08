@@ -10,13 +10,21 @@ let currentStyleIndex = 0;
 let originalPresetHtml = '';
 let inspectMode = false;
 let sourceMap = null;
+// Editor content the last time a clean (un-edited) preset rendered — lets us detect an
+// edit being undone back to the original and auto-reattach to the preset.
+let lastCleanContent = '';
+// When a loaded preset is hand-edited we detach from it but stash enough to show a
+// "modified" breadcrumb + one-click restore. Null while on a clean preset or custom HTML.
+let detachedFrom = null;
 
 // --- Monaco editor ---
 let monacoEditor = null;
 let suppressChangeEvent = false;
-// Set when a large (>200 char) paste lands in the editor. The next preview render
-// is gated through the trust dialog so untrusted pasted HTML isn't auto-rendered.
-let pasteGuardArmed = false;
+// Snapshot of the editor content immediately after a large, HTML-ish paste. The next
+// preview render is gated through the trust dialog ONLY while the content still equals
+// this snapshot — so it never misfires on a later trusted change (template load, undo,
+// or continued typing). Cleared as soon as it's consumed or the content diverges.
+let pastePendingContent = null;
 
 function initMonaco() {
   if (typeof monaco === 'undefined') return; // Monaco not loaded (mobile/slow)
@@ -39,17 +47,29 @@ function initMonaco() {
 
   monacoEditor.onDidChangeModelContent(() => {
     if (suppressChangeEvent) return;
-    if (currentPresetName && !userEdited) {
-      userEdited = true;
-      updateTemplateName();
+    // Undo/typed all the way back to the clean preset → silently reattach (button → Share).
+    if (detachedFrom && editor.value === detachedFrom.cleanHtml) {
+      reattachPreset(detachedFrom);
+      debouncedUpdate();
+      return;
     }
+    // First edit of a clean preset → detach, but keep a breadcrumb + restore target.
     if (currentElement) {
+      const info = manifestData && manifestData.elements[currentPresetName];
+      detachedFrom = {
+        element: currentElement,
+        personality: currentPersonality,
+        colorName: currentColorName,
+        styleIndex: currentStyleIndex,
+        label: (info && info.label) || currentPresetName,
+        originalHtml: originalPresetHtml,
+        cleanHtml: lastCleanContent,
+      };
       currentElement = null;
       currentPersonality = null;
       currentPresetName = null;
       originalPresetHtml = '';
-      currentStyleIndex = 0;
-      userEdited = false;
+      userEdited = true;
       document.getElementById('personalityButtons').style.display = 'none';
       document.getElementById('themeSwatches').style.display = 'none';
       document.getElementById('styleButtons').style.display = 'none';
@@ -60,12 +80,14 @@ function initMonaco() {
   });
 
   // Guard against pasting untrusted HTML (e.g. someone else's "Copy code" output):
-  // arm a trust prompt before the pasted content is rendered. Small pastes (typical
-  // edits, <200 chars) skip the prompt so normal editing isn't interrupted.
+  // snapshot the content so the next render can prompt before showing it. Only sizeable,
+  // markup-looking pastes are guarded; normal small edits aren't interrupted.
   monacoEditor.onDidPaste((e) => {
     try {
       const pasted = monacoEditor.getModel().getValueInRange(e.range);
-      if (pasted && pasted.length > 200) pasteGuardArmed = true;
+      if (pasted && pasted.length > 200 && /<[a-z!]/i.test(pasted)) {
+        pastePendingContent = editor.value;
+      }
     } catch (_) { /* range unavailable — ignore */ }
   });
 }
@@ -316,21 +338,32 @@ function updatePreview() {
     '</' + 'script>\n' +
     '</body>\n</html>';
   preview.srcdoc = srcdoc;
+  // Remember the content of a clean preset so an edit-then-revert can reattach.
+  if (currentElement && !userEdited) lastCleanContent = html;
 }
 
 function debouncedUpdate() {
   clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => {
-    if (pasteGuardArmed) {
-      pasteGuardArmed = false;
-      const html = editor.value;
-      const hasScripts = /<script[\s>]/i.test(html);
-      showTrustDialog(html, hasScripts, {
-        paste: true,
-        onConfirm: updatePreview,
-        onCancel: () => showToast('Pasted content not rendered'),
-      });
-      return;
+    if (pastePendingContent !== null) {
+      const snapshot = pastePendingContent;
+      pastePendingContent = null;
+      // Only prompt if the content about to render is still exactly the pasted content.
+      // A later edit or template load diverges from the snapshot and renders normally.
+      if (editor.value === snapshot) {
+        const hasScripts = /<script[\s>]/i.test(snapshot);
+        showTrustDialog(snapshot, hasScripts, {
+          paste: true,
+          onConfirm: updatePreview,
+          onCancel: () => {
+            // Revert the paste so untrusted HTML never stays in the editor.
+            if (monacoEditor) monacoEditor.trigger('paste-guard', 'undo', null);
+            updatePreview();
+            showToast('Pasted content reverted');
+          },
+        });
+        return;
+      }
     }
     updatePreview();
   }, 300);
@@ -384,15 +417,61 @@ function updateShareButton() {
 function updateTemplateName() {
   updateShareButton();
   const el = document.getElementById('templateName');
-  if (!currentPresetName || !manifestData) {
-    el.textContent = '';
+  const restoreBtn = document.getElementById('restoreTemplateBtn');
+  // Clean preset loaded.
+  if (currentPresetName && manifestData) {
+    const info = manifestData.elements[currentPresetName];
+    el.textContent = info ? info.label : currentPresetName;
+    if (restoreBtn) restoreBtn.style.display = 'none';
     updateTemplateNav();
     return;
   }
-  const info = manifestData.elements[currentPresetName];
-  const label = info ? info.label : currentPresetName;
-  el.textContent = label + (userEdited ? ' *' : '');
+  // Edited from a preset → show the breadcrumb + restore control.
+  if (detachedFrom) {
+    el.textContent = detachedFrom.label + ' • modified';
+    if (restoreBtn) restoreBtn.style.display = '';
+    updateTemplateNav();
+    return;
+  }
+  // Custom HTML with no preset origin.
+  el.textContent = '';
+  if (restoreBtn) restoreBtn.style.display = 'none';
   updateTemplateNav();
+}
+
+// Re-attach to the preset stashed in `d` without re-fetching: restores the editor
+// state vars + sidebar controls. Caller guarantees the editor already holds the clean
+// HTML (auto-revert) or sets it first (restore button).
+function reattachPreset(d) {
+  currentElement = d.element;
+  currentPersonality = d.personality;
+  currentPresetName = d.element;
+  currentColorName = d.colorName;
+  currentStyleIndex = d.styleIndex;
+  originalPresetHtml = d.originalHtml;
+  userEdited = false;
+  detachedFrom = null;
+  lastCleanContent = editor.value;
+  if (d.personality === 'before') {
+    document.getElementById('personalityButtons').style.display = 'none';
+    document.getElementById('themeSwatches').style.display = 'none';
+    document.getElementById('styleButtons').style.display = 'none';
+  } else {
+    renderPersonalityButtons(d.element, d.personality);
+    renderThemeSwatches(d.element, d.personality);
+    renderStyleButtons(d.element);
+  }
+  syncMobileToolbar();
+  updateTemplateName();
+}
+
+// Restore button — discard edits and return to the original preset.
+function restoreTemplate() {
+  if (!detachedFrom) return;
+  const d = detachedFrom;
+  editor.value = d.cleanHtml; // setter suppresses the change event
+  reattachPreset(d);
+  updatePreview();
 }
 
 // Input handling is done via CodeMirror's updateListener in initCodeMirror()

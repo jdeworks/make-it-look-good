@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.29 loaded');
+console.log('[milg] analyzer.js v3.11.30 loaded');
 
 (function() {
   "use strict";
@@ -1115,16 +1115,21 @@ console.log('[milg] analyzer.js v3.11.29 loaded');
     var embedScreenshotLibCheck = document.getElementById('embedScreenshotLibCheck');
     var embedScreenshotLibNote = document.getElementById('embedScreenshotLibNote');
 
-    // Vendored modern-screenshot, fetched once and prepended to the snippet when
-    // "Embed screenshot library" is on, so the snippet's loader finds the global
-    // already defined and skips the CDN (works on strict-CSP sites).
+    // Committed modern-screenshot copy (docs/lib/, served on GitHub Pages — NOT the
+    // gitignored docs/vendor/ used by the offline runner). Fetched once and prepended
+    // to the snippet when "Embed screenshot library" is on, so the snippet's loader
+    // finds the global already defined and skips the CDN (works on strict-CSP sites).
+    var EMBED_LIB_URL = 'lib/modern-screenshot.min.js';
     var _embeddedLibCache = null;
     function _getEmbeddedLib(cb) {
-      if (_embeddedLibCache !== null) { cb(_embeddedLibCache); return; }
-      fetch('vendor/modern-screenshot.js?v=' + Math.floor(Date.now() / 3600000))
+      if (_embeddedLibCache) { cb(_embeddedLibCache); return; }
+      fetch(EMBED_LIB_URL + '?v=3.11.30')
         .then(function(r) { return r.ok ? r.text() : ''; })
-        .then(function(t) { _embeddedLibCache = t || ''; cb(_embeddedLibCache); })
-        .catch(function() { _embeddedLibCache = ''; cb(''); });
+        .then(function(t) {
+          if (t && t.indexOf('modernScreenshot') !== -1) { _embeddedLibCache = t; cb(t); }
+          else { showToast('Couldn’t load embedded screenshot library — snippet still uses the CDN'); cb(''); }
+        })
+        .catch(function() { showToast('Couldn’t load embedded screenshot library — snippet still uses the CDN'); cb(''); });
     }
 
     function reloadSnippet() {
