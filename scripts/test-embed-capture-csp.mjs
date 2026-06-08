@@ -15,8 +15,11 @@ const CSP = "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; 
 const TARGET_HTML = `<!doctype html><html><head><meta charset="utf-8"><title>csp target</title>
 <style>body{font-family:system-ui;margin:0;padding:40px;background:#fff;color:#111}h1{color:#2563eb}.card{padding:24px;border:1px solid #ddd;border-radius:12px;margin-top:20px}</style>
 </head><body><h1>CSP-locked target page</h1><p>Some body text with reasonable contrast for analysis.</p>
+<img id="testimg" src="/img.png" width="80" height="60" alt="same-origin image">
 <div class="card"><h2>A card</h2><p>More content so there is something to screenshot.</p><button>Click me</button></div>
 </body></html>`;
+// 8x8 solid PNG, served same-origin so canvas extraction (no fetch) can read it.
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAEklEQVR42mNk+M9QzzCKRsEoAgD7+QYBfYn0qgAAAABJRU5ErkJggg==', 'base64');
 
 const server = createServer((req, res) => {
   const path = decodeURIComponent(req.url.split('?')[0]);
@@ -24,6 +27,7 @@ const server = createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/html', 'Content-Security-Policy': CSP });
     res.end(TARGET_HTML); return;
   }
+  if (path === '/img.png') { res.writeHead(200, { 'Content-Type': 'image/png' }); res.end(PNG); return; }
   let p = path === '/' ? '/index.html' : path;
   const file = join(DOCS, p);
   if (!file.startsWith(DOCS) || !existsSync(file)) { res.writeHead(404); res.end('nf'); return; }
@@ -58,7 +62,8 @@ try {
   const cdnHits = [];
   page.on('request', r => { if (/jsdelivr|modern-screenshot/.test(r.url())) cdnHits.push(r.url()); });
   const cspBlocks = [];
-  page.on('console', m => { const t = m.text(); if (/Content Security Policy|Refused to load/i.test(t)) cspBlocks.push(t); });
+  const inlineLogs = [];
+  page.on('console', m => { const t = m.text(); if (/Content Security Policy|Refused to load/i.test(t)) cspBlocks.push(t); if (/Inlined \d+\/\d+ images/.test(t)) inlineLogs.push(t); });
   await page.goto(`${base}/csp-target.html`, { waitUntil: 'networkidle2' });
 
   // Sanity: confirm the CSP really blocks an external script (the bug's trigger).
@@ -82,6 +87,9 @@ try {
 
   ok('screenshot captured on CSP-locked page (embed path)', shots > 0, `${shots} screenshot(s)`);
   ok('a full-page screenshot is present', fullShot);
+  ok('same-origin image inlined from rendered pixels (no fetch)', inlineLogs.some(l => /Inlined [1-9]\d*\/\d+ images/.test(l)), inlineLogs[0] || '(no inline log)');
+  const imgRestored = await page.evaluate(() => { const i = document.getElementById('testimg'); return i && /\/img\.png$/.test(i.getAttribute('src') || ''); });
+  ok('original image src restored after capture', imgRestored);
   ok('NO request was made to the jsDelivr CDN by the snippet', cdnHits.filter(u => !u.includes('cdn-sanity')).length <= 1, `hits: ${cdnHits.length} (1 expected from the sanity probe)`);
 
   await page.close();

@@ -7,7 +7,7 @@
 
 (function() {
   'use strict';
-  var _MILG_VERSION = 'v1.3';
+  var _MILG_VERSION = 'v1.4';
   console.log('%c[milg] Snippet version: ' + _MILG_VERSION, 'color: #64748b;');
 
   // --- Pixel verify option ---
@@ -197,6 +197,68 @@
     // No-op preload: live pages render their own images; there's no CORS proxy here.
     function _noopPreload(_p, _proxyUrl, done) { done(); }
 
+    // DOM preload: inline images from the pixels the browser ALREADY rendered, via
+    // canvas → data-URI. No network fetch, so it bypasses the site's CSP connect-src
+    // (the wall modern-screenshot hits). Subject only to canvas-taint: same-origin and
+    // CORS-enabled images are rescued; truly cross-origin (no CORS) images can't be read
+    // by any JS and become a placeholder. Mutations are hidden behind the capture overlay
+    // and restored afterwards by _snippetSend. Self-contained (serialized via toString()).
+    function _domPreload(_p, _proxyUrl, done) {
+      var PH = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="120" height="90"><rect width="120" height="90" fill="#e2e8f0"/><text x="60" y="49" font-size="11" fill="#94a3b8" text-anchor="middle" font-family="system-ui">image</text></svg>');
+      window.__milgImgRestore = [];
+      function toData(el, w, h) {
+        try {
+          var cw = w || el.naturalWidth || el.width, ch = h || el.naturalHeight || el.height;
+          if (!cw || !ch) return null;
+          var c = document.createElement('canvas'); c.width = cw; c.height = ch;
+          c.getContext('2d').drawImage(el, 0, 0, cw, ch);
+          return c.toDataURL('image/webp', 0.85); // throws (tainted) → null
+        } catch (e) { return null; }
+      }
+      function corsReload(url) {
+        return new Promise(function(res) {
+          var im = new Image(); im.crossOrigin = 'anonymous';
+          var t = setTimeout(function() { res(null); }, 8000);
+          im.onload = function() { clearTimeout(t); res(toData(im)); };
+          im.onerror = function() { clearTimeout(t); res(null); };
+          try { im.src = url; } catch (e) { clearTimeout(t); res(null); }
+        });
+      }
+      var inlined = 0, blocked = 0, total = 0, pending = [];
+      function setImg(img, d) {
+        window.__milgImgRestore.push({ t: 'img', el: img, src: img.getAttribute('src'), srcset: img.getAttribute('srcset') });
+        if (img.hasAttribute('srcset')) img.removeAttribute('srcset');
+        img.src = d;
+      }
+      Array.prototype.slice.call(document.querySelectorAll('img')).forEach(function(img) {
+        var src = img.currentSrc || img.src;
+        if (!src || src.indexOf('data:') === 0 || src.indexOf('blob:') === 0) return;
+        total++;
+        var d = toData(img);
+        if (d) { setImg(img, d); inlined++; return; }
+        pending.push(corsReload(src).then(function(d2) {
+          if (d2) { setImg(img, d2); inlined++; } else { setImg(img, PH); blocked++; }
+        }));
+      });
+      Array.prototype.slice.call(document.querySelectorAll('*')).forEach(function(el) {
+        var bg; try { bg = getComputedStyle(el).backgroundImage; } catch (e) { return; }
+        if (!bg || bg.indexOf('url(') === -1) return;
+        var m = bg.match(/url\(["']?([^"')]+)["']?\)/);
+        if (!m || !m[1] || m[1].indexOf('data:') === 0 || m[1].indexOf('blob:') === 0) return;
+        total++;
+        pending.push(corsReload(m[1]).then(function(d2) {
+          window.__milgImgRestore.push({ t: 'bg', el: el, bg: el.style.backgroundImage });
+          if (d2) { el.style.backgroundImage = bg.replace(m[1], d2); inlined++; } else { el.style.backgroundImage = 'none'; blocked++; }
+        }));
+      });
+      function finish() {
+        if (total) console.log('%c[milg] Inlined ' + inlined + '/' + total + ' images from rendered pixels (no network)' + (blocked ? ' — ' + blocked + ' blocked: cross-origin without CORS → placeholder' : ''), blocked ? 'color:#b45309' : 'color:#16a34a');
+        done();
+      }
+      if (total) _p('Inlining ' + total + ' images from rendered pixels…');
+      if (pending.length) Promise.all(pending).then(finish, finish); else finish();
+    }
+
     // Output sink: merge the unified capture payload into `data`, restore the page,
     // and finalize. The core calls this with (payload, isFinal). The terminal full
     // result (isFinal) carries screenshots/clean/mask/maskResults/regionScreenshots
@@ -235,6 +297,18 @@
           }
         }
       } catch (e) { console.warn('[ss] Failed to merge capture payload:', e && e.message || e); }
+      // Restore any image src/srcset/background we swapped to data-URIs for capture.
+      try {
+        if (window.__milgImgRestore) {
+          window.__milgImgRestore.forEach(function(r) {
+            if (r.t === 'img') {
+              if (r.srcset == null) r.el.removeAttribute('srcset'); else r.el.setAttribute('srcset', r.srcset);
+              if (r.src == null) r.el.removeAttribute('src'); else r.el.setAttribute('src', r.src);
+            } else if (r.t === 'bg') { r.el.style.backgroundImage = r.bg; }
+          });
+          window.__milgImgRestore = null;
+        }
+      } catch (e) {}
       // Restore scroll + remove overlay (mask/expand mutated the DOM -- the
       // outputData copy/download handlers reload the page to fully restore styles).
       try { window.scrollTo(0, _origScrollY); } catch (e) {}
@@ -251,7 +325,7 @@
       proxyUrl: '',
       expand: true,
       preHookSrc: _snippetPreHook.toString(),
-      preloadSrc: _noopPreload.toString(),
+      preloadSrc: _domPreload.toString(),
       regionFnSrc: window.MilgRegion.getRegionFn().toString(),
       sendFn: _snippetSend
     };
