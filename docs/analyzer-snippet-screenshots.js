@@ -7,7 +7,7 @@
 
 (function() {
   'use strict';
-  var _MILG_VERSION = 'v1.4';
+  var _MILG_VERSION = 'v1.5';
   console.log('%c[milg] Snippet version: ' + _MILG_VERSION, 'color: #64748b;');
 
   // --- Pixel verify option ---
@@ -206,20 +206,27 @@
     function _domPreload(_p, _proxyUrl, done) {
       var PH = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="120" height="90"><rect width="120" height="90" fill="#e2e8f0"/><text x="60" y="49" font-size="11" fill="#94a3b8" text-anchor="middle" font-family="system-ui">image</text></svg>');
       window.__milgImgRestore = [];
-      function toData(el, w, h) {
+      // Extract at ~2x the ON-SCREEN size, not full natural resolution. A page with
+      // hundreds of full-res images makes the capture snapshot enormous → minutes of
+      // rasterization or out-of-memory. The screenshot only needs display-size pixels.
+      function toData(el, boxW, boxH) {
         try {
-          var cw = w || el.naturalWidth || el.width, ch = h || el.naturalHeight || el.height;
-          if (!cw || !ch) return null;
+          var nw = el.naturalWidth || el.width, nh = el.naturalHeight || el.height;
+          if (!nw || !nh) return null;
+          var capW = boxW > 0 ? Math.ceil(boxW * 2) : nw;
+          var capH = boxH > 0 ? Math.ceil(boxH * 2) : nh;
+          var s = Math.min(capW / nw, capH / nh, 1); // only ever downscale
+          var cw = Math.max(1, Math.round(nw * s)), ch = Math.max(1, Math.round(nh * s));
           var c = document.createElement('canvas'); c.width = cw; c.height = ch;
           c.getContext('2d').drawImage(el, 0, 0, cw, ch);
-          return c.toDataURL('image/webp', 0.85); // throws (tainted) → null
+          return c.toDataURL('image/webp', 0.82); // throws (tainted) → null
         } catch (e) { return null; }
       }
-      function corsReload(url) {
+      function corsReload(url, boxW, boxH) {
         return new Promise(function(res) {
           var im = new Image(); im.crossOrigin = 'anonymous';
-          var t = setTimeout(function() { res(null); }, 8000);
-          im.onload = function() { clearTimeout(t); res(toData(im)); };
+          var t = setTimeout(function() { res(null); }, 6000);
+          im.onload = function() { clearTimeout(t); res(toData(im, boxW, boxH)); };
           im.onerror = function() { clearTimeout(t); res(null); };
           try { im.src = url; } catch (e) { clearTimeout(t); res(null); }
         });
@@ -234,9 +241,10 @@
         var src = img.currentSrc || img.src;
         if (!src || src.indexOf('data:') === 0 || src.indexOf('blob:') === 0) return;
         total++;
-        var d = toData(img);
+        var _r = img.getBoundingClientRect();
+        var d = toData(img, _r.width, _r.height);
         if (d) { setImg(img, d); inlined++; return; }
-        pending.push(corsReload(src).then(function(d2) {
+        pending.push(corsReload(src, _r.width, _r.height).then(function(d2) {
           if (d2) { setImg(img, d2); inlined++; } else { setImg(img, PH); blocked++; }
         }));
       });
@@ -246,7 +254,8 @@
         var m = bg.match(/url\(["']?([^"')]+)["']?\)/);
         if (!m || !m[1] || m[1].indexOf('data:') === 0 || m[1].indexOf('blob:') === 0) return;
         total++;
-        pending.push(corsReload(m[1]).then(function(d2) {
+        var _br = el.getBoundingClientRect();
+        pending.push(corsReload(m[1], _br.width, _br.height).then(function(d2) {
           window.__milgImgRestore.push({ t: 'bg', el: el, bg: el.style.backgroundImage });
           if (d2) { el.style.backgroundImage = bg.replace(m[1], d2); inlined++; } else { el.style.backgroundImage = 'none'; blocked++; }
         }));
