@@ -621,7 +621,11 @@ window.MilgIframe = (function() {
       }
     } else {
       var darkClass = editorDark ? ' class="dark"' : '';
-      var darkVariantTag = editorDark ? '<style type="text/tailwindcss">@custom-variant dark (&:where(.dark, .dark *));</style>' : '';
+      // ALWAYS define the class-based dark variant (matching the editor preview), so
+      // `dark:` classes only trigger via the .dark class — never via the OS-level
+      // prefers-color-scheme default. Otherwise a light preview is rendered dark on a
+      // dark-OS machine. The class itself is still added only when editorDark.
+      var darkVariantTag = '<style type="text/tailwindcss">@custom-variant dark (&:where(.dark, .dark *));</style>';
       var effectTag = editorEffectCSS ? '<style>' + editorEffectCSS + '</style>' : '';
       srcdoc = '<!DOCTYPE html><html lang="en"' + darkClass + '><head><meta charset="UTF-8">' +
         '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
