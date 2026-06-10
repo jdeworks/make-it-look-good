@@ -869,8 +869,9 @@ function openColorMenu(trigger, menu) {
   closeColorMenu();
   const r = trigger.getBoundingClientRect();
   menu.style.top = (r.bottom + 4) + 'px';
-  // 3-column grid is 132px wide — keep it inside the viewport's right edge
-  menu.style.left = Math.min(r.left, window.innerWidth - 140) + 'px';
+  // 4-column grid is 176px wide — center it under the trigger, clamped to the viewport
+  const centered = r.left + r.width / 2 - 88;
+  menu.style.left = Math.max(8, Math.min(centered, window.innerWidth - 184)) + 'px';
   menu.classList.add('open');
   trigger.setAttribute('aria-expanded', 'true');
   const onDoc = (e) => { if (!menu.contains(e.target) && e.target !== trigger) closeColorMenu(); };
