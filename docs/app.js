@@ -528,7 +528,7 @@ let preFullscreenViewport = null;
 function toggleFullscreen() {
   const entering = !document.body.classList.contains('fullscreen-preview');
   document.body.classList.toggle('fullscreen-preview');
-  document.querySelectorAll('#fullscreenBtn, #fullscreenBtnMobile').forEach(b => b.classList.toggle('active', entering));
+  document.querySelectorAll('#fullscreenBtn').forEach(b => b.classList.toggle('active', entering));
   if (entering) {
     preFullscreenViewport = currentViewport;
     preview.style.width = '100%';
