@@ -180,6 +180,15 @@ function getSemanticColors(primary) {
   return defaults;
 }
 
+// Accent choices offered in the color dropdown: every Tailwind hue plus three
+// distinct grays (slate cool / zinc pure / stone warm — gray and neutral are
+// near-duplicates of zinc) so the grid fills 20 = 4×5 cells exactly.
+function accentColorNames() {
+  return Object.keys(tailwindColors)
+    .filter(c => !['slate', 'gray', 'zinc', 'neutral', 'stone'].includes(c))
+    .concat(['slate', 'zinc', 'stone']);
+}
+
 // Legacy compat — convert color name to theme-like object
 function colorToTheme(colorName) {
   const info = tailwindColors[colorName] || tailwindColors.blue;
@@ -826,7 +835,11 @@ function renderThemeSwatches(element, personality) {
   container.style.display = 'flex';
   currentColorName = primary;
 
-  const colorNames = Object.keys(tailwindColors).filter(c => !['slate','gray','zinc','neutral','stone'].includes(c));
+  const colorNames = accentColorNames();
+  const label = document.createElement('span');
+  label.style.cssText = 'font-size:9px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.08em;margin-right:2px;';
+  label.textContent = 'Accent color';
+  container.appendChild(label);
   const dd = document.createElement('div');
   dd.className = 'color-dd';
   const trigger = document.createElement('button');
@@ -1496,7 +1509,7 @@ function syncMobileToolbar() {
   const desktopTheme = document.getElementById('themeSwatches');
   mobileTheme.innerHTML = '';
   if (desktopTheme && desktopTheme.style.display !== 'none') {
-    var colorNames = Object.keys(tailwindColors).filter(function(c) { return !['slate','gray','zinc','neutral','stone'].includes(c); });
+    var colorNames = accentColorNames();
     colorNames.forEach(function(name) {
       var btn = document.createElement('button');
       btn.className = 'theme-swatch' + (name === currentColorName ? ' active' : '');
