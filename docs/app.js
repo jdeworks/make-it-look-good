@@ -813,6 +813,8 @@ function applyColorTheme(html, fromPrimary, toPrimary, fromNeutral, toNeutral, t
 
 let currentColorName = 'blue';
 
+// Desktop: compact color dropdown — one color-well trigger, options stack
+// below it as gapless color blocks (mobile toolbar keeps the swatch grid).
 function renderThemeSwatches(element, personality) {
   const container = document.getElementById('themeSwatches');
   container.innerHTML = '';
@@ -824,18 +826,72 @@ function renderThemeSwatches(element, personality) {
   container.style.display = 'flex';
   currentColorName = primary;
 
-  // Render all Tailwind color swatches (skip neutral grays)
   const colorNames = Object.keys(tailwindColors).filter(c => !['slate','gray','zinc','neutral','stone'].includes(c));
+  const dd = document.createElement('div');
+  dd.className = 'color-dd';
+  const trigger = document.createElement('button');
+  trigger.className = 'color-dd-trigger';
+  trigger.style.backgroundColor = tailwindColors[primary].swatch;
+  trigger.title = 'Color theme: ' + primary;
+  trigger.setAttribute('aria-label', 'Color theme: ' + primary + ' — open color list');
+  trigger.setAttribute('aria-haspopup', 'listbox');
+  trigger.setAttribute('aria-expanded', 'false');
+  const menu = document.createElement('div');
+  menu.className = 'color-dd-menu';
+  menu.setAttribute('role', 'listbox');
+  menu.setAttribute('aria-label', 'Color theme');
   for (const name of colorNames) {
-    const info = tailwindColors[name];
-    const btn = document.createElement('button');
-    btn.className = 'theme-swatch' + (name === primary ? ' active' : '');
-    btn.style.backgroundColor = info.swatch;
-    btn.title = name;
-    btn.setAttribute('aria-label', name + ' color theme');
-    btn.onclick = () => selectTheme(name);
-    container.appendChild(btn);
+    const opt = document.createElement('button');
+    opt.className = 'color-dd-option' + (name === primary ? ' selected' : '');
+    opt.style.backgroundColor = tailwindColors[name].swatch;
+    opt.dataset.color = name;
+    opt.title = name;
+    opt.setAttribute('role', 'option');
+    opt.setAttribute('aria-selected', name === primary ? 'true' : 'false');
+    opt.setAttribute('aria-label', name + ' color theme');
+    opt.onclick = (e) => { e.stopPropagation(); selectTheme(name); closeColorMenu(); };
+    menu.appendChild(opt);
   }
+  trigger.onclick = (e) => {
+    e.stopPropagation();
+    if (menu.classList.contains('open')) closeColorMenu();
+    else openColorMenu(trigger, menu);
+  };
+  dd.appendChild(trigger);
+  dd.appendChild(menu);
+  container.appendChild(dd);
+}
+
+// The toolbar scroll container clips overflow, so the menu is position:fixed
+// and anchored to the trigger on open; any outside scroll/resize closes it.
+let _colorMenuCleanup = null;
+function openColorMenu(trigger, menu) {
+  closeColorMenu();
+  const r = trigger.getBoundingClientRect();
+  menu.style.top = (r.bottom + 4) + 'px';
+  menu.style.left = r.left + 'px';
+  menu.classList.add('open');
+  trigger.setAttribute('aria-expanded', 'true');
+  const sel = menu.querySelector('.color-dd-option.selected');
+  if (sel) sel.scrollIntoView({ block: 'nearest' });
+  const onDoc = (e) => { if (!menu.contains(e.target) && e.target !== trigger) closeColorMenu(); };
+  const onKey = (e) => { if (e.key === 'Escape') { closeColorMenu(); trigger.focus(); } };
+  const onAway = (e) => { if (e.target === menu) return; closeColorMenu(); };
+  document.addEventListener('click', onDoc, true);
+  document.addEventListener('keydown', onKey);
+  window.addEventListener('resize', onAway);
+  window.addEventListener('scroll', onAway, true);
+  _colorMenuCleanup = () => {
+    document.removeEventListener('click', onDoc, true);
+    document.removeEventListener('keydown', onKey);
+    window.removeEventListener('resize', onAway);
+    window.removeEventListener('scroll', onAway, true);
+    menu.classList.remove('open');
+    trigger.setAttribute('aria-expanded', 'false');
+  };
+}
+function closeColorMenu() {
+  if (_colorMenuCleanup) { _colorMenuCleanup(); _colorMenuCleanup = null; }
 }
 
 function selectTheme(colorName) {
@@ -849,6 +905,17 @@ function selectTheme(colorName) {
   updatePreview();
   document.querySelectorAll('.theme-swatch').forEach(btn => {
     btn.classList.toggle('active', btn.title === colorName);
+  });
+  const trig = document.querySelector('#themeSwatches .color-dd-trigger');
+  if (trig && tailwindColors[colorName]) {
+    trig.style.backgroundColor = tailwindColors[colorName].swatch;
+    trig.title = 'Color theme: ' + colorName;
+    trig.setAttribute('aria-label', 'Color theme: ' + colorName + ' — open color list');
+  }
+  document.querySelectorAll('#themeSwatches .color-dd-option').forEach(o => {
+    const on = o.dataset.color === colorName;
+    o.classList.toggle('selected', on);
+    o.setAttribute('aria-selected', on ? 'true' : 'false');
   });
   syncMobileToolbar();
 }
