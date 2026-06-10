@@ -197,22 +197,43 @@
       background: var(--text-secondary);
     }
 
-    .editor-header {
+    /* Shared toolbar above both panels — one element, so the editor side and
+       the preview side are always the same height. Label flows left, the
+       preview controls flow right; the gap grows with the window width. */
+    .panel-toolbar {
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      gap: 10px;
+      min-height: 40px;
       padding: 6px 12px;
       border-bottom: 1px solid var(--border);
       background: var(--bg-alt);
       flex-shrink: 0;
     }
 
-    .editor-header span {
+    .panel-toolbar-label {
       font-size: 12px;
       font-weight: 600;
       color: var(--text-secondary);
       text-transform: uppercase;
       letter-spacing: 0.05em;
+      flex-shrink: 0;
+    }
+
+    /* Thin divider that travels with the right-hand group. */
+    .panel-toolbar-sep {
+      width: 1px;
+      align-self: stretch;
+      background: var(--border);
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+
+    .panel-toolbar-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
     }
 
     /* Monaco editor fills container */
@@ -229,17 +250,8 @@
       background: var(--bg-alt);
     }
 
-    .preview-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 6px 12px;
-      border-bottom: 1px solid var(--border);
-      background: var(--bg-alt);
-      flex-shrink: 0;
-    }
-
-    .preview-header span {
+    /* "Preview" with the (informational) viewport size stacked beneath it, small. */
+    .preview-title > span:first-child {
       font-size: 12px;
       font-weight: 600;
       color: var(--text-secondary);
@@ -247,7 +259,6 @@
       letter-spacing: 0.05em;
     }
 
-    /* "Preview" with the (informational) viewport size stacked beneath it, small. */
     .preview-title {
       display: flex;
       flex-direction: column;
@@ -611,7 +622,7 @@
     body.fullscreen-preview .mobile-tabs,
     body.fullscreen-preview .editor-panel,
     body.fullscreen-preview .divider,
-    body.fullscreen-preview .preview-header,
+    body.fullscreen-preview .panel-toolbar,
     body.fullscreen-preview .mobile-preview-toolbar {
       display: none !important;
     }
@@ -708,9 +719,8 @@
         display: none;
       }
 
-      /* Hide sub-headers on mobile — controls are in the header/tabs */
-      .editor-header { display: none; }
-      .preview-header { display: none; }
+      /* Hide the shared toolbar on mobile — controls are in the header/tabs */
+      .panel-toolbar { display: none; }
 
       /* Mobile preview toolbar visible only when it has controls */
       .mobile-preview-toolbar.has-controls {
