@@ -491,6 +491,7 @@ function reattachPreset(d) {
 function restoreTemplate() {
   if (!detachedFrom) return;
   const d = detachedFrom;
+  userAccentColor = null; // "restore original" includes the original colors
   editor.value = d.cleanHtml; // setter suppresses the change event
   reattachPreset(d);
   updatePreview();
@@ -821,6 +822,9 @@ function applyColorTheme(html, fromPrimary, toPrimary, fromNeutral, toNeutral, t
 }
 
 let currentColorName = 'blue';
+// Accent the user explicitly picked (null = none yet). Survives personality and
+// template switches — each loadPreset re-tints the fresh preset with it.
+let userAccentColor = null;
 
 // Desktop: compact color dropdown — one color-well trigger, options stack
 // below it as gapless color blocks (mobile toolbar keeps the swatch grid).
@@ -910,6 +914,7 @@ function closeColorMenu() {
 function selectTheme(colorName) {
   if (!currentElement) return;
   currentColorName = colorName;
+  userAccentColor = colorName;
   const fromPrimary = getElementPrimary(currentElement, currentPersonality);
   const fromNeutral = presetNeutralMap[currentElement] || 'slate';
   const theme = colorToTheme(colorName);
@@ -1012,7 +1017,13 @@ async function loadPreset(element, personality) {
     renderStyleButtons(element);
   }
   syncMobileToolbar();
-  updatePreview();
+  // Keep the user's chosen accent across personality/template switches:
+  // re-tint the freshly loaded preset instead of showing its stock primary.
+  if (userAccentColor && personality !== 'before' && userAccentColor !== primary) {
+    selectTheme(userAccentColor);
+  } else {
+    updatePreview();
+  }
 }
 
 // --- Preset search/filter ---
