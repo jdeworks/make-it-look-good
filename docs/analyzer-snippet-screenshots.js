@@ -74,18 +74,26 @@
     var _msLoaded = Promise.resolve();
   } else {
   try {
+    // AMD guard: sites with an AMD loader (Monaco/RequireJS set window.define.amd)
+    // make the UMD build register as an anonymous AMD module instead of setting
+    // window.modernScreenshot. Mask define.amd while the library loads.
+    var _msAmdDef = (typeof window.define === 'function' && window.define.amd) ? window.define : null;
+    var _msAmdSaved = _msAmdDef ? _msAmdDef.amd : null;
+    if (_msAmdDef) { try { _msAmdDef.amd = undefined; } catch (e) {} }
+    var _msAmdRestore = function() { if (_msAmdDef) { try { _msAmdDef.amd = _msAmdSaved; } catch (e) {} } };
     var _msScript = document.createElement('script');
     _msScript.src = 'https://cdn.jsdelivr.net/npm/modern-screenshot@4.6.8/dist/index.js';
     var _msLoaded = new Promise(function(resolve, reject) {
-      _msScript.onload = resolve;
+      _msScript.onload = function() { _msAmdRestore(); resolve(); };
       _msScript.onerror = function() {
         // CDN blocked by CSP — try inline fallback via fetch + eval (works if unsafe-eval allowed)
         // Otherwise fall back gracefully
         console.log('%c\u26A0 CDN blocked by CSP. Trying fetch fallback...', 'color: #b45309;');
         fetch('https://cdn.jsdelivr.net/npm/modern-screenshot@4.6.8/dist/index.js')
           .then(function(r) { return r.text(); })
-          .then(function(code) { (new Function(code))(); resolve(); })
+          .then(function(code) { (new Function(code))(); _msAmdRestore(); resolve(); })
           .catch(function() {
+            _msAmdRestore();
             console.log('%c→ Tip: re-generate the snippet with "Embed screenshot library" checked in the analyzer to capture screenshots on CSP-locked sites like this one.', 'color: #2563eb; font-weight: bold;');
             console.log('%c\u26A0 Screenshot library unavailable on this site (CSP blocks external scripts and eval).', 'color: #b45309;');
             console.log('%cScreenshots skipped. The design data extraction still works \u2014 just paste into the analyzer.', 'color: #64748b;');

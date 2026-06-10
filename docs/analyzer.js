@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.40 loaded');
+console.log('[milg] analyzer.js v3.11.41 loaded');
 
 (function() {
   "use strict";
@@ -1123,7 +1123,7 @@ console.log('[milg] analyzer.js v3.11.40 loaded');
     var _embeddedLibCache = null;
     function _getEmbeddedLib(cb) {
       if (_embeddedLibCache) { cb(_embeddedLibCache); return; }
-      fetch(EMBED_LIB_URL + '?v=3.11.40')
+      fetch(EMBED_LIB_URL + '?v=3.11.41')
         .then(function(r) { return r.ok ? r.text() : ''; })
         .then(function(t) {
           if (t && t.indexOf('modernScreenshot') !== -1) { _embeddedLibCache = t; cb(t); }
@@ -1141,8 +1141,13 @@ console.log('[milg] analyzer.js v3.11.40 loaded');
         function finish(libText) {
           var prefix = '';
           if (libText) {
-            // Define window.modernScreenshot before the snippet IIFE runs.
-            prefix += '/* modern-screenshot embedded by analyzer (works on CSP-locked sites) */\n' + libText + '\n;\n';
+            // Define window.modernScreenshot before the snippet IIFE runs. Mask
+            // define.amd around the UMD bundle: on AMD-loader sites (Monaco/RequireJS)
+            // it would otherwise register as an AMD module and never set the global.
+            prefix += '/* modern-screenshot embedded by analyzer (works on CSP-locked sites) */\n' +
+              ';(function(){var _milgAmd=(typeof define==="function"&&define.amd)?define.amd:null;if(_milgAmd){try{define.amd=undefined}catch(e){}}\n' +
+              libText + '\n' +
+              ';if(_milgAmd){try{define.amd=_milgAmd}catch(e){}}})();\n';
           }
           if (wantInlineVerify) prefix += 'window.__milgPixelVerify=true;\n';
           if (crawlOn) {

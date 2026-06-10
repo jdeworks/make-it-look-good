@@ -421,9 +421,18 @@ window.MilgCapture = (function() {
         }
         var s = document.createElement("script");
         s.src = _cdn;
+        // AMD guard: pages with an AMD loader (Monaco/RequireJS set window.define.amd)
+        // make the UMD build register as an anonymous AMD module instead of setting
+        // window.modernScreenshot — capture would then bail out silently. Mask
+        // define.amd while the library loads and restore it right after.
+        var _amdDef = (typeof window.define === "function" && window.define.amd) ? window.define : null;
+        var _amdSaved = _amdDef ? _amdDef.amd : null;
+        if (_amdDef) { try { _amdDef.amd = undefined; } catch (e) {} }
+        function _amdRestore() { if (_amdDef) { try { _amdDef.amd = _amdSaved; } catch (e) {} } }
         s.onload = function() {
+          _amdRestore();
           var ms = window.modernScreenshot;
-          if (!ms || !ms.domToCanvas) { _sendFn({ type: _msgType, screenshots: [], _iframeId: _mid }, true); return; }
+          if (!ms || !ms.domToCanvas) { console.warn("[iframe-ss] screenshot library loaded but window.modernScreenshot is missing (AMD loader conflict?) — skipping screenshots"); _sendFn({ type: _msgType, screenshots: [], _iframeId: _mid }, true); return; }
 
           // Preload images via proxy → data URI, then capture
           _preloadFn(_prog, _proxyUrl, function() {
@@ -780,7 +789,7 @@ window.MilgCapture = (function() {
             });
           }); // close _preloadFn callback
         };
-        s.onerror = function() { _sendFn({ type: _msgType, screenshots: [], _iframeId: _mid }, true); };
+        s.onerror = function() { _amdRestore(); console.warn("[iframe-ss] failed to load screenshot library (" + _cdn + ") — skipping screenshots"); _sendFn({ type: _msgType, screenshots: [], _iframeId: _mid }, true); };
         // If the library is already present (snippet "Embed screenshot library" prepends
         // it into the page realm), skip the CDN <script> entirely — it would be blocked by
         // a strict CSP and never fire onload. Otherwise load it from the CDN as before.
