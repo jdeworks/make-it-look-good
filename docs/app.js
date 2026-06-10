@@ -869,11 +869,10 @@ function openColorMenu(trigger, menu) {
   closeColorMenu();
   const r = trigger.getBoundingClientRect();
   menu.style.top = (r.bottom + 4) + 'px';
-  menu.style.left = r.left + 'px';
+  // 3-column grid is 132px wide — keep it inside the viewport's right edge
+  menu.style.left = Math.min(r.left, window.innerWidth - 140) + 'px';
   menu.classList.add('open');
   trigger.setAttribute('aria-expanded', 'true');
-  const sel = menu.querySelector('.color-dd-option.selected');
-  if (sel) sel.scrollIntoView({ block: 'nearest' });
   const onDoc = (e) => { if (!menu.contains(e.target) && e.target !== trigger) closeColorMenu(); };
   const onKey = (e) => { if (e.key === 'Escape') { closeColorMenu(); trigger.focus(); } };
   const onAway = (e) => { if (e.target === menu) return; closeColorMenu(); };

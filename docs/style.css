@@ -409,8 +409,9 @@
     }
 
     /* Compact color dropdown (desktop toolbar): one color-well trigger, the
-       options stack below it as same-size gapless color blocks. The selected
-       block carries a double inset ring so it reads on any hue. */
+       options open below as a 3-column grid of same-size gapless color
+       blocks — sized to never scroll. The selected block shows a white check
+       on a 20% black overlay; overlays are ::after, so no layout impact. */
     .color-dd { position: relative; display: inline-flex; }
     .color-dd-trigger {
       width: 44px;
@@ -425,27 +426,34 @@
     .color-dd-menu {
       position: fixed;
       display: none;
-      flex-direction: column;
-      width: 44px;
-      max-height: min(60vh, 480px);
-      overflow-y: auto;
+      grid-template-columns: repeat(3, 44px);
       border-radius: 6px;
+      overflow: hidden;
+      background: var(--bg);
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
       z-index: 500;
     }
-    .color-dd-menu.open { display: flex; }
+    .color-dd-menu.open { display: grid; }
     .color-dd-option {
+      position: relative;
       width: 44px;
       height: 32px;
-      flex: 0 0 32px;
       border: none;
       border-radius: 0;
       padding: 0;
       cursor: pointer;
     }
-    .color-dd-option:hover { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.6); }
-    .color-dd-option.selected {
-      box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.95), inset 0 0 0 4px rgba(0, 0, 0, 0.55);
+    .color-dd-option:hover::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.1);
+    }
+    .color-dd-option.selected::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E") center / 14px 14px no-repeat;
     }
 
     .pers-btn {
