@@ -767,6 +767,9 @@ window.MilgViewer = (function() {
           } else if (vr.crossesBoundary) {
             pixelSev = (vr.cssPasses && !vr.pixelPasses) ? 'error' : (!vr.cssPasses && vr.pixelPasses) ? 'pass' : null;
           }
+          // Small-text demotion: cap the marker severity accordingly
+          if (vr.demoted === 'warning' && pixelSev === 'error') pixelSev = 'warning';
+          else if (vr.demoted === 'info' && (pixelSev === 'error' || pixelSev === 'warning')) pixelSev = null;
         }
         // Take the worst of CSS severity and pixel severity
         var finalSev = cssSev;
@@ -2003,8 +2006,13 @@ window.MilgViewer = (function() {
       flagsBlock += '</div>';
     }
     if (vr.crossesBoundary) {
-      flagsBlock += '<div style="font-size:10px;color:#ef4444;font-weight:600;margin-top:2px">' +
-        (vr.cssPasses && !vr.pixelPasses ? 'CSS passes but pixels fail' : 'CSS fails but pixels pass') + '</div>';
+      if (vr.demoted) {
+        flagsBlock += '<div style="font-size:10px;color:' + (vr.demoted === 'warning' ? '#f59e0b' : '#94a3b8') + ';font-weight:600;margin-top:2px">' +
+          (vr.demoted === 'warning' ? 'Warning' : 'Info') + ' — ' + (vr.demotionReason || 'small-text demotion') + '</div>';
+      } else {
+        flagsBlock += '<div style="font-size:10px;color:#ef4444;font-weight:600;margin-top:2px">' +
+          (vr.cssPasses && !vr.pixelPasses ? 'CSS passes but pixels fail' : 'CSS fails but pixels pass') + '</div>';
+      }
     }
 
     _tooltip.innerHTML = '<div class="milg-viewer-tooltip-title">' + vr.selector + '</div>' +

@@ -712,11 +712,13 @@ window.MilgReport = (function() {
           }
           // Pixel verify results
           if (vpData._contrastVerifyResults && vpData._contrastVerifyResults.length > 0) {
-            var fp = vpData._contrastVerifyResults.filter(function(r) { return r.cssPasses && !r.pixelPasses; });
+            var fp = vpData._contrastVerifyResults.filter(function(r) { return r.cssPasses && !r.pixelPasses && !r.demoted; });
+            var dem = vpData._contrastVerifyResults.filter(function(r) { return !!r.demoted; });
             var ff = vpData._contrastVerifyResults.filter(function(r) { return !r.cssPasses && r.pixelPasses; });
-            if (fp.length > 0 || ff.length > 0) {
+            if (fp.length > 0 || ff.length > 0 || dem.length > 0) {
               lines.push('**Pixel verification:**');
               if (fp.length > 0) lines.push('- ' + fp.length + ' hidden failure(s) — pass CSS but fail in pixels');
+              if (dem.length > 0) lines.push('- ' + dem.length + ' small-text failure(s) demoted to warning/info (anti-aliasing)');
               if (ff.length > 0) lines.push('- ' + ff.length + ' false positive(s) — fail CSS but pass in pixels');
               lines.push('');
             }
@@ -742,9 +744,10 @@ window.MilgReport = (function() {
     // Pixel contrast verification results (top-level, for single-URL reports)
     if (report._contrastVerifyResults && report._contrastVerifyResults.length > 0) {
       var pvr = report._contrastVerifyResults;
-      var pvFp = pvr.filter(function(r) { return r.cssPasses && !r.pixelPasses; });
+      var pvFp = pvr.filter(function(r) { return r.cssPasses && !r.pixelPasses && !r.demoted; });
+      var pvDem = pvr.filter(function(r) { return !!r.demoted; });
       var pvFf = pvr.filter(function(r) { return !r.cssPasses && r.pixelPasses; });
-      var pvOk = pvr.length - pvFp.length - pvFf.length;
+      var pvOk = pvr.length - pvFp.length - pvDem.length - pvFf.length;
       lines.push('## Pixel Contrast Verification');
       lines.push('');
       lines.push('- **' + pvr.length + '** pairs checked');
@@ -753,6 +756,12 @@ window.MilgReport = (function() {
         lines.push('- **' + pvFp.length + '** hidden failure(s) — pass CSS but fail in pixels:');
         pvFp.forEach(function(r) {
           lines.push('  - `' + (r.selector || 'unknown') + '` CSS ' + r.cssRatio + ':1 → Pixel ' + r.pixelRatio + ':1');
+        });
+      }
+      if (pvDem.length > 0) {
+        lines.push('- **' + pvDem.length + '** small-text pixel failure(s) demoted (anti-aliasing makes pixel checks unreliable ≤16px):');
+        pvDem.forEach(function(r) {
+          lines.push('  - `' + (r.selector || 'unknown') + '` CSS ' + r.cssRatio + ':1 → Pixel ' + r.pixelRatio + ':1 — ' + (r.demoted === 'warning' ? 'warning' : 'info') + ': ' + (r.demotionReason || ''));
         });
       }
       if (pvFf.length > 0) {

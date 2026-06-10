@@ -309,6 +309,7 @@ window.MilgContrastVerify = (function() {
       pixelRatioP10: p10Ratio, pixelRatioMedian: medianRatio,
       pixelBgWorst: worstBg ? rgbStr(worstBg) : '', pixelBgAvg: rgbStr(avgBg),
       cssFg: pair.fg, cssBg: pair.bg, selector: pair.selector, text: pair.text,
+      fontSize: pair.fontSize || 0, isLarge: !!pair.isLarge, bgHasImage: !!pair.bgHasImage,
       bbox: pair.bbox, maskLayer: pair._maskLayer || 0, sectionIdx: ctx.sectionIdx,
       sampleCount: { fg: fgPoints.length, bg: bgPoints.length },
       samplePoints: {
@@ -1408,8 +1409,40 @@ window.MilgContrastVerify = (function() {
       (r.bgVariance > 0.5 ? ' (bg range: ' + r.bgVariance + ')' : '') + '</span>';
   }
 
+  // --- Small-text demotion ---
+  // Pixel sampling on small text is dominated by anti-aliasing fringe (pixels
+  // that are already half background), which produces false "hidden failures".
+  // When enabled (default), small-text hidden failures are demoted: over an
+  // image/variable background → warning; on a plain background where the CSS
+  // check passes → info. Demoted results carry the reason and are excluded
+  // from the error count.
+  var SMALL_TEXT_MAX_PX = 16;
+  function smallTextDemotionEnabled() {
+    try { return localStorage.getItem('milg-small-text-demote') !== '0'; } catch (e) { return true; }
+  }
+  function applySmallTextDemotion(results, enabled) {
+    (results || []).forEach(function(r) {
+      if (!r || r.skipped) return;
+      r.demoted = null; r.demotionReason = null;
+      if (!enabled) return;
+      if (!(r.cssPasses && !r.pixelPasses)) return; // only "hidden failures" demote
+      var fs = r.fontSize || 0;
+      if (!fs || fs > SMALL_TEXT_MAX_PX || r.isLarge) return;
+      if (r.bgHasImage || r.isVariableBg) {
+        r.demoted = 'warning';
+        r.demotionReason = 'Demoted from error: small text (' + fs + 'px) over an image/variable background — at this size pixel sampling is dominated by anti-aliasing, so the measured failure is uncertain.';
+      } else {
+        r.demoted = 'info';
+        r.demotionReason = 'Demoted from error: small text (' + fs + 'px) on a plain background where the CSS contrast check passes (' + r.cssRatio + ':1) — the pixel failure is most likely anti-aliasing noise.';
+      }
+    });
+    return results;
+  }
+
   // Build a summary of verification results
   function buildSummary(results, bboxEdgeResults) {
+    var demotionOn = smallTextDemotionEnabled();
+    applySmallTextDemotion(results, demotionOn);
     var skippedCount = 0;
     var total = results.length;
     var falsePassCount = 0; // CSS passes but pixels fail
@@ -1418,13 +1451,21 @@ window.MilgContrastVerify = (function() {
     var variableBgCount = 0;
     var fgAaVarianceCount = 0;
     var verified = 0;
+    var demotedWarnCount = 0;
+    var demotedInfoCount = 0;
 
     results.forEach(function(r) {
       if (r.skipped) { skippedCount++; return; }
-      if (r.isVariableBg) variableBgCount++;
-      else if (r.isFgAaVariance) fgAaVarianceCount++;
+      // Demoted results get their own buckets (and are excluded from the
+      // variable-bg list — the demoted block already explains them).
+      if (r.isVariableBg && !r.demoted) variableBgCount++;
+      else if (r.isFgAaVariance && !r.demoted) fgAaVarianceCount++;
       if (r.crossesBoundary) {
-        if (r.cssPasses && !r.pixelPasses) falsePassCount++;
+        if (r.cssPasses && !r.pixelPasses) {
+          if (r.demoted === 'warning') demotedWarnCount++;
+          else if (r.demoted === 'info') demotedInfoCount++;
+          else falsePassCount++;
+        }
         else falseFailCount++;
       } else if (r.significant) {
         significantDiffs++;
@@ -1447,11 +1488,32 @@ window.MilgContrastVerify = (function() {
       variableBgCount: variableBgCount,
       fgAaVarianceCount: fgAaVarianceCount,
       verified: verified,
+      demotedWarnCount: demotedWarnCount,
+      demotedInfoCount: demotedInfoCount,
+      smallTextDemotionOn: demotionOn,
       results: results,
       bboxEdgeResults: bboxEdge,
       bboxEdgeWarnings: bboxEdgeWarnings,
       bboxEdgeChecked: bboxEdgeChecked
     };
+  }
+
+  // Registry of rendered summaries so the small-text checkbox can re-render
+  // them in place (recompute demotion + counts) without re-running pixel verify.
+  var _summaryRegistry = {};
+  var _summarySeq = 0;
+  function setSmallTextDemotion(on) {
+    try { localStorage.setItem('milg-small-text-demote', on ? '1' : '0'); } catch (e) {}
+    Object.keys(_summaryRegistry).forEach(function(sid) {
+      var el = document.querySelector('.contrast-verify-summary[data-milg-verify-sid="' + sid + '"]');
+      if (!el) { delete _summaryRegistry[sid]; return; }
+      var s = _summaryRegistry[sid];
+      var rebuilt = buildSummary(s.results, s.bboxEdgeResults);
+      var tmp = document.createElement('div');
+      tmp.innerHTML = renderSummaryHtml(rebuilt, sid);
+      var fresh = tmp.firstChild;
+      if (fresh) { fresh.open = el.open; el.parentNode.replaceChild(fresh, el); }
+    });
   }
 
   // Color swatch helper
@@ -1460,20 +1522,32 @@ window.MilgContrastVerify = (function() {
     return '<span style="display:inline-block;width:12px;height:12px;border-radius:2px;vertical-align:middle;border:1px solid ' + (isDark ? '#555' : '#ccc') + ';background:' + color + '"></span>';
   }
 
-  // Render verification summary as HTML block
-  function renderSummaryHtml(summary) {
+  // Render verification summary as HTML block. _reuseSid keeps the registry
+  // slot stable when the small-text checkbox re-renders an existing summary.
+  function renderSummaryHtml(summary, _reuseSid) {
     if (summary.total === 0) return '';
+    var sid = _reuseSid || (++_summarySeq);
+    _summaryRegistry[sid] = summary;
     var isDark = document.body && document.body.classList.contains('dark-ui');
 
-    var html = '<details class="contrast-verify-summary">';
+    var html = '<details class="contrast-verify-summary" data-milg-verify-sid="' + sid + '">';
     html += '<summary style="cursor:pointer;font-size:13px;font-weight:600;padding:8px 0">';
     html += 'Pixel Contrast Verification (' + summary.total + ' pairs checked)';
     if (summary.falsePassCount > 0) {
       html += ' <span style="color:#ef4444;font-weight:700">' + summary.falsePassCount + ' hidden failure' + (summary.falsePassCount > 1 ? 's' : '') + '</span>';
     }
+    var _demTotal = (summary.demotedWarnCount || 0) + (summary.demotedInfoCount || 0);
+    if (_demTotal > 0) {
+      html += ' <span style="color:#f59e0b;font-weight:600">' + _demTotal + ' small-text demoted</span>';
+    }
     html += '</summary>';
 
     html += '<div style="padding:8px 0;font-size:13px;line-height:1.6">';
+
+    // Small-text demotion toggle — recomputes counts client-side, no re-verify.
+    html += '<label style="display:flex;align-items:center;gap:6px;font-size:12px;margin:2px 0 8px;cursor:pointer;color:var(--text-secondary)">' +
+      '<input type="checkbox"' + (summary.smallTextDemotionOn ? ' checked' : '') + ' onchange="window.MilgContrastVerify.setSmallTextDemotion(this.checked)" style="accent-color:var(--accent)">' +
+      'Reduce error on small texts (&le;16px) — anti-aliasing makes pixel checks unreliable at this size</label>';
 
     if (summary.falsePassCount > 0) {
       var bg = isDark ? '#2d0f0f' : '#fef2f2';
@@ -1481,7 +1555,7 @@ window.MilgContrastVerify = (function() {
       html += '<div style="padding:10px 14px;background:' + bg + ';border:1px solid ' + border + ';border-radius:6px;margin-bottom:8px">';
       html += '<strong style="color:#ef4444">' + summary.falsePassCount + ' element' + (summary.falsePassCount > 1 ? 's' : '') + ' pass CSS contrast but fail in pixels</strong>';
       html += '<p style="margin:4px 0 0;font-size:12px;color:' + (isDark ? '#fca5a5' : '#991b1b') + '">The actual rendered background differs from what CSS reports — contrast drops below the required threshold.</p>';
-      summary.results.filter(function(r) { return r.cssPasses && !r.pixelPasses; }).forEach(function(r) {
+      summary.results.filter(function(r) { return r.cssPasses && !r.pixelPasses && !r.demoted; }).forEach(function(r) {
         html += '<div style="margin-top:6px;padding:6px 8px;background:' + (isDark ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.7)') + ';border-radius:4px;font-size:12px">';
         html += '<strong>' + r.selector + '</strong>: "' + (r.text || '').substring(0, 30) + '"';
         html += '<br>CSS: ' + r.cssRatio + ':1 (pass) &rarr; Pixel: <span style="color:#ef4444;font-weight:600">' + r.pixelRatio + ':1</span> (fail, needs ' + (r.neededRatio || 4.5) + ':1)';
@@ -1493,6 +1567,42 @@ window.MilgContrastVerify = (function() {
         html += _swatch(r.pixelBgWorst || r.pixelBgAvg, isDark);
         html += '<span style="font-size:11px;color:var(--text-secondary)"> ' + (r.pixelBgWorst || r.pixelBgAvg || '?') + '</span>';
         if (r.sampleCount) html += '<span style="font-size:10px;color:var(--text-secondary)"> (' + r.sampleCount.fg + ' FG, ' + r.sampleCount.bg + ' BG samples)</span>';
+        if (r.bbox) html += '<br><a class="finding-show-on-screenshot" style="font-size:11px;cursor:pointer;color:var(--accent)" onclick="window.__milgShowVerifyOnScreenshot(\'' + (r.selector || '').replace(/'/g, "\\'") + '\')">Show on screenshot</a>';
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+
+    // Small-text demotions → WARNING (image/variable background in the area)
+    if (summary.demotedWarnCount > 0) {
+      var dwResults = summary.results.filter(function(r) { return r.demoted === 'warning'; });
+      var bgW = isDark ? '#2d2006' : '#fffbeb';
+      var borderW = isDark ? '#92400e' : '#fde68a';
+      html += '<div style="padding:10px 14px;background:' + bgW + ';border:1px solid ' + borderW + ';border-radius:6px;margin-bottom:8px">';
+      html += '<strong style="color:#f59e0b">' + summary.demotedWarnCount + ' small-text pixel failure' + (summary.demotedWarnCount > 1 ? 's' : '') + ' demoted to warning</strong>';
+      html += '<p style="margin:4px 0 0;font-size:12px;color:' + (isDark ? '#fbbf24' : '#92400e') + '">Image or variable background behind small text — worth a manual look, but the pixel measurement is unreliable at this size.</p>';
+      dwResults.forEach(function(r) {
+        html += '<div style="margin-top:6px;padding:6px 8px;background:' + (isDark ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.7)') + ';border-radius:4px;font-size:12px">';
+        html += '<strong>' + r.selector + '</strong>: "' + (r.text || '').substring(0, 30) + '"';
+        html += '<br>CSS: ' + r.cssRatio + ':1 (pass) &rarr; Pixel: <span style="color:#f59e0b;font-weight:600">' + r.pixelRatio + ':1</span> (needs ' + (r.neededRatio || 4.5) + ':1)';
+        html += '<br><span style="font-size:11px;color:' + (isDark ? '#fbbf24' : '#92400e') + '">' + r.demotionReason + '</span>';
+        if (r.bbox) html += '<br><a class="finding-show-on-screenshot" style="font-size:11px;cursor:pointer;color:var(--accent)" onclick="window.__milgShowVerifyOnScreenshot(\'' + (r.selector || '').replace(/'/g, "\\'") + '\')">Show on screenshot</a>';
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+
+    // Small-text demotions → INFO (plain background, CSS check passes)
+    if (summary.demotedInfoCount > 0) {
+      var diResults = summary.results.filter(function(r) { return r.demoted === 'info'; });
+      html += '<div style="padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:6px;margin-bottom:8px">';
+      html += '<span style="color:var(--text-secondary);font-weight:600">' + summary.demotedInfoCount + ' small-text pixel failure' + (summary.demotedInfoCount > 1 ? 's' : '') + ' demoted to info</span>';
+      html += '<p style="margin:4px 0 0;font-size:12px;color:var(--text-secondary)">Plain background and the CSS contrast check passes — almost certainly anti-aliasing noise, listed for transparency only.</p>';
+      diResults.forEach(function(r) {
+        html += '<div style="margin-top:6px;padding:6px 8px;background:' + (isDark ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.03)') + ';border-radius:4px;font-size:12px;color:var(--text-secondary)">';
+        html += '<strong style="color:var(--text-primary)">' + r.selector + '</strong>: "' + (r.text || '').substring(0, 30) + '"';
+        html += '<br>CSS: ' + r.cssRatio + ':1 (pass) &rarr; Pixel: ' + r.pixelRatio + ':1 (needs ' + (r.neededRatio || 4.5) + ':1)';
+        html += '<br><span style="font-size:11px">' + r.demotionReason + '</span>';
         if (r.bbox) html += '<br><a class="finding-show-on-screenshot" style="font-size:11px;cursor:pointer;color:var(--accent)" onclick="window.__milgShowVerifyOnScreenshot(\'' + (r.selector || '').replace(/'/g, "\\'") + '\')">Show on screenshot</a>';
         html += '</div>';
       });
@@ -1521,7 +1631,7 @@ window.MilgContrastVerify = (function() {
 
     // Variable background warning (photos, gradients) — only real BG variance
     if (summary.variableBgCount > 0) {
-      var vbResults = summary.results.filter(function(r) { return r.isVariableBg; });
+      var vbResults = summary.results.filter(function(r) { return r.isVariableBg && !r.demoted; });
       var bg = isDark ? '#2d2006' : '#fffbeb';
       var border = isDark ? '#92400e' : '#fde68a';
       html += '<div style="padding:10px 14px;background:' + bg + ';border:1px solid ' + border + ';border-radius:6px;margin-bottom:8px">';
@@ -1544,7 +1654,7 @@ window.MilgContrastVerify = (function() {
 
     // FG antialiasing variance (info, not warning) — solid BG but ratio spread from AA pixels
     if (summary.fgAaVarianceCount > 0) {
-      var aaResults = summary.results.filter(function(r) { return r.isFgAaVariance; });
+      var aaResults = summary.results.filter(function(r) { return r.isFgAaVariance && !r.demoted; });
       html += '<div style="padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:6px;margin-bottom:8px">';
       html += '<span style="color:var(--text-secondary)">' + summary.fgAaVarianceCount + ' element' + (summary.fgAaVarianceCount > 1 ? 's' : '') + ' with contrast range from font antialiasing</span>';
       html += '<p style="margin:4px 0 0;font-size:12px;color:var(--text-secondary)">Background is solid — the contrast range comes from sub-pixel font rendering. The P10 ratio (ignoring the worst 10% of AA fringe pixels) is used for pass/fail.</p>';
@@ -1619,6 +1729,9 @@ window.MilgContrastVerify = (function() {
     formatResult: formatResult,
     buildSummary: buildSummary,
     renderSummaryHtml: renderSummaryHtml,
+    applySmallTextDemotion: applySmallTextDemotion,
+    smallTextDemotionEnabled: smallTextDemotionEnabled,
+    setSmallTextDemotion: setSmallTextDemotion,
     contrastRatio: contrastRatio,
     parseRgb: parseRgb
   };
