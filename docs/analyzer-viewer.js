@@ -123,7 +123,7 @@ window.MilgViewer = (function() {
       }
       verifyPill = '<span class="milg-viewer-sep"></span>' +
         '<button class="milg-viewer-filter-btn milg-viewer-sev-verify milg-viewer-verify-hl" data-filter-type="verify" data-filter-value="all" title="Right-click a box here to cycle mask → zones → off">Pixel Verified <span class="milg-viewer-count">' + vResults.length + '</span></button>' +
-        (vFails > 0 ? '<button class="milg-viewer-filter-btn milg-viewer-sev-error" data-filter-type="verify" data-filter-value="fails">Pixel Fails <span class="milg-viewer-count">' + vFails + '</span></button>' : '') +
+        (vFails > 0 ? '<button class="milg-viewer-filter-btn milg-viewer-sev-error" data-filter-type="verify" data-filter-value="fails" title="Pixel results that differ from CSS: red = error, yellow = warning (small text demoted), blue = info (small text demoted), green = passes despite CSS fail">Conspicuous Pixels <span class="milg-viewer-count">' + vFails + '</span></button>' : '') +
         layerPills;
     }
 
@@ -1014,6 +1014,11 @@ window.MilgViewer = (function() {
       return;
     }
     var results = _reportData._contrastVerifyResults;
+    // Re-apply small-text demotion at render time so overlays always reflect the
+    // current "Reduce error on small texts" checkbox state.
+    if (window.MilgContrastVerify && MilgContrastVerify.applySmallTextDemotion) {
+      MilgContrastVerify.applySmallTextDemotion(results, MilgContrastVerify.smallTextDemotionEnabled());
+    }
     console.log('[milg-viewer] renderVerifyOverlays:', results.length, 'results, scale:', _meta.scale, 'canvas:', _meta.canvasWidth + 'x' + _meta.canvasHeight);
     var showFails = _activeFilter.value === 'fails';
 
@@ -1076,10 +1081,14 @@ window.MilgViewer = (function() {
       }
 
       var fill, stroke, dash;
-      // Worst-severity-wins: if any finding at this position is error, show red regardless of pixel result
-      if (worstSevAtPos === 'error' || (vr.crossesBoundary && vr.cssPasses && !vr.pixelPasses)) {
+      var _pxFail = vr.crossesBoundary && vr.cssPasses && !vr.pixelPasses;
+      // Worst-severity-wins: if any finding at this position is error, show red regardless of pixel result.
+      // Small-text demoted results show yellow (warning) / blue (info) instead of red.
+      if (worstSevAtPos === 'error' || (_pxFail && !vr.demoted)) {
         fill = 'rgba(239,68,68,0.25)'; stroke = '#ef4444'; dash = '6 2';
-      } else if (worstSevAtPos === 'warning' || vr.isVariableBg) {
+      } else if (vr.demoted === 'info') {
+        fill = 'rgba(59,130,246,0.15)'; stroke = '#3b82f6'; dash = '4 2';
+      } else if (vr.demoted === 'warning' || worstSevAtPos === 'warning' || vr.isVariableBg) {
         fill = 'rgba(234,179,8,0.15)'; stroke = '#eab308'; dash = '4 2';
       } else if (vr.crossesBoundary && !vr.cssPasses && vr.pixelPasses) {
         fill = 'rgba(34,197,94,0.2)'; stroke = '#22c55e'; dash = '4 3';
@@ -1682,6 +1691,10 @@ window.MilgViewer = (function() {
       console.log('[D] renderRegionVerifyOverlays: no results (regionRef keys=' + Object.keys(rd.regionRef).join(',') + ')');
       return;
     }
+    // Same render-time demotion refresh as the main overlay — regions included.
+    if (window.MilgContrastVerify && MilgContrastVerify.applySmallTextDemotion) {
+      MilgContrastVerify.applySmallTextDemotion(results, MilgContrastVerify.smallTextDemotionEnabled());
+    }
     while (rd.svg.firstChild) rd.svg.removeChild(rd.svg.firstChild);
 
     var scale = rd.meta.scale || 1.5;
@@ -1725,9 +1738,12 @@ window.MilgViewer = (function() {
       }
 
       var fill, stroke, dash;
-      if (worstSevAtPos === 'error' || (vr.crossesBoundary && vr.cssPasses && !vr.pixelPasses)) {
+      var _pxFail = vr.crossesBoundary && vr.cssPasses && !vr.pixelPasses;
+      if (worstSevAtPos === 'error' || (_pxFail && !vr.demoted)) {
         fill = 'rgba(239,68,68,0.25)'; stroke = '#ef4444'; dash = '6 2';
-      } else if (worstSevAtPos === 'warning' || vr.isVariableBg) {
+      } else if (vr.demoted === 'info') {
+        fill = 'rgba(59,130,246,0.15)'; stroke = '#3b82f6'; dash = '4 2';
+      } else if (vr.demoted === 'warning' || worstSevAtPos === 'warning' || vr.isVariableBg) {
         fill = 'rgba(234,179,8,0.15)'; stroke = '#eab308'; dash = '4 2';
       } else if (vr.crossesBoundary && !vr.cssPasses && vr.pixelPasses) {
         fill = 'rgba(34,197,94,0.2)'; stroke = '#22c55e'; dash = '4 3';

@@ -379,6 +379,12 @@
           window.__milgImgRestore = null;
         }
       } catch (e) {}
+      // Remove the inaccessible-iframe capture placeholders (live page cleanup).
+      try {
+        Array.prototype.slice.call(document.querySelectorAll('[data-milg-iframe-ph]')).forEach(function(n) {
+          if (n.parentNode) n.parentNode.removeChild(n);
+        });
+      } catch (e) {}
       // Restore scroll + remove overlay (mask/expand mutated the DOM -- the
       // outputData copy/download handlers reload the page to fully restore styles).
       try { window.scrollTo(0, _origScrollY); } catch (e) {}

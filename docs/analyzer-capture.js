@@ -436,6 +436,29 @@ window.MilgCapture = (function() {
 
           // Preload images via proxy → data URI, then capture
           _preloadFn(_prog, _proxyUrl, function() {
+            // Sandboxed/cross-origin iframes can't be cloned by the rasterizer — they
+            // come out as empty white boxes (e.g. the live-preview iframe on the
+            // template page). Overlay a labeled placeholder on each inaccessible
+            // iframe for the duration of the capture so the screenshot is honest
+            // about what's there. Removed by _snippetSend on live pages; analysis
+            // iframes are discarded after capture anyway.
+            try {
+              var _ifrPh = 0;
+              document.querySelectorAll("iframe").forEach(function(f) {
+                var _ok = false;
+                try { _ok = !!(f.contentDocument && f.contentDocument.body); } catch (e) { _ok = false; }
+                if (_ok) return;
+                var r = f.getBoundingClientRect();
+                if (r.width < 40 || r.height < 40) return;
+                var ph = document.createElement("div");
+                ph.setAttribute("data-milg-iframe-ph", "1");
+                ph.style.cssText = "position:absolute;left:" + (r.left + (window.scrollX || 0)) + "px;top:" + (r.top + (window.scrollY || 0)) + "px;width:" + r.width + "px;height:" + r.height + "px;z-index:2147483600;background:#f1f5f9 repeating-linear-gradient(45deg,transparent,transparent 12px,rgba(148,163,184,0.18) 12px,rgba(148,163,184,0.18) 24px);border:1px dashed #cbd5e1;display:flex;align-items:center;justify-content:center;color:#64748b;font:12px system-ui,sans-serif;pointer-events:none;box-sizing:border-box;";
+                ph.textContent = "embedded frame — content can't be captured";
+                document.body.appendChild(ph);
+                _ifrPh++;
+              });
+              if (_ifrPh) console.log("[iframe-ss] " + _ifrPh + " inaccessible iframe(s) → placeholder overlay in screenshot");
+            } catch (e) {}
             // Phase A: Clean screenshot (page as-rendered, before overflow expansion)
             _prog("Rendering screenshot (0s)…");
             console.log("[iframe-ss] Capturing clean screenshot at " + _sc + "x...");

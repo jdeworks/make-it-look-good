@@ -1228,6 +1228,14 @@ window.MilgContrastVerify = (function() {
   // Falls back to post-hoc screenshot canvas sampling when not available.
   // callback(results) where results is array of verification objects
   function verify(reportData, callback) {
+    // Apply small-text demotion on EVERY result path (main page, region
+    // sub-pages, precomputed) so demoted/demotionReason are always present
+    // before any consumer (summary, viewer overlays, exports) sees them.
+    var _origCb = callback;
+    callback = function(rs, be) {
+      applySmallTextDemotion(rs || [], smallTextDemotionEnabled());
+      _origCb(rs, be);
+    };
     var raw = reportData && reportData.raw;
     if (!raw || !raw.colors || !raw.colors.contrastPairs) {
       callback([]); return;
