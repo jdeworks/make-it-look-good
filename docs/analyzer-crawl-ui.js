@@ -105,6 +105,7 @@ window.MilgCrawlUI = (function() {
     var crawlDone = _crawlSession && _crawlSession.status === 'complete';
     if (reportActions) reportActions.style.display = crawlDone ? 'flex' : 'none';
     if (crawlDone) _toggleViewportExportOption();
+    if (crawlDone && window.milgUpdateExportCounts) window.milgUpdateExportCounts();
     if (key === 'summary') {
       var summary = _crawlSession.summary || MilgCrawl.buildSummary(_crawlSession);
       var ephBanner = document.getElementById('ephemeralBanner');
@@ -193,6 +194,7 @@ window.MilgCrawlUI = (function() {
     var reportActions = document.getElementById('reportActions');
     if (reportActions) reportActions.style.display = '';
     _toggleViewportExportOption();
+    if (window.milgUpdateExportCounts) window.milgUpdateExportCounts();
     document.getElementById('inputSection').style.display = 'none';
     renderCrawlTabs();
     showCrawlPageContent('summary');

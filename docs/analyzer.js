@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.47 loaded');
+console.log('[milg] analyzer.js v3.11.48 loaded');
 
 (function() {
   "use strict";
@@ -931,6 +931,7 @@ console.log('[milg] analyzer.js v3.11.47 loaded');
     // Render viewport tabs for deep scan results
     renderViewportTabs(data);
     document.getElementById('reportActions').style.display = 'flex';
+    if (window.milgUpdateExportCounts) window.milgUpdateExportCounts();
     // The "Include per-viewport data" export option is crawl-only — hide it in single-page mode.
     var _civ = document.getElementById('crawlIncludeViewportsLabel'); if (_civ) _civ.style.display = 'none';
     // Hide crawl containers when showing single-page results (unless crawl session is active)
@@ -1123,7 +1124,7 @@ console.log('[milg] analyzer.js v3.11.47 loaded');
     var _embeddedLibCache = null;
     function _getEmbeddedLib(cb) {
       if (_embeddedLibCache) { cb(_embeddedLibCache); return; }
-      fetch(EMBED_LIB_URL + '?v=3.11.47')
+      fetch(EMBED_LIB_URL + '?v=3.11.48')
         .then(function(r) { return r.ok ? r.text() : ''; })
         .then(function(t) {
           if (t && t.indexOf('modernScreenshot') !== -1) { _embeddedLibCache = t; cb(t); }
@@ -1553,6 +1554,49 @@ console.log('[milg] analyzer.js v3.11.47 loaded');
       // Clear hash so refreshing doesn't reload old report
       if (location.hash) history.replaceState(null, '', location.pathname + location.search);
     });
+
+    // Severity-filter counts: label each dropdown option with how many findings
+    // it would export, and disable the filtered exports (Copy for LLM, LLM pack)
+    // when the current selection matches nothing.
+    function _exportFindingCounts() {
+      var reports = [];
+      var session = MilgCrawlUI.getCrawlSession && MilgCrawlUI.getCrawlSession();
+      if (session) {
+        (session.pages || []).forEach(function(p) { if (p.status === 'done' && p.reportData) reports.push(p.reportData); });
+      } else if (reportData) {
+        reports.push(reportData);
+      }
+      var counts = { error: 0, warning: 0, info: 0 };
+      reports.forEach(function(r) {
+        (r.categories || []).forEach(function(cat) {
+          (cat.findings || []).forEach(function(f) {
+            if (counts[f.severity] != null) counts[f.severity]++;
+          });
+        });
+      });
+      return counts;
+    }
+    window.milgUpdateExportCounts = function() {
+      var sel = document.getElementById('exportSeverityFilter');
+      if (!sel) return;
+      var c = _exportFindingCounts();
+      var per = { all: c.error + c.warning + c.info, warning: c.error + c.warning, error: c.error };
+      var labels = { all: 'All findings', warning: 'Warnings + Errors', error: 'Errors only' };
+      for (var i = 0; i < sel.options.length; i++) {
+        var v = sel.options[i].value;
+        if (labels[v]) sel.options[i].textContent = labels[v] + ' (' + (per[v] || 0) + ')';
+      }
+      var empty = !per[sel.value];
+      ['copyMdBtn', 'llmPackBtn'].forEach(function(id) {
+        var btn = document.getElementById(id);
+        if (!btn) return;
+        if (!btn.dataset.fullTitle) btn.dataset.fullTitle = btn.title;
+        btn.disabled = empty;
+        btn.title = empty ? 'No findings at the selected severity filter — nothing to export' : btn.dataset.fullTitle;
+      });
+    };
+    var _sevSel = document.getElementById('exportSeverityFilter');
+    if (_sevSel) _sevSel.addEventListener('change', function() { window.milgUpdateExportCounts(); });
 
     // Markdown export (download) — single-URL only, crawl-ui handles crawl
     document.getElementById('markdownBtn').addEventListener('click', function() {

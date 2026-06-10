@@ -1095,6 +1095,12 @@ window.MilgReport = (function() {
     });
     // Stable doc number per category (1-based, in report order).
     cats.forEach(function(c, i) { c.docNum = String(i + 1).padStart(2, '0'); c.docPath = 'findings/' + c.docNum + '-' + c.slug + '.md'; });
+    // Categories with nothing actionable at the current filter are pruned from
+    // the pack — no placeholder docs, the zip only carries real findings.
+    cats.forEach(function(c) {
+      c.shown = (c.findings || []).filter(function(f) { return passSev(f.severity); });
+      c.included = c.shown.some(function(f) { return f.severity !== 'pass'; });
+    });
 
     var tokenLines = function() { return _tokenLinesFor(raw); };
 
@@ -1130,7 +1136,7 @@ window.MilgReport = (function() {
       var iss = [];
       if (c.errors) iss.push(c.errors + ' error' + (c.errors > 1 ? 's' : ''));
       if (c.warnings) iss.push(c.warnings + ' warning' + (c.warnings > 1 ? 's' : ''));
-      R.push('| ' + c.label + ' | ' + c.score + '/100 | ' + c.weight + '% | ' + (iss.length ? iss.join(', ') : 'all passed') + ' | `' + c.docPath + '` |');
+      R.push('| ' + c.label + ' | ' + c.score + '/100 | ' + c.weight + '% | ' + (iss.length ? iss.join(', ') : 'all passed') + ' | ' + (c.included ? '`' + c.docPath + '`' : '—') + ' |');
     });
     R.push('');
     R.push('## Design tokens (snapshot)');
@@ -1199,7 +1205,7 @@ window.MilgReport = (function() {
         var bits = [];
         if (c.errors) bits.push(c.errors + ' error' + (c.errors > 1 ? 's' : ''));
         if (c.warnings) bits.push(c.warnings + ' warning' + (c.warnings > 1 ? 's' : ''));
-        G.push('- **' + c.label + '** (' + c.score + '/100, ' + bits.join(' + ') + ') → see `' + c.docPath + '`.');
+        G.push('- **' + c.label + '** (' + c.score + '/100, ' + bits.join(' + ') + ')' + (c.included ? ' → see `' + c.docPath + '`.' : ' — below the current severity filter.'));
       });
     }
     G.push('');
@@ -1218,23 +1224,21 @@ window.MilgReport = (function() {
     IX.push('| # | Category | Score | Errors | Warnings | Info | Document |');
     IX.push('|---|----------|-------|--------|----------|------|----------|');
     cats.forEach(function(c) {
-      IX.push('| ' + c.docNum + ' | ' + c.label + ' | ' + c.score + '/100 | ' + c.errors + ' | ' + c.warnings + ' | ' + c.infos + ' | `' + c.docNum + '-' + c.slug + '.md` |');
+      IX.push('| ' + c.docNum + ' | ' + c.label + ' | ' + c.score + '/100 | ' + c.errors + ' | ' + c.warnings + ' | ' + c.infos + ' | ' + (c.included ? '`' + c.docNum + '-' + c.slug + '.md`' : '—') + ' |');
     });
     IX.push('');
     files.push({ path: 'findings/00-index.md', text: IX.join('\n') });
 
-    // ---- findings/NN-<category>.md ---------------------------------------
+    // ---- findings/NN-<category>.md (pruned: only categories with findings) --
     cats.forEach(function(c) {
+      if (!c.included) return;
       var D = [];
       D.push('# ' + c.label);
       D.push('');
       D.push('**Score:** ' + c.score + '/100 · **Weight:** ' + c.weight + '% · **Errors:** ' + c.errors + ' · **Warnings:** ' + c.warnings + ' · **Info:** ' + c.infos);
       D.push('');
-      var shown = (c.findings || []).filter(function(f) { return passSev(f.severity); });
-      if (shown.length === 0) {
-        var hasIssues = (c.findings || []).some(function(f) { return f.severity !== 'pass'; });
-        D.push(hasIssues ? '_All issues in this category are below the current severity filter (' + severityFilter + ')._' : '_No issues found in this category — all checks passed._');
-      } else {
+      var shown = c.shown;
+      {
         // error → warning → info → pass
         var order = { error: 0, warning: 1, info: 2, pass: 3 };
         shown.slice().sort(function(a, b) { return (order[a.severity] || 9) - (order[b.severity] || 9); }).forEach(function(f) {
@@ -1347,7 +1351,14 @@ window.MilgReport = (function() {
         warnings: groups.filter(function(g) { return g.severity === 'warning'; }).length,
         infos: groups.filter(function(g) { return g.severity === 'info'; }).length };
     });
-    cats.forEach(function(c) { c.docPath = 'findings/' + c.docNum + '-' + c.slug + '.md'; });
+    cats.forEach(function(c) { c.docPath = 'findings/' + c.docNum + '-' + c.slug + '.md'; c.included = c.groups.length > 0; });
+    // Units with nothing actionable at the filter get no doc — the pack only
+    // carries real findings.
+    units.forEach(function(u) {
+      u._hasFindings = (u.report.categories || []).some(function(c) {
+        return (c.findings || []).some(function(f) { return passSev(f.severity) && f.severity !== 'pass'; });
+      });
+    });
     var allGroups = [];
     cats.forEach(function(c) { c.groups.forEach(function(g) { allGroups.push({ cat: c, g: g }); }); });
     allGroups.sort(function(a, b) { return (b.g.n - a.g.n) || (_sevRank(a.g.severity) - _sevRank(b.g.severity)) || (b.g.occ.length - a.g.occ.length); });
@@ -1398,7 +1409,7 @@ window.MilgReport = (function() {
     R.push('');
     R.push('| Unit | Score | Doc |');
     R.push('|------|-------|-----|');
-    units.forEach(function(u) { R.push('| ' + u.label + ' | ' + u.report.overall + '/100 (' + u.report.grade + ') | `units/' + u._docSlug + '.md` |'); });
+    units.forEach(function(u) { R.push('| ' + u.label + ' | ' + u.report.overall + '/100 (' + u.report.grade + ') | ' + (u._hasFindings ? '`units/' + u._docSlug + '.md`' : '— (no findings at this filter)') + ' |'); });
     R.push('');
     files.push({ path: 'README.md', text: R.join('\n') });
 
@@ -1494,16 +1505,15 @@ window.MilgReport = (function() {
     IX.push('');
     files.push({ path: 'findings/00-index.md', text: IX.join('\n') });
 
-    // ---- findings/NN-<category>.md ---------------------------------------
+    // ---- findings/NN-<category>.md (pruned: only categories with findings) --
     cats.forEach(function(c) {
+      if (!c.included) return;
       var D = [];
       D.push('# ' + c.label);
       D.push('');
       D.push('**Distinct issues:** ' + c.groups.length + ' · **Errors:** ' + c.errors + ' · **Warnings:** ' + c.warnings + ' · **Info:** ' + c.infos + ' · checked across ' + scopeSentence);
       D.push('');
-      if (c.groups.length === 0) {
-        D.push('_No issues in this category at the current severity filter (' + severityFilter + ')._');
-      } else {
+      {
         c.groups.forEach(function(g) {
           D.push('## ' + _sevIcon(g.severity) + ' [' + g.severity + '] ' + g.title);
           D.push('');
@@ -1528,8 +1538,9 @@ window.MilgReport = (function() {
       files.push({ path: c.docPath, text: D.join('\n') });
     });
 
-    // ---- units/<unit>.md (per-unit findings) ------------------------------
+    // ---- units/<unit>.md (per-unit findings; clean units are pruned) ------
     units.forEach(function(u) {
+      if (!u._hasFindings) return;
       var U = [];
       U.push('# ' + u.label);
       U.push('');
