@@ -479,11 +479,11 @@ function reattachPreset(d) {
     document.getElementById('themeSwatches').style.display = 'none';
     document.getElementById('styleButtons').style.display = 'none';
   } else {
-    renderPersonalityButtons(d.element, d.personality);
-    renderThemeSwatches(d.element, d.personality);
-    renderStyleButtons(d.element);
+    try { renderPersonalityButtons(d.element, d.personality); } catch (e) { console.error('[milg] personality render failed:', e); }
+    try { renderThemeSwatches(d.element, d.personality); } catch (e) { console.error('[milg] swatch render failed:', e); }
+    try { renderStyleButtons(d.element); } catch (e) { console.error('[milg] style render failed:', e); }
   }
-  syncMobileToolbar();
+  try { syncMobileToolbar(); } catch (e) { console.error('[milg] mobile toolbar sync failed:', e); }
   updateTemplateName();
 }
 
@@ -1011,16 +1011,18 @@ async function loadPreset(element, personality) {
     document.getElementById('styleButtons').style.display = 'none';
     currentStyleIndex = 0;
   } else {
-    renderPersonalityButtons(element, personality);
-    renderThemeSwatches(element, personality);
+    // Per-step guards, like autoLoadTemplate: a toolbar render failing must
+    // never stop the preview below from updating (the editor is already set).
+    try { renderPersonalityButtons(element, personality); } catch (e) { console.error('[milg] personality render failed:', e); }
+    try { renderThemeSwatches(element, personality); } catch (e) { console.error('[milg] swatch render failed:', e); }
     currentStyleIndex = 0;
-    renderStyleButtons(element);
+    try { renderStyleButtons(element); } catch (e) { console.error('[milg] style render failed:', e); }
   }
-  syncMobileToolbar();
+  try { syncMobileToolbar(); } catch (e) { console.error('[milg] mobile toolbar sync failed:', e); }
   // Keep the user's chosen accent across personality/template switches:
   // re-tint the freshly loaded preset instead of showing its stock primary.
   if (userAccentColor && personality !== 'before' && userAccentColor !== primary) {
-    selectTheme(userAccentColor);
+    try { selectTheme(userAccentColor); } catch (e) { console.error('[milg] accent reapply failed:', e); updatePreview(); }
   } else {
     updatePreview();
   }
