@@ -376,7 +376,7 @@ window.MilgRegion = (function() {
 
               var pms = window.modernScreenshot;
               if (!pms || !pms.domToCanvas) { _rgnFinish(rIdx, mf, null); return; }
-              pms.domToCanvas(mDoc.documentElement, { scale: _sc, timeout: 12000 }).then(function(rc) {
+              pms.domToCanvas(mDoc.documentElement, { scale: _sc, timeout: 12000, filter: function(n) { return !(n && n.getAttribute && n.getAttribute('data-milg-overlay')); } }).then(function(rc) {
                 // Crop canvas to DOM-computed content bounds (avoids pixel scanning)
                 var finalCanvas = rc;
                 if (_doCrop) {
@@ -528,7 +528,7 @@ window.MilgRegion = (function() {
                     if (!_mLayerDone) { _mLayerDone = true; console.warn('[milg-region] Mask layer ' + _mLi + ' timed out'); setTimeout(_mNextLayer, 0); }
                   }, 15000);
 
-                  pms.domToCanvas(mDoc.documentElement, { scale: _sc, timeout: 12000 }).then(function(mc) {
+                  pms.domToCanvas(mDoc.documentElement, { scale: _sc, timeout: 12000, filter: function(n) { return !(n && n.getAttribute && n.getAttribute('data-milg-overlay')); } }).then(function(mc) {
                     if (_mLayerDone) return; _mLayerDone = true; clearTimeout(_mLayerTimer);
                     var mCtx = mc.getContext('2d', { willReadFrequently: true });
                     var _fillFallbacks = 0;

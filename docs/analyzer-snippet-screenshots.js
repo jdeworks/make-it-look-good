@@ -186,9 +186,9 @@
         _p('Waiting for animations to settle...');
         setTimeout(function() {
           if (typeof window.__milgReReadBboxes === 'function') window.__milgReReadBboxes();
-          // Hide the snippet capture overlay so it isn't baked into screenshots.
-          var ov = document.querySelector('[data-milg-overlay]');
-          if (ov) ov.style.display = 'none';
+          // The overlay STAYS visible through the whole capture — the capture core
+          // excludes [data-milg-overlay] from every DOM clone via modern-screenshot's
+          // filter option, so it never appears in screenshots or masks.
           done();
         }, 1500);
       }

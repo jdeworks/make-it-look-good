@@ -244,10 +244,181 @@ window.MilgCapture = (function() {
             }
           };
 
+      // Record CSP violations during capture so failure paths can say exactly
+      // what the page blocked (img-src data:, connect-src, …).
+      var _cspViolations = [];
+      try { document.addEventListener("securitypolicyviolation", function(ev) { _cspViolations.push((ev.effectiveDirective || ev.violatedDirective || "?") + " → " + (ev.blockedURI || "?")); }); } catch (e) {}
+
+      // Skip the capture overlay while cloning the DOM, so it can stay visible to
+      // the user for the WHOLE capture without being baked into screenshots/masks.
+      function _msFilter(n) { return !(n && n.getAttribute && n.getAttribute("data-milg-overlay")); }
+
+      // modern-screenshot rasterizes by loading the cloned DOM as an SVG data: URL
+      // in an <img>. If the page's CSP img-src blocks data: URLs, that load can
+      // never paint — every capture would come back correctly sized but fully
+      // transparent. Probe with a 1x1 data: SVG up front (~5ms when allowed) so we
+      // can fall back fast instead of burning 45s+ per layer on hopeless captures.
+      function _probeDataUrl(cb) {
+        var _pd = false;
+        var im = new Image();
+        var t = setTimeout(function() { if (!_pd) { _pd = true; cb(false); } }, 2500);
+        im.onload = function() { if (!_pd) { _pd = true; clearTimeout(t); cb(true); } };
+        im.onerror = function() { if (!_pd) { _pd = true; clearTimeout(t); cb(false); } };
+        try { im.src = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"></svg>'); } catch (e) { if (!_pd) { _pd = true; clearTimeout(t); cb(false); } }
+      }
+
+      // A correctly-sized but fully transparent canvas means the rasterizer's SVG
+      // <img> never painted — catch it here instead of shipping a blank image.
+      function _isBlank(cv) {
+        try {
+          var w = Math.max(1, Math.min(cv.width, 64)), h = Math.max(1, Math.min(cv.height, 64));
+          var t = document.createElement("canvas"); t.width = w; t.height = h;
+          var tx = t.getContext("2d"); tx.drawImage(cv, 0, 0, w, h);
+          var d = tx.getImageData(0, 0, w, h).data;
+          for (var i = 3; i < d.length; i += 4) if (d[i] > 8) return false;
+          return true;
+        } catch (e) { return true; } // tainted/unreadable → same as blank for our purposes
+      }
+
+      // Last-resort renderer for pages whose CSP makes DOM rasterization impossible:
+      // repaint the live layout with plain canvas 2D — background rects + borders,
+      // pixel-copied images where readable (hatched placeholders where blocked/tainted),
+      // and text via fillText on the real line boxes. Approximate (no z-index, clips,
+      // gradients or SVG), but it preserves layout, palette and content, and canvas
+      // drawing itself is never subject to CSP.
+      function _syntheticRender() {
+        var W = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0, 320);
+        var H = Math.min(Math.max(fullH, vh), 20000);
+        var c = document.createElement("canvas");
+        c.width = Math.round(W * _sc); c.height = Math.round(H * _sc);
+        var x = c.getContext("2d");
+        function _opaque(col) { return col && col !== "transparent" && col.indexOf("rgba(0, 0, 0, 0)") !== 0; }
+        var _bodyBg = "", _htmlBg = "";
+        try { _bodyBg = getComputedStyle(document.body).backgroundColor; _htmlBg = getComputedStyle(document.documentElement).backgroundColor; } catch (e) {}
+        x.fillStyle = _opaque(_bodyBg) ? _bodyBg : _opaque(_htmlBg) ? _htmlBg : "#fff";
+        x.fillRect(0, 0, c.width, c.height);
+        var _sy = window.scrollY || 0, _sxp = window.scrollX || 0;
+        var _imgsDrawn = 0, _imgsPh = 0, _texts = 0;
+        function _drawPh(px, py, pw, ph) {
+          if (pw < 8 || ph < 8) return;
+          x.fillStyle = "#f1f5f9"; x.fillRect(px, py, pw, ph);
+          x.strokeStyle = "#cbd5e1"; x.lineWidth = 1;
+          x.strokeRect(px + 0.5, py + 0.5, pw - 1, ph - 1);
+          x.beginPath(); x.moveTo(px, py); x.lineTo(px + pw, py + ph); x.moveTo(px + pw, py); x.lineTo(px, py + ph); x.stroke();
+          _imgsPh++;
+        }
+        // Readability check on a 1x1 scratch canvas so the MAIN canvas never taints.
+        function _readable(el, needNatural) {
+          if (needNatural && !el.naturalWidth) return false;
+          try {
+            var t = document.createElement("canvas"); t.width = 1; t.height = 1;
+            var tx = t.getContext("2d"); tx.drawImage(el, 0, 0, 1, 1); tx.getImageData(0, 0, 1, 1);
+            return true;
+          } catch (e) { return false; }
+        }
+        var els = document.body.getElementsByTagName("*");
+        for (var i = 0; i < els.length; i++) {
+          var el = els[i];
+          var tag = el.tagName;
+          if (tag === "SCRIPT" || tag === "STYLE" || tag === "NOSCRIPT" || tag === "LINK" || tag === "META") continue;
+          // SVG content can't be repainted without data: URLs — skip it quietly.
+          if (el.namespaceURI && el.namespaceURI.indexOf("svg") !== -1) continue;
+          if (el.closest && el.closest("[data-milg-overlay]")) continue;
+          var cs; try { cs = getComputedStyle(el); } catch (e) { continue; }
+          if (cs.display === "none" || cs.visibility === "hidden" || parseFloat(cs.opacity) === 0) continue;
+          var r = el.getBoundingClientRect();
+          if (!r.width || !r.height) continue;
+          var top = r.top + _sy, left = r.left + _sxp;
+          if (top > H || top + r.height < 0) continue;
+          var px = left * _sc, py = top * _sc, pw = r.width * _sc, ph = r.height * _sc;
+          if (_opaque(cs.backgroundColor)) { x.fillStyle = cs.backgroundColor; x.fillRect(px, py, pw, ph); }
+          var _bw = parseFloat(cs.borderTopWidth) || 0;
+          if (_bw > 0 && _opaque(cs.borderTopColor)) { x.strokeStyle = cs.borderTopColor; x.lineWidth = Math.max(1, _bw * _sc); x.strokeRect(px, py, pw, ph); }
+          if (tag === "IMG") {
+            if (_readable(el, true)) { try { x.drawImage(el, px, py, pw, ph); _imgsDrawn++; } catch (e) { _drawPh(px, py, pw, ph); } }
+            else { _drawPh(px, py, pw, ph); }
+            continue;
+          }
+          if (tag === "CANVAS" || tag === "VIDEO") {
+            if (_readable(el, false)) { try { x.drawImage(el, px, py, pw, ph); _imgsDrawn++; } catch (e) { _drawPh(px, py, pw, ph); } }
+            else { _drawPh(px, py, pw, ph); }
+            continue;
+          }
+          if (tag === "IFRAME") { _drawPh(px, py, pw, ph); continue; }
+          // Large unrendered background images get a placeholder hatch too (heroes, cards).
+          if (cs.backgroundImage && cs.backgroundImage.indexOf("url(") !== -1 && r.width * r.height > 10000) { _drawPh(px, py, pw, ph); }
+          if ((tag === "INPUT" || tag === "TEXTAREA") && (el.value || el.placeholder)) {
+            x.fillStyle = cs.color; x.textBaseline = "middle";
+            x.font = cs.fontStyle + " " + cs.fontWeight + " " + ((parseFloat(cs.fontSize) || 14) * _sc) + "px " + cs.fontFamily;
+            x.fillText(el.value || el.placeholder, px + 8 * _sc, py + ph / 2);
+            _texts++;
+            continue;
+          }
+          // Text: draw each direct text node onto its real layout line boxes.
+          for (var node = el.firstChild; node; node = node.nextSibling) {
+            if (node.nodeType !== 3) continue;
+            var _txt = node.textContent.replace(/\s+/g, " ").trim();
+            if (!_txt) continue;
+            var rects;
+            try { var rg = document.createRange(); rg.selectNodeContents(node); rects = rg.getClientRects(); } catch (e) { continue; }
+            if (!rects || !rects.length) continue;
+            x.fillStyle = cs.color;
+            x.font = cs.fontStyle + " " + cs.fontWeight + " " + ((parseFloat(cs.fontSize) || 14) * _sc) + "px " + cs.fontFamily;
+            x.textBaseline = "middle";
+            var _words = _txt.split(" "), _wi = 0;
+            for (var _ri = 0; _ri < rects.length && _wi < _words.length; _ri++) {
+              var rr = rects[_ri];
+              if (!rr.width || !rr.height) continue;
+              var _maxW = rr.width * _sc + 2;
+              var _line = _words[_wi++];
+              while (_wi < _words.length && x.measureText(_line + " " + _words[_wi]).width <= _maxW) { _line += " " + _words[_wi++]; }
+              if (_ri === rects.length - 1) { while (_wi < _words.length) _line += " " + _words[_wi++]; }
+              x.fillText(_line, (rr.left + _sxp) * _sc, (rr.top + _sy + rr.height / 2) * _sc);
+              _texts++;
+            }
+          }
+        }
+        return { canvas: c, imgsDrawn: _imgsDrawn, imgsPh: _imgsPh, texts: _texts };
+      }
+
+      // Send a synthetic-fallback result. Masks and regions are skipped on purpose:
+      // pixel-verify against a repainted approximation would be meaningless.
+      function _sendSynthetic(reason) {
+        try {
+          _prog("CSP blocks rendering — drawing fallback screenshot…");
+          console.warn("%c[milg] " + reason + " Building a canvas-drawn fallback instead: layout, colors and text are repainted; readable images are pixel-copied; blocked ones become placeholders. Pixel-level text masks are skipped.", "color:#b45309");
+          if (_cspViolations.length) console.warn("[milg] CSP violations seen during capture: " + _cspViolations.slice(0, 8).join(", ") + (_cspViolations.length > 8 ? " … +" + (_cspViolations.length - 8) + " more" : ""));
+          var _syn = _syntheticRender();
+          var c = _syn.canvas;
+          var uri; try { uri = c.toDataURL("image/webp", _q); } catch (e) { uri = ""; }
+          console.log("[iframe-ss] Synthetic fallback screenshot: " + c.width + "x" + c.height + " (" + _syn.imgsDrawn + " images copied, " + _syn.imgsPh + " placeholders, " + _syn.texts + " text runs)" + (uri ? "" : " — encode failed"));
+          _sendFn({
+            type: _msgType, _iframeId: _mid,
+            screenshots: uri ? [uri] : [],
+            screenshotFull: uri || null,
+            screenshotClean: uri || null,
+            textMask: null,
+            screenshotMeta: { scale: _sc, viewportHeight: vh, sectionCount: 1, canvasWidth: c.width, canvasHeight: c.height, docHeightAtCapture: fullH, calibrationOffsetY: 0, calibrationSamples: [], synthetic: true, syntheticReason: reason },
+            screenshotCleanMeta: { canvasWidth: c.width, canvasHeight: c.height, synthetic: true },
+            regionScreenshots: [],
+            updatedData: null
+          }, true);
+        } catch (e) {
+          console.warn("[iframe-ss] synthetic fallback failed:", e);
+          _sendFn({ type: _msgType, screenshots: [], _iframeId: _mid }, true);
+        }
+      }
+
       // PRE: mode-specific prep (height-unlock/pre-scroll/force-reveal/anim/overflow).
       _preHook(_prog, function() {
         fullH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
         console.log("[iframe-ss] scrollHeight=" + fullH + " vh=" + vh);
+        _probeDataUrl(function(_dataOk) {
+        window.__milgDataUrlOk = _dataOk;
+        if (!_dataOk) {
+          _sendSynthetic("This page's CSP blocks data: image URLs, which the screenshot renderer needs internally — it can never rasterize here (that's also why captures came back transparent).");
+          return;
+        }
         var s = document.createElement("script");
         s.src = _cdn;
         s.onload = function() {
@@ -264,8 +435,13 @@ window.MilgCapture = (function() {
             // image-heavy or CSP-locked page looks frozen for up to 45s.
             var _hbT = Date.now();
             var _hb = setInterval(function() { _prog("Rendering screenshot (" + Math.round((Date.now() - _hbT) / 1000) + "s)… image-heavy or CSP-locked pages take longer"); }, 1500);
-            ms.domToCanvas(document.documentElement, { scale: _sc, timeout: 45000 }).then(function(_cleanCanvas) {
+            ms.domToCanvas(document.documentElement, { scale: _sc, timeout: 45000, filter: _msFilter }).then(function(_cleanCanvas) {
               if (typeof _hb !== "undefined") clearInterval(_hb);
+              if (_isBlank(_cleanCanvas)) {
+                console.warn("[iframe-ss] Clean screenshot rendered fully transparent (" + _cleanCanvas.width + "x" + _cleanCanvas.height + ")");
+                _sendSynthetic("The rendered screenshot came back empty — the page's CSP (or a rasterizer failure) blocked the internal image load.");
+                return;
+              }
               var _cleanUri; try { _cleanUri = _cleanCanvas.toDataURL("image/webp", _q); } catch (e) { _cleanUri = ""; }
               var _cleanW = _cleanCanvas.width, _cleanH = _cleanCanvas.height;
               console.log("[iframe-ss] Clean screenshot: " + _cleanW + "x" + _cleanH);
@@ -327,7 +503,7 @@ window.MilgCapture = (function() {
                 // Phase C: Expanded screenshot (all carousel content visible, bboxes aligned)
                 _prog("Capturing expanded screenshot...");
                 console.log("[iframe-ss] Capturing expanded screenshot at " + _sc + "x...");
-                ms.domToCanvas(document.documentElement, { scale: _sc, timeout: 45000 }).then(function(fc) {
+                ms.domToCanvas(document.documentElement, { scale: _sc, timeout: 45000, filter: _msFilter }).then(function(fc) {
                   console.log("[iframe-ss] Expanded screenshot: " + fc.width + "x" + fc.height);
                   var fullUri; try { fullUri = fc.toDataURL("image/webp", _q); } catch (e) { console.warn("[milg-warn] WebP conversion failed:", e.message); fullUri = ""; }
                   var _cw = fc.width, _ch = fc.height;
@@ -418,7 +594,10 @@ window.MilgCapture = (function() {
                     // Phase B: Global mask style — white bg, white text, hide media
                     var _maskStyle = document.createElement("style");
                     _maskStyle.setAttribute("data-milg-mask", "1");
-                    _maskStyle.textContent = "*,*::before,*::after{color:#fff !important;background-color:transparent !important;background-image:none !important;background:transparent !important;border-color:transparent !important;box-shadow:none !important;text-shadow:none !important;outline-color:transparent !important;-webkit-text-fill-color:#fff !important;opacity:1 !important;transition:none !important;animation:none !important;}html{background:#fff !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}";
+                    _maskStyle.textContent = "*,*::before,*::after{color:#fff !important;background-color:transparent !important;background-image:none !important;background:transparent !important;border-color:transparent !important;box-shadow:none !important;text-shadow:none !important;outline-color:transparent !important;-webkit-text-fill-color:#fff !important;opacity:1 !important;transition:none !important;animation:none !important;}html{background:#fff !important;}img,svg,video,canvas,picture,iframe{opacity:0 !important;}" +
+                      // Keep the capture overlay legible during mask passes — it is filtered
+                      // out of the canvas clone, so exempting it here only affects the user's view.
+                      "[data-milg-overlay]{background:rgba(0,0,0,0.6) !important;}[data-milg-overlay] *{color:#fff !important;-webkit-text-fill-color:#fff !important;border-color:rgba(255,255,255,0.3) !important;border-top-color:#fff !important;}";
                     document.head.appendChild(_maskStyle); void document.body.offsetHeight;
                     // Re-read bboxes AFTER mask style — white bg + hidden media can shift layout
                     if (typeof window.__milgReReadBboxes === "function") {
@@ -483,7 +662,7 @@ window.MilgCapture = (function() {
                       console.log("[iframe-ss] Layer " + _li + ": starting domToCanvas...");
                       var _layerDone = false;
                       var _layerTimer = setTimeout(function() { if (!_layerDone) { _layerDone = true; console.warn("[iframe-ss] Layer " + _li + " domToCanvas timed out (120s)"); setTimeout(_nextLayer, 0); } }, 120000);
-                      ms.domToCanvas(document.documentElement, { scale: _sc, timeout: 12000 }).then(function(mc) {
+                      ms.domToCanvas(document.documentElement, { scale: _sc, timeout: 12000, filter: _msFilter }).then(function(mc) {
                         if (_layerDone) return; _layerDone = true; clearTimeout(_layerTimer);
                         console.log("[iframe-ss] Layer " + _li + " captured: " + mc.width + "x" + mc.height);
                         var mCtx = mc.getContext("2d", { willReadFrequently: true });
@@ -577,13 +756,27 @@ window.MilgCapture = (function() {
                     _sendFinal = function() { if (_maskDone) return; _maskDone = true; clearTimeout(_maskTimer); console.log("[iframe-ss] Sending results (maskResults: " + Object.keys(_maskResults).length + " pairs)"); _origSendFinal(); };
                     _nextLayer();
                   }); // end document.fonts.ready.then
-                }).catch(function(e) { console.warn("[iframe-ss] expanded capture failed:", e); _sendFn({ type: _msgType, screenshots: [], _iframeId: _mid }, true); });
+                }).catch(function(e) {
+                  // Expanded capture failed but the clean screenshot succeeded — ship that
+                  // instead of returning nothing.
+                  console.warn("[iframe-ss] expanded capture failed:", e, "— falling back to clean screenshot");
+                  _sendFn({
+                    type: _msgType, _iframeId: _mid,
+                    screenshots: _cleanUri ? [_cleanUri] : [],
+                    screenshotFull: _cleanUri || null,
+                    screenshotClean: _cleanUri || null,
+                    textMask: null,
+                    screenshotMeta: { scale: _sc, viewportHeight: vh, sectionCount: 1, canvasWidth: _cleanW, canvasHeight: _cleanH, docHeightAtCapture: fullH, calibrationOffsetY: 0, calibrationSamples: [] },
+                    screenshotCleanMeta: { canvasWidth: _cleanW, canvasHeight: _cleanH },
+                    regionScreenshots: window.__milgRegionScreenshots || [],
+                    updatedData: null
+                  }, true);
+                });
               }); // close _buildRegionScreenshots callback
             }).catch(function(e) {
               if (typeof _hb !== "undefined") clearInterval(_hb);
               console.warn("[iframe-ss] clean capture failed:", e);
-              console.warn("%c[milg] Screenshot unavailable for this page. This usually means cross-origin images couldn't be inlined under the site's Content-Security-Policy (the 'Refused to connect/load' errors above). The extracted design data is still accurate — just paste it into the analyzer; only the visual screenshot/pixel-verify is missing.", "color:#b45309");
-              _sendFn({ type: _msgType, screenshots: [], _iframeId: _mid }, true);
+              _sendSynthetic("The DOM rasterizer failed on this page (usually the site's Content-Security-Policy — see the 'Refused to connect/load' errors above).");
             });
           }); // close _preloadFn callback
         };
@@ -596,6 +789,7 @@ window.MilgCapture = (function() {
         } else {
           document.head.appendChild(s);
         }
+        }); // close _probeDataUrl
       });
     };
   }

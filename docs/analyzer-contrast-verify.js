@@ -1301,6 +1301,9 @@ window.MilgContrastVerify = (function() {
 
     // Fallback: post-hoc verification from screenshot canvases (iframe path)
     if (!raw.screenshots || !raw.screenshotMeta) { callback([]); return; }
+    // Synthetic screenshots are canvas-drawn approximations (CSP fallback) —
+    // sampling their pixels would verify our own repaint, not the real page.
+    if (raw.screenshotMeta.synthetic) { console.log('[milg-verify] Skipping pixel verify: screenshot is a synthetic CSP fallback'); callback([]); return; }
     var meta = raw.screenshotMeta;
 
     // Load screenshots. Per-pair _maskBmp bitmaps (built in capture) are the

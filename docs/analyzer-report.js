@@ -76,7 +76,8 @@ window.MilgReport = (function() {
       html += '<div style="max-width:240px;border:1px solid var(--border);border-radius:6px;overflow:hidden;cursor:zoom-in;transition:box-shadow 0.2s" ' +
         'onmouseenter="this.style.boxShadow=\'0 0 0 2px var(--primary)\'" onmouseleave="this.style.boxShadow=\'none\'">';
       html += '<img src="' + _previewSrc + '" alt="Page screenshot" style="width:100%;display:block" onclick="window.__milgZoomScreenshot(this,0)" loading="lazy">';
-      html += '<div style="padding:4px 8px;font-size:10px;color:var(--text-secondary);background:var(--bg-alt);text-align:center">Click to open viewer</div>';
+      var _synMeta = report.raw.screenshotMeta && report.raw.screenshotMeta.synthetic;
+      html += '<div style="padding:4px 8px;font-size:10px;color:var(--text-secondary);background:var(--bg-alt);text-align:center">' + (_synMeta ? '⚠ Approximate rendering — the page’s CSP blocked real screenshots' : 'Click to open viewer') + '</div>';
       html += '</div>';
       html += '</div>';
     }
