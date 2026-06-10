@@ -95,21 +95,9 @@ function scoreVisualConsistency(data) {
     }
   }
 
-  // Dark mode support consistency
-  if (data.structure) {
-    checks++;
-    if (data.structure.darkModeClasses) {
-      passed++;
-    } else {
-      findings.push({
-        severity: 'info',
-        title: 'No dark mode support detected',
-        detail: 'Dark mode is expected by ~80% of users (Android settings data).',
-        fix: 'Add dark mode with dark: variants in Tailwind or prefers-color-scheme media query.',
-        source: 'Apple HIG — https://developer.apple.com/design/human-interface-guidelines/dark-mode'
-      });
-    }
-  }
+  // Dark mode is reported ONLY by scoring/accessibility.js — three modules used
+  // to emit the same "No dark mode support detected" finding (triplicated in
+  // every report). Single source of truth now; no check here.
 
   // Border width inconsistencies in sibling groups
   var borderInc = (data.consistency && data.consistency.borderWidthInconsistencies) || 0;

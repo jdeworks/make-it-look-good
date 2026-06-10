@@ -26,20 +26,8 @@ function scoreResponsive(data) {
     });
   }
 
-  // Dark mode
-  checks++;
-  if (struct.darkModeClasses) {
-    passed++;
-  } else {
-    findings.push({
-      severity: 'info',
-      title: 'No dark mode support detected',
-      detail: 'dark: class variants not found',
-      fix: 'Add dark mode variants. In Tailwind: dark:bg-slate-900 dark:text-slate-100',
-      presetRef: 'All presets include dark: variants',
-      source: 'Apple HIG — https://developer.apple.com/design/human-interface-guidelines/dark-mode'
-    });
-  }
+  // Dark mode is reported ONLY by scoring/accessibility.js (was triplicated
+  // across accessibility/consistency/responsive). No check here anymore.
 
   // Viewport width check — if analyzed on desktop, check if content is flexible
   checks++;

@@ -185,11 +185,23 @@ window.MilgExtract = (function() {
     if (/class="[^"]*(?:sm:|md:|lg:|xl:)/.test(htmlStr) || /class="[^"]*(?:flex|grid|text-|bg-|p-|m-)/.test(htmlStr)) { data.structure.tailwindDetected = true; data.structure.cssFramework = 'tailwind'; }
     else if (/class="[^"]*(?:col-md|col-sm|btn-primary|container-fluid)/.test(htmlStr)) { data.structure.cssFramework = 'bootstrap'; }
     data.structure.darkModeClasses = /class="[^"]*dark:/.test(htmlStr) || document.body.classList.contains('dark-ui') || document.body.classList.contains('dark-mode') || document.body.classList.contains('dark-theme') || document.documentElement.classList.contains('dark') || document.documentElement.getAttribute('data-theme') === 'dark' || document.body.getAttribute('data-theme') === 'dark' || document.querySelector('[data-bs-theme="dark"]') !== null || Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r.cssText && r.cssText.indexOf('prefers-color-scheme') !== -1; }); } catch(e) { return false; } });
+    // JS-toggle heuristic: a dark/theme toggle control means dark mode EXISTS even
+    // when the page is currently in light mode (class-based toggles leave no static
+    // trace). Without this, pages like our own analyzer got "no dark mode" while
+    // sporting a moon button in the header.
+    if (!data.structure.darkModeClasses) {
+      try {
+        data.structure.darkModeClasses = !!document.querySelector('button[title*="dark" i],button[aria-label*="dark" i],[role="switch"][aria-label*="dark" i],[id*="darkmode" i],[id*="dark-mode" i],[id="darkBtn"],[class*="dark-toggle" i],[class*="theme-toggle" i]');
+      } catch (e) {}
+    }
     data.structure.responsiveClasses = /class="[^"]*(?:sm:|md:|lg:|xl:)/.test(htmlStr) || Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r instanceof CSSMediaRule && /max-width|min-width/.test(r.conditionText || ''); }); } catch(e) { return false; } });
 
     // Decorative element detection — only skip aria-hidden if actually hidden
     var decorativeEls = new Set();
-    var defaultExclude = '[role="img"], [role="presentation"], [data-decorative]';
+    // Includes the analyzer's own capture artifacts (iframe placeholders, capture
+    // overlay) — region re-extraction runs while they're in the DOM, and they must
+    // never appear as findings about the analyzed page.
+    var defaultExclude = '[role="img"], [role="presentation"], [data-decorative], [data-milg-iframe-ph], [data-milg-overlay]';
     // User-defined exclude selector (passed via window.__milgExclude)
     var userExclude = window.__milgExclude || '';
     var fullExclude = userExclude ? defaultExclude + ', ' + userExclude : defaultExclude;
@@ -501,6 +513,7 @@ window.MilgExtract = (function() {
     else if (document.body.classList.contains('dark-ui') || document.body.classList.contains('dark-mode') || document.body.classList.contains('dark-theme')) data.structure.darkModeMethod = 'body-class';
     else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) data.structure.darkModeMethod = 'media-query';
     else if (document.querySelector('[data-theme="dark"]') || document.documentElement.getAttribute('data-theme') === 'dark' || document.body.getAttribute('data-theme') === 'dark') data.structure.darkModeMethod = 'data-attribute';
+    else if (function() { try { return !!document.querySelector('button[title*="dark" i],button[aria-label*="dark" i],[id*="darkmode" i],[id*="dark-mode" i],[id="darkBtn"],[class*="dark-toggle" i],[class*="theme-toggle" i]'); } catch (e) { return false; } }()) data.structure.darkModeMethod = 'toggle-control';
     else if (isDarkPage) data.structure.darkModeMethod = 'inferred-from-colors';
 
     data.spacing.paddings = mapToSorted(paddingMap);
@@ -559,6 +572,10 @@ window.MilgExtract = (function() {
       if (!isVisible(el) || isDecorative(el) || _isScreenReaderOnly(el)) return;
       var rect = el.getBoundingClientRect();
       var w = Math.round(rect.width), h = Math.round(rect.height);
+      // Sub-2px inputs are implementation plumbing (Monaco's hidden textarea,
+      // visually-hidden native checkboxes behind styled labels) — the real
+      // interactive surface is elsewhere, so flagging them is noise.
+      if (w < 2 || h < 2) return;
       if (w < 44 || h < 44) {
         // Checkbox/radio: check if label provides adequate touch target
         if (el.tagName === 'INPUT' && (el.type === 'checkbox' || el.type === 'radio')) {
@@ -741,6 +758,9 @@ window.MilgExtract = (function() {
       if (_semEls.hasOwnProperty(_tn)) _semEls[_tn]++;
     }
     data.accessibility.semanticElements = _semEls;
+    // lang attribute — scoring (accessibility.js) reads this; it was never set
+    // before, so EVERY page got a false "Missing lang attribute" error.
+    data.accessibility.langAttribute = (document.documentElement.getAttribute('lang') || '').trim();
     var navEls = document.querySelectorAll('nav'); var navItemCount = 0;
     navEls.forEach(function(nav) { var topLinks = nav.querySelectorAll(':scope > a, :scope > ul > li > a, :scope > ol > li > a, :scope > button, :scope > ul > li > button'); navItemCount += topLinks.length; });
     data.accessibility.navItemCount = navItemCount;

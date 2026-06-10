@@ -23,10 +23,11 @@ function scoreAccessibility(data) {
   if (semanticCount >= 2 || elCount < 50) {
     passed++; // Small components don't need full page landmarks
   } else {
+    var _semFound = [hasHeader ? 'header' : null, hasNav ? 'nav' : null, hasMain ? 'main' : null, semantic.footer ? 'footer' : null].filter(Boolean).join(', ');
     findings.push({
       severity: semanticCount === 0 ? 'error' : 'warning',
       title: 'Missing semantic HTML elements',
-      detail: 'Found: ' + (hasHeader ? 'header ' : '') + (hasNav ? 'nav ' : '') + (hasMain ? 'main ' : '') + (semantic.footer ? 'footer' : ''),
+      detail: _semFound ? 'Found only: ' + _semFound : 'No <header>, <nav> or <main> landmarks found — the page is built from generic containers',
       fix: 'Use <header>, <nav>, <main>, <footer> for page structure. Screen readers rely on these landmarks.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships',
       presetRef: 'All presets use semantic HTML landmarks'
     });
