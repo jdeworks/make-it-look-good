@@ -354,7 +354,10 @@ window.MilgExtract = (function() {
       var elWidth = elRect.width;
       var charWidth = fontSize * 0.5;
       var charsPerLine = Math.round(elWidth / charWidth);
-      if (charsPerLine > data.typography.maxLineLength.chars && el.tagName !== 'SCRIPT' && el.tagName !== 'STYLE' && !el.closest('pre') && !el.closest('code')) {
+      // Only count lines the text can actually FILL: a wide single-line control
+      // ("Analyze" on a full-width button, a <summary> row) has no long line to
+      // read — its text ends long before the container edge.
+      if (charsPerLine > data.typography.maxLineLength.chars && node.textContent.trim().length >= charsPerLine && el.tagName !== 'SCRIPT' && el.tagName !== 'STYLE' && !el.closest('pre') && !el.closest('code')) {
         data.typography.maxLineLength = { chars: charsPerLine, element: cssSelector(el), fontSize: Math.round(fontSize), textLength: node.textContent.trim().length, bbox: null };
         trackBbox(el, data.typography.maxLineLength, 'bbox');
       }
@@ -834,7 +837,11 @@ window.MilgExtract = (function() {
           var ancTag = anc.tagName.toLowerCase();
           var isData = !!_iframeDataContentTags[ancTag] || !!anc.closest('table,pre,code');
           var isWide = anc.clientWidth >= vpW * 0.8;
-          if (isData && !isWide) { inIntentionalScroll = true; break; }
+          // A short horizontal STRIP (toolbar, chip row, carousel) that scrolls
+          // sideways is intentional UI — its content is reachable by design.
+          // Only tall, page-wide scrollers indicate accidental horizontal scroll.
+          var isStrip = anc.clientHeight > 0 && anc.clientHeight <= 200;
+          if ((isData && !isWide) || isStrip) { inIntentionalScroll = true; break; }
           break;
         }
         anc = anc.parentElement;
@@ -1060,6 +1067,10 @@ window.MilgExtract = (function() {
     data.layout.nestedScrollbars = 0;
     var overflowEls = document.querySelectorAll('[style*="overflow"],[class*="overflow"]');
     overflowEls.forEach(function(oel) {
+      // Virtual scrollers (Monaco, canvas-based editors/grids) report absurd
+      // scrollWidth (millions of px) as an implementation trick — no real
+      // layout spills that far. Skip them; genuine spills are a few thousand px.
+      if (oel.scrollWidth - oel.clientWidth > 50000) return;
       if (oel.scrollWidth > oel.clientWidth + 2 && oel.clientWidth > 0) {
         var tag = oel.tagName.toLowerCase();
         var oelStyle = getComputedStyle(oel);

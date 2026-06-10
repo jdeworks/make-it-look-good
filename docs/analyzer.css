@@ -237,6 +237,11 @@ body.dark-ui #jsEnabledOptions {
   font-size: 18px;
   cursor: pointer;
   padding: 2px 6px;
+  min-width: 32px;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 4px;
   opacity: 0;
   transition: opacity 0.15s, color 0.15s;
@@ -307,11 +312,13 @@ body.dark-ui #jsEnabledOptions {
 }
 
 .tab-btn:hover { color: var(--text); }
-.tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
+/* Blue-600 in light mode: white-bg AA for 13px text (blue-500 was 3.68:1) */
+.tab-btn.active { color: #2563eb; border-bottom-color: #2563eb; }
+body.dark-ui .tab-btn.active { color: #60a5fa; border-bottom-color: #60a5fa; }
 
 .tab-sub {
   font-size: 10px;
-  opacity: 0.7;
+  color: var(--text-secondary);
   font-weight: 400;
 }
 
@@ -780,7 +787,7 @@ body.dark-ui .viewport-tag.viewport-error { background: #451a1a; color: #f87171;
 .progress-fill {
   height: 100%;
   border-radius: 2px;
-  transition: width 0.6s ease;
+  transition: width 0.45s ease;
 }
 
 .report-card-counts {
@@ -1467,3 +1474,8 @@ body.dark-ui .milg-viewer-overlap-item:hover { background: #334155; }
   .milg-viewer-tooltip { max-width: 280px; font-size: 11px; }
   .milg-viewer-overlap-picker { max-width: 300px; }
 }
+
+/* Touch targets: checkbox rows act as the hit area — keep them ≥32px tall.
+   Long help paragraphs capped at a readable measure (~75 chars of body text). */
+label:has(> input[type="checkbox"]) { min-height: 32px; }
+.tab-content p, .input-area p { max-width: 58ch; }

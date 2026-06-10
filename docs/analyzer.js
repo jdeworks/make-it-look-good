@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.44 loaded');
+console.log('[milg] analyzer.js v3.11.45 loaded');
 
 (function() {
   "use strict";
@@ -345,11 +345,11 @@ console.log('[milg] analyzer.js v3.11.44 loaded');
         var parts = entry.settings.split('|');
         parts.forEach(function(p) {
           if (p === 'deep') settingsBadges += '<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:var(--accent);color:#fff;margin-left:3px">deep</span>';
-          else if (p === 'pxv') settingsBadges += '<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:#8b5cf6;color:#fff;margin-left:3px">verify</span>';
+          else if (p === 'pxv') settingsBadges += '<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:#7c3aed;color:#fff;margin-left:3px">verify</span>';
         });
       }
       html += '<div class="history-item" title="' + (entry.url || '').replace(/"/g, '&quot;') + (entry.elements ? '\n' + entry.elements + ' elements, ' + (entry.contrastPairs || 0) + ' contrast pairs' : '') + (entry.settings ? '\nSettings: ' + entry.settings : '') + '">';
-      html += '<span class="history-score" style="color:' + (entry.score >= 80 ? '#16a34a' : entry.score >= 60 ? '#ca8a04' : '#dc2626') + '">' + entry.score + '</span>';
+      html += '<span class="history-score" style="color:' + (entry.score >= 80 ? '#15803d' : entry.score >= 60 ? '#a16207' : '#dc2626') + '">' + entry.score + '</span>';
       html += '<span class="history-url">' + label + settingsBadges + '</span>';
       html += '<span class="history-date">' + dateStr + '</span>';
       html += '<button class="history-delete" onclick="event.stopPropagation();window.__milgDeleteHistory(' + idx + ')" title="Remove from history">&times;</button>';
@@ -1123,7 +1123,7 @@ console.log('[milg] analyzer.js v3.11.44 loaded');
     var _embeddedLibCache = null;
     function _getEmbeddedLib(cb) {
       if (_embeddedLibCache) { cb(_embeddedLibCache); return; }
-      fetch(EMBED_LIB_URL + '?v=3.11.44')
+      fetch(EMBED_LIB_URL + '?v=3.11.45')
         .then(function(r) { return r.ok ? r.text() : ''; })
         .then(function(t) {
           if (t && t.indexOf('modernScreenshot') !== -1) { _embeddedLibCache = t; cb(t); }

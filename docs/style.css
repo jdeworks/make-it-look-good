@@ -10,6 +10,10 @@
       --border: #e2e8f0;
       --primary: #3b82f6;
       --primary-hover: #2563eb;
+      /* AA-safe variants: -strong for small colored text on --bg, -active for
+         white text on a filled control (≥4.5:1 in both themes) */
+      --primary-strong: #1d4ed8;
+      --primary-active: #2563eb;
       --radius: 8px;
       --shadow: 0 1px 3px rgba(0,0,0,0.08);
       --font: 'Inter', system-ui, -apple-system, sans-serif;
@@ -26,6 +30,8 @@
       --border: #334155;
       --primary: #3b82f6;
       --primary-hover: #60a5fa;
+      --primary-strong: #60a5fa;
+      --primary-active: #2563eb;
       --shadow: 0 1px 3px rgba(0,0,0,0.3);
     }
 
@@ -373,13 +379,16 @@
     }
 
     .theme-swatch {
-      width: 16px;
-      height: 16px;
+      /* 32px hit area (desktop recommendation) with a 20px visible dot:
+         background-clip keeps the color inside the content box. */
+      width: 32px;
+      height: 32px;
       border-radius: 50%;
       border: 2px solid transparent;
+      background-clip: content-box;
       cursor: pointer;
       transition: border-color 0.15s, transform 0.15s;
-      padding: 0;
+      padding: 4px;
       flex-shrink: 0;
     }
     .theme-swatch:hover { transform: scale(1.2); }
@@ -390,10 +399,11 @@
 
     .pers-btn {
       padding: 3px 10px;
+      min-height: 24px;
       border: 1.5px solid var(--primary);
       border-radius: 9999px;
       background: var(--bg);
-      color: var(--primary);
+      color: var(--primary-strong);
       font-size: 11px;
       font-weight: 600;
       font-family: var(--font);
@@ -401,11 +411,12 @@
       transition: all 0.15s ease;
       white-space: nowrap;
     }
-    .pers-btn:hover { background: var(--primary); color: white; }
-    .pers-btn.active { background: var(--primary); color: white; }
+    .pers-btn:hover { background: var(--primary-active); border-color: var(--primary-active); color: white; }
+    .pers-btn.active { background: var(--primary-active); border-color: var(--primary-active); color: white; }
 
     .style-btn {
       padding: 3px 8px;
+      min-height: 24px;
       border: 1px solid var(--border);
       border-radius: 4px;
       background: var(--bg);
@@ -478,8 +489,8 @@
     }
     .btn-nav {
       padding: 4px 5px;
-      min-width: 26px;
-      min-height: 30px;
+      min-width: 32px;
+      min-height: 32px;
       border: none;
       border-radius: 0;
       background: var(--bg);
@@ -718,4 +729,33 @@
       .logo-sub { display: none; }
       .logo-full { display: none; }
       .logo-short { display: inline !important; }
+    }
+
+    /* Visible keyboard focus for all interactive elements (WCAG 2.4.7) */
+    :focus-visible {
+      outline: 2px solid var(--primary);
+      outline-offset: 2px;
+    }
+
+    /* Respect reduced-motion preference (vestibular disorders) */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+      }
+    }
+
+    /* Screen-reader-only content */
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
     }
