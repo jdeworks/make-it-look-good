@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.56 loaded');
+console.log('[milg] analyzer.js v3.11.57 loaded');
 
 (function() {
   "use strict";
@@ -140,6 +140,9 @@ console.log('[milg] analyzer.js v3.11.56 loaded');
     _finalizeModalStep();
     _lastModalMsg = msg;
     _lastModalStart = Date.now();
+    // Ensure each new message starts on its own line
+    var _cur = _focusModalLog.textContent;
+    if (_cur && _cur[_cur.length - 1] !== '\n') _focusModalLog.textContent += '\n';
     _focusModalLog.textContent += msg;
     // Start a live timer that updates the current line every second
     clearInterval(_modalTimer);
@@ -256,7 +259,8 @@ console.log('[milg] analyzer.js v3.11.56 loaded');
     screenshotCDN: SCREENSHOT_CDN,
     proxyUrl: CORS_PROXY_URL,
     getViewport: getSelectedViewport,
-    showProgress: showProgress
+    showProgress: showProgress,
+    updateFocusModal: updateFocusModal
   });
 
   MilgProxy.init({
@@ -1124,7 +1128,7 @@ console.log('[milg] analyzer.js v3.11.56 loaded');
     var _embeddedLibCache = null;
     function _getEmbeddedLib(cb) {
       if (_embeddedLibCache) { cb(_embeddedLibCache); return; }
-      fetch(EMBED_LIB_URL + '?v=3.11.56')
+      fetch(EMBED_LIB_URL + '?v=3.11.57')
         .then(function(r) { return r.ok ? r.text() : ''; })
         .then(function(t) {
           if (t && t.indexOf('modernScreenshot') !== -1) { _embeddedLibCache = t; cb(t); }

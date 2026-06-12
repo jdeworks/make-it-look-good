@@ -139,6 +139,19 @@ window.MilgExtract = (function() {
       var r = el.getBoundingClientRect();
       return r.width > 0 && r.height > 0;
     }
+    // Detect elements hidden at capture time due to closed <details> or content-visibility:hidden.
+    // Chrome 131+ returns real geometry for content inside closed <details> (content-visibility:hidden),
+    // so isVisible() passes but the content is not visible to the user.
+    function _isHiddenAtCapture(el) {
+      try {
+        if (typeof el.checkVisibility === 'function') {
+          return !el.checkVisibility();
+        }
+        // Fallback: closed <details> ancestor (but not the <summary> itself)
+        if (el.closest && el.closest('details:not([open])') && !el.closest('summary')) return true;
+      } catch (e) {}
+      return false;
+    }
     // Detect sr-only / visually-hidden elements (visible to screen readers but not to users).
     // These use clip, tiny dimensions, or specific class names to hide visually.
     function _isScreenReaderOnly(el) {
@@ -347,6 +360,8 @@ window.MilgExtract = (function() {
       }
       if (ratio < 22) { // capture all pairs including AAA passes for pixel verification
         var _cpEntry = { fg: rgbStr(fgBlended), bg: rgbStr(bg), ratio: Math.round(ratio * 100) / 100, needed: threshold, passes: ratio >= threshold, fontSize: Math.round(fontSize), fontWeight: fontWeight, isLarge: isLarge, bgHasImage: _bgHasImage, text: (el.textContent || '').trim().substring(0, 200), selector: cssSelector(el), filter: filterValue, backdropFilter: hasBackdropFilter, minBgAlpha: Math.round(minBgAlpha * 100) / 100, effectiveOpacity: Math.round(_effOpacity * 100) / 100, isGradientText: isGradientText, fontFamily: style.fontFamily, fontStyle: style.fontStyle, letterSpacing: style.letterSpacing, textTransform: style.textTransform, lineHeight: style.lineHeight, bbox: null };
+        var _hac = _isHiddenAtCapture(el);
+        if (_hac) _cpEntry._hiddenAtCapture = true;
         trackBbox(el, _cpEntry, 'bbox');
         contrastPairs.push(_cpEntry);
         _contrastStats.captured++;
@@ -395,6 +410,7 @@ window.MilgExtract = (function() {
         letterSpacing: inpStyle.letterSpacing, textTransform: inpStyle.textTransform,
         lineHeight: inpStyle.lineHeight, isPlaceholder: true, bbox: null
       };
+      if (_isHiddenAtCapture(inp)) _phEntry._hiddenAtCapture = true;
       trackBbox(inp, _phEntry, 'bbox');
       contrastPairs.push(_phEntry);
       _contrastStats.captured++;
@@ -1186,14 +1202,56 @@ window.MilgExtract = (function() {
         if (!isVisible(c) && _iframeHiddenPanels.indexOf(c) === -1) _iframeHiddenPanels.push(c);
       });
     });
+    // Comprehensive hidden-panel detection: closed <details>, [hidden], aria-expanded=false targets,
+    // and Tailwind-collapsed containers (max-h-0 + overflow-hidden, .hidden class).
+    // Closed <details>: the <details> element itself is the "panel" container.
+    document.querySelectorAll('details:not([open])').forEach(function(el) {
+      if (_iframeHiddenPanels.indexOf(el) === -1) _iframeHiddenPanels.push(el);
+    });
+    // Elements with [hidden] attribute (not already caught above)
+    document.querySelectorAll('[hidden]').forEach(function(el) {
+      if (_iframeHiddenPanels.indexOf(el) === -1) _iframeHiddenPanels.push(el);
+    });
+    // aria-expanded=false targets via aria-controls
+    document.querySelectorAll('[aria-expanded="false"][aria-controls]').forEach(function(trigger) {
+      var tid = trigger.getAttribute('aria-controls');
+      if (!tid) return;
+      var tgt = document.getElementById(tid);
+      if (tgt && _iframeHiddenPanels.indexOf(tgt) === -1) _iframeHiddenPanels.push(tgt);
+    });
+    // Tailwind-collapsed: max-h-0 + overflow-hidden with clientHeight === 0,
+    // or elements with literal class "hidden" (Tailwind utility).
+    // Note: overflow-hidden-only (carousels) is handled by region pipeline — skip those here.
+    document.querySelectorAll('[class]').forEach(function(el) {
+      if (_iframeHiddenPanels.indexOf(el) !== -1) return;
+      var cls = typeof el.className === 'string' ? el.className : '';
+      var isTwHidden = /\bhidden\b/.test(cls);
+      var isTwCollapsed = /\bmax-h-0\b/.test(cls) && el.clientHeight === 0;
+      if (isTwHidden || isTwCollapsed) {
+        try {
+          var _elS = getComputedStyle(el);
+          if (_elS.overflow === 'hidden' && el.clientHeight === 0) {
+            _iframeHiddenPanels.push(el);
+          } else if (isTwHidden && (_elS.display === 'none' || el.clientHeight === 0)) {
+            _iframeHiddenPanels.push(el);
+          }
+        } catch (e) {}
+      }
+    });
     data.layout.hiddenPanelCount = _iframeHiddenPanels.length;
     _iframeHiddenPanels.slice(0, 15).forEach(function(panel) {
       var origCssText = panel.style.cssText;
       var origAriaHidden = panel.getAttribute('aria-hidden');
       var origHidden = panel.hasAttribute('hidden');
-      panel.style.cssText = origCssText + '; display: block !important; visibility: visible !important; opacity: 1 !important; pointer-events: none !important;';
-      if (origHidden) panel.removeAttribute('hidden');
-      if (origAriaHidden) panel.setAttribute('aria-hidden', 'false');
+      var isDetailsEl = panel.tagName && panel.tagName.toLowerCase() === 'details';
+      var origDetailsOpen = isDetailsEl ? panel.open : false;
+      if (isDetailsEl) {
+        panel.open = true;
+      } else {
+        panel.style.cssText = origCssText + '; display: block !important; visibility: visible !important; opacity: 1 !important; pointer-events: none !important;';
+        if (origHidden) panel.removeAttribute('hidden');
+        if (origAriaHidden) panel.setAttribute('aria-hidden', 'false');
+      }
       void panel.offsetHeight;
       var pr = panel.getBoundingClientRect();
       var issues = [];
@@ -1203,10 +1261,14 @@ window.MilgExtract = (function() {
         if (pr.bottom > window.innerHeight * 2) issues.push({ type: 'extreme-bottom', bottom: Math.round(pr.bottom) });
         if (panel.scrollWidth > panel.clientWidth + 2) issues.push({ type: 'internal-overflow', overflow: Math.round(panel.scrollWidth - panel.clientWidth) });
       }
-      panel.style.cssText = origCssText;
-      if (origHidden) panel.setAttribute('hidden', '');
-      if (origAriaHidden) panel.setAttribute('aria-hidden', origAriaHidden);
-      else if (panel.hasAttribute('aria-hidden')) panel.removeAttribute('aria-hidden');
+      if (isDetailsEl) {
+        panel.open = origDetailsOpen;
+      } else {
+        panel.style.cssText = origCssText;
+        if (origHidden) panel.setAttribute('hidden', '');
+        if (origAriaHidden) panel.setAttribute('aria-hidden', origAriaHidden);
+        else if (panel.hasAttribute('aria-hidden')) panel.removeAttribute('aria-hidden');
+      }
       if (issues.length > 0) {
         var _hpEntry = {
           selector: cssSelector(panel),

@@ -10,6 +10,7 @@ window.MilgIframe = (function() {
   var _proxyUrl = ''; // CORS proxy for font routing in iframes
   var _getViewport = function() { return { w: 1280, h: 900 }; };
   var _showProgress = function() {};
+  var _updateFocusModal = function() {};
   // --- Screenshot settings ---
   // Scale 1.5 = text renders at 1.5x resolution via SVG foreignObject rasterization.
   // No DOM modifications needed — the library handles it.
@@ -21,6 +22,7 @@ window.MilgIframe = (function() {
     if (opts.proxyUrl) _proxyUrl = opts.proxyUrl;
     if (opts.getViewport) _getViewport = opts.getViewport;
     if (opts.showProgress) _showProgress = opts.showProgress;
+    if (opts.updateFocusModal) _updateFocusModal = opts.updateFocusModal;
   }
 
   // --- Sandbox hardening script ---
@@ -99,6 +101,9 @@ window.MilgIframe = (function() {
       wantUrlPatch = false;
       wantFetchPatch = false;
     }
+
+    // Strip <link rel="manifest"> tags — credentialed manifest fetches cause CORS noise in iframes.
+    html = html.replace(/<link\b[^>]*\brel\s*=\s*["']manifest["'][^>]*>/gi, '');
 
     var scripts = '';
 
@@ -483,7 +488,7 @@ window.MilgIframe = (function() {
       if (!e.data) return;
       // Only process messages from OUR iframe (matched by unique ID)
       if (e.data._iframeId && e.data._iframeId !== _iframeId) return;
-      // Progress updates from screenshot capture → drive parent progress bar
+      // Progress updates from screenshot capture → drive parent progress bar + focus modal
       if (e.data.type === 'milg-progress' && e.data.label) {
         var urlStatus = document.getElementById('urlStatus');
         if (urlStatus) { urlStatus.style.display = 'block'; urlStatus.textContent = e.data.label; }
@@ -496,10 +501,18 @@ window.MilgIframe = (function() {
         };
         var pct = pctMap[e.data.label];
         if (pct && typeof _showProgress === 'function') _showProgress(pct, e.data.label);
+        // Forward to focus modal with optional viewport prefix (deep scan has viewportOverride labels)
+        var _modalLabel = viewportOverride ? (viewportOverride.label || (viewportOverride.w + 'px')) + ': ' + e.data.label : e.data.label;
+        if (typeof _updateFocusModal === 'function') _updateFocusModal(_modalLabel);
       }
       if (e.data.type === 'milg-analyzer-result') {
+        // Guard: ignore the 8000ms fallback extraction if screenshots were already processed.
+        // The fallback fires after __milgDoUnhiddenScreenshots opens closed <details> elements,
+        // so it would report 0 hidden pairs and overwrite the correct data from the first extraction.
+        if (iframe._milgScreenshotsDone) return;
         var data = e.data.data;
         data.meta.url = 'Pasted HTML';
+        if (typeof _updateFocusModal === 'function') _updateFocusModal('Page rendered — extracting design data done');
         if (!captureScreenshots) {
           finish(data);
           return;
@@ -508,6 +521,9 @@ window.MilgIframe = (function() {
         iframe._milgData = data;
       }
       if (e.data.type === 'milg-screenshots-result' && iframe._milgData) {
+        // Mark that screenshots have been processed — any subsequent milg-analyzer-result
+        // (the 8000ms fallback extraction) must not overwrite iframe._milgData.
+        iframe._milgScreenshotsDone = true;
         iframe._milgData.screenshots = e.data.screenshots || [];
         iframe._milgData.screenshotFull = e.data.screenshotFull || null;
         iframe._milgData.screenshotClean = e.data.screenshotClean || null;
@@ -543,6 +559,7 @@ window.MilgIframe = (function() {
         var hpc = iframe._milgData.layout && iframe._milgData.layout.hiddenPanelCount;
         if (hpc > 0 && iframe.contentWindow && iframe.contentWindow.__milgDoUnhiddenScreenshots) {
           try {
+            if (typeof _updateFocusModal === 'function') _updateFocusModal('Capturing expanded hidden panels');
             setTimeout(function() { iframe.contentWindow.__milgDoUnhiddenScreenshots(); }, 100);
           } catch(ex) { finish(iframe._milgData); }
         } else {
@@ -571,28 +588,43 @@ window.MilgIframe = (function() {
       // Unhide all interactive panels using !important overrides
       'var panels=document.querySelectorAll("[role=menu],[role=listbox],[role=dialog],[role=tooltip],[role=alertdialog]");' +
       'var hidden=[];' +
-      'panels.forEach(function(p){' +
+      'function _revealPanel(p){' +
         'var s=getComputedStyle(p);' +
         'if(s.display==="none"||s.visibility==="hidden"||s.opacity==="0"){' +
-          'hidden.push({el:p,css:p.style.cssText,ariaH:p.getAttribute("aria-hidden"),hadHidden:p.hasAttribute("hidden")});' +
+          'hidden.push({el:p,css:p.style.cssText,ariaH:p.getAttribute("aria-hidden"),hadHidden:p.hasAttribute("hidden"),isDetails:false});' +
           'p.style.cssText=p.style.cssText+";display:block !important;visibility:visible !important;opacity:1 !important;";' +
           'if(p.hasAttribute("hidden"))p.removeAttribute("hidden");' +
           'if(p.getAttribute("aria-hidden")==="true")p.setAttribute("aria-hidden","false")' +
         '}' +
-      '});' +
+      '}' +
+      'panels.forEach(function(p){_revealPanel(p)});' +
       // Also check aria-haspopup sibling panels
       'document.querySelectorAll("[aria-haspopup]").forEach(function(t){' +
         'var w=t.parentElement;if(!w)return;' +
-        'w.querySelectorAll("[role=menu],[role=listbox],[role=dialog]").forEach(function(p){' +
-          'var s=getComputedStyle(p);' +
-          'if(s.display==="none"||s.visibility==="hidden"||s.opacity==="0"){' +
-            'hidden.push({el:p,css:p.style.cssText,ariaH:p.getAttribute("aria-hidden"),hadHidden:p.hasAttribute("hidden")});' +
-            'p.style.cssText=p.style.cssText+";display:block !important;visibility:visible !important;opacity:1 !important;";' +
-            'if(p.hasAttribute("hidden"))p.removeAttribute("hidden");' +
-            'if(p.getAttribute("aria-hidden")==="true")p.setAttribute("aria-hidden","false")' +
-          '}' +
-        '})' +
+        'w.querySelectorAll("[role=menu],[role=listbox],[role=dialog]").forEach(function(p){_revealPanel(p)})' +
       '});' +
+      // Closed <details>: set open=true (inline-expandable)
+      'document.querySelectorAll("details:not([open])").forEach(function(d){' +
+        'hidden.push({el:d,css:null,ariaH:null,hadHidden:false,isDetails:true,origOpen:false});' +
+        'd.open=true' +
+      '});' +
+      // [hidden] attribute elements (inline-expandable)
+      'document.querySelectorAll("[hidden]").forEach(function(p){' +
+        'hidden.push({el:p,css:p.style.cssText,ariaH:p.getAttribute("aria-hidden"),hadHidden:true,isDetails:false});' +
+        'p.removeAttribute("hidden");' +
+        'p.style.cssText=p.style.cssText+";display:block !important;visibility:visible !important;opacity:1 !important;"' +
+      '});' +
+      // aria-expanded=false targets (inline-expandable via display override)
+      'document.querySelectorAll("[aria-expanded=false][aria-controls]").forEach(function(t){' +
+        'var tid=t.getAttribute("aria-controls");if(!tid)return;' +
+        'var tgt=document.getElementById(tid);if(!tgt)return;' +
+        'var _dup=hidden.some(function(h){return h.el===tgt});if(_dup)return;' +
+        'hidden.push({el:tgt,css:tgt.style.cssText,ariaH:tgt.getAttribute("aria-hidden"),hadHidden:tgt.hasAttribute("hidden"),isDetails:false});' +
+        'tgt.style.cssText=tgt.style.cssText+";display:block !important;visibility:visible !important;opacity:1 !important;";' +
+        'if(tgt.hasAttribute("hidden"))tgt.removeAttribute("hidden")' +
+      '});' +
+      // NOTE: Tailwind max-h-0/overflow-hidden collapsed containers are NOT revealed inline here
+      // (they belong to region/hidden-area analysis via the existing region pipeline).
       'if(hidden.length===0){parent.postMessage({type:"milg-screenshots-unhidden",screenshots:[],_iframeId:_mid},"*");return}' +
       'void document.body.offsetHeight;' +
       'setTimeout(function(){' +
