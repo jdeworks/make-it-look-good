@@ -192,7 +192,8 @@ window.MilgRegion = (function() {
             anc = anc.parentElement;
           }
         });
-        // Pass 3: Tag ALL pairs whose element descends from an identified container
+        // Pass 3: Tag ALL pairs whose element descends from an identified clip container
+        // Also tag descendant pairs of hidden-panel containers (kind != 'clipped')
         window.__milgBboxRefs.forEach(function(ref) {
           if (!ref.el || !ref.obj || ref.key !== 'bbox') return;
           var anc = ref.el;
@@ -201,6 +202,23 @@ window.MilgRegion = (function() {
             anc = anc.parentElement;
           }
         });
+        // Pass 4: Tag descendant pairs of hidden-panel containers
+        if (window.__milgHiddenPanels) {
+          window.__milgHiddenPanels.forEach(function(hp) {
+            if (!hp || !hp.el) return;
+            var hpId = hp.el._mrc;
+            if (!hpId) { hpId = 'hp-' + (++_rcc); hp.el._mrc = hpId; }
+            window.__milgBboxRefs.forEach(function(ref) {
+              if (!ref.el || !ref.obj || ref.key !== 'bbox') return;
+              if (ref.obj._regionContainerId) return; // already tagged
+              var anc = ref.el;
+              while (anc) {
+                if (anc === hp.el) { ref.obj._regionContainerId = hpId; if (ref.obj[ref.key]) ref.obj[ref.key]._rcid = hpId; break; }
+                anc = anc.parentElement;
+              }
+            });
+          });
+        }
         console.log('[milg-region] mark: tagged ' + _rcc + ' clip containers, clipped=' + window.__milgBboxRefs.filter(function(r) { return r.obj && r.obj._isClipped; }).length + '/' + window.__milgBboxRefs.length);
       }
 
@@ -223,7 +241,7 @@ window.MilgRegion = (function() {
           var cid = clipAnc._milgRegionId;
           if (!cid) {
             cid = 'rgn-' + (++_rgnCounter); clipAnc._milgRegionId = cid;
-            _clipContainerList.push({ el: clipAnc, id: cid, pairIndices: [] });
+            _clipContainerList.push({ el: clipAnc, id: cid, pairIndices: [], kind: 'clipped', label: '' });
             _clipContainers[cid] = _clipContainerList[_clipContainerList.length - 1];
           }
           var pi = _cp2.indexOf(ref.obj);
@@ -235,11 +253,50 @@ window.MilgRegion = (function() {
         var ar = a.el.getBoundingClientRect(), br = b.el.getBoundingClientRect();
         return (br.width * br.height) - (ar.width * ar.height);
       });
+      // Cap clips at 5 (same as before), then append hidden panels up to total cap of 8
       _clipContainerList = _clipContainerList.slice(0, 5);
       console.log('[milg-region] Found ' + _clipContainerList.length + ' clipping regions');
-      if (_clipContainerList.length === 0) { rgnCb([]); return; }
 
-      var _rgnResults = [], _rgnDone = 0, _rgnTotal = _clipContainerList.length;
+      // Append hidden-panel entries from window.__milgHiddenPanels
+      var _panelList = [];
+      if (window.__milgHiddenPanels) {
+        window.__milgHiddenPanels.forEach(function(hp) {
+          if (!hp || !hp.el) return;
+          var hpEl = hp.el;
+          // Skip trivial content
+          if ((hpEl.textContent || '').trim().length < 20) return;
+          // Dedupe: skip if the element (or ancestor/descendant) is already in the clip list
+          var dup = false;
+          for (var _di = 0; _di < _clipContainerList.length; _di++) {
+            var existing = _clipContainerList[_di].el;
+            if (existing === hpEl) { dup = true; break; }
+            try { if (existing.contains(hpEl) || hpEl.contains(existing)) { dup = true; break; } } catch (_de) {}
+          }
+          if (dup) return;
+          // Also dedupe within panel list
+          for (var _pi = 0; _pi < _panelList.length; _pi++) {
+            var pe = _panelList[_pi].el;
+            if (pe === hpEl) { dup = true; break; }
+            try { if (pe.contains(hpEl) || hpEl.contains(pe)) { dup = true; break; } } catch (_pe2) {}
+          }
+          if (dup) return;
+          _panelList.push({ el: hpEl, id: 'hp-' + (_rgnCounter + _panelList.length + 1), pairIndices: [], kind: hp.kind || 'collapsed', label: hp.label || '', triggerEl: hp.triggerEl || null });
+        });
+        // Sort panels by textContent length desc (richer panels first)
+        _panelList.sort(function(a, b) {
+          return (b.el.textContent || '').trim().length - (a.el.textContent || '').trim().length;
+        });
+      }
+      var _slotsLeft = 8 - _clipContainerList.length;
+      if (_panelList.length > _slotsLeft) {
+        console.log('[milg-region] Dropping ' + (_panelList.length - _slotsLeft) + ' hidden panels (cap 8 total)');
+        _panelList = _panelList.slice(0, _slotsLeft);
+      }
+      console.log('[milg-region] Adding ' + _panelList.length + ' hidden-panel regions');
+      var _allRegions = _clipContainerList.concat(_panelList);
+      if (_allRegions.length === 0) { rgnCb([]); return; }
+
+      var _rgnResults = [], _rgnDone = 0, _rgnTotal = _allRegions.length;
       var _rgnOverall = setTimeout(function() {
         console.warn('[milg-region] Overall timeout (90s)');
         rgnCb(_rgnResults);
@@ -274,10 +331,39 @@ window.MilgRegion = (function() {
 
       _prog('Capturing ' + _rgnTotal + ' region screenshots...');
 
-      _clipContainerList.forEach(function(rgn, rIdx) {
-        var container = rgn.el, cr = container.getBoundingClientRect();
+      _allRegions.forEach(function(rgn, rIdx) {
+        var container = rgn.el;
+        var _rgnKind = rgn.kind || 'clipped';
+
+        // For hidden-panel kinds, compute containerRect from the panel or its trigger
+        // (the panel may have no box when collapsed, so fall back to trigger or parent)
+        var cr;
+        if (_rgnKind !== 'clipped') {
+          var _tryRect = function(el) {
+            try { var r = el.getBoundingClientRect(); return (r.width >= 40 && r.height >= 20) ? r : null; } catch (_) { return null; }
+          };
+          cr = _tryRect(container);
+          if (!cr && rgn.triggerEl) cr = _tryRect(rgn.triggerEl);
+          // For details, try the summary child as a visible anchor
+          if (!cr && _rgnKind === 'details') {
+            var _sum = container.querySelector('summary');
+            if (_sum) cr = _tryRect(_sum);
+          }
+          if (!cr && container.parentElement) cr = _tryRect(container.parentElement);
+          if (!cr) cr = { left: 0, top: 0, width: 320, height: 40 }; // last-resort
+        } else {
+          cr = container.getBoundingClientRect();
+        }
+
         var clone = container.cloneNode(true);
-        clone.style.cssText += ';overflow:visible !important;max-height:none !important;height:auto !important;clip-path:none !important;width:' + Math.round(cr.width) + 'px !important;';
+        // Per-kind clone prep: force-reveal CSS handles class-based hiding, but
+        // UA-internal states (details[open], hidden attribute) need explicit DOM mutation.
+        if (_rgnKind === 'details') {
+          clone.setAttribute('open', '');
+        } else if (_rgnKind === 'hidden-attr') {
+          clone.removeAttribute('hidden');
+        }
+        clone.style.cssText += ';overflow:visible !important;max-height:none !important;height:auto !important;clip-path:none !important;width:' + Math.round(cr.width || 320) + 'px !important;';
 
         var miniHtml = '<!DOCTYPE html><html><head><meta charset=UTF-8>' +
           (baseHref ? '<base href="' + baseHref.replace(/"/g, '&quot;') + '">' : '') +
@@ -400,6 +486,8 @@ window.MilgRegion = (function() {
                   screenshotMeta: { scale: _sc, canvasWidth: finalCanvas.width, canvasHeight: finalCanvas.height, cropOffsetX: _cropOX, cropOffsetY: _cropOY },
                   pairIndices: rgn.pairIndices,
                   containerRect: { left: Math.round(cr.left), top: Math.round(cr.top), width: Math.round(cr.width), height: Math.round(cr.height) },
+                  kind: _rgnKind,
+                  label: rgn.label || '',
                   extractedData: extractedData,
                   maskResults: _mMaskResults
                 };

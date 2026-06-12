@@ -65,11 +65,22 @@ const dump = await page.evaluate(() => {
   // also pairs flagged clipped/region
   const pairs = (raw.colors && raw.colors.contrastPairs || []);
   out.clippedPairs = pairs.filter(p => p._isClipped || p._regionContainerId).map(p => p.selector);
+  // region screenshots with kind/label
+  out.regionScreenshots = (raw.regionScreenshots || []).map(r => ({
+    kind: r.kind || 'clipped',
+    label: r.label || '',
+    containerRect: r.containerRect || null,
+  }));
   return out;
 });
 
 console.log('\n=== DUMP ===');
 console.log(JSON.stringify({ ...dump, verify: undefined }, null, 1));
+// Print regionScreenshots detail
+console.log('\n=== regionScreenshots ===', (dump.regionScreenshots || []).length);
+(dump.regionScreenshots || []).forEach((r, i) => {
+  console.log(' [' + i + ']', JSON.stringify(r));
+});
 const verify = dump.verify || [];
 console.log('verify results:', verify.length);
 const interesting = verify.filter(v => v.crossesBoundary || v.significant || v.skipped);

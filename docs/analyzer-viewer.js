@@ -284,7 +284,8 @@ window.MilgViewer = (function() {
             ind.setAttribute('data-permanent', '1');
             svg.appendChild(ind);
             var pCount = (rgn.pairIndices || []).length;
-            var lblText = 'Hidden content' + (pCount ? ' — ' + pCount + ' contrast pairs' : '') + ' ↓';
+            var _rgnLbl = rgn.label ? 'Hidden section: "' + rgn.label + '"' : 'Hidden content';
+            var lblText = _rgnLbl + (pCount ? ' — ' + pCount + ' contrast pairs' : '') + ' ↓';
             var lx = cx + Math.round(4 * _s);
             var ly = cy + Math.round(4 * _s);
             var bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
@@ -378,7 +379,8 @@ window.MilgViewer = (function() {
         rgnHeader.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:rgba(59,130,246,0.15);border-bottom:1px solid rgba(59,130,246,0.3);';
         var rgnTitle = document.createElement('span');
         rgnTitle.style.cssText = 'font-size:12px;font-weight:600;color:#93c5fd;';
-        rgnTitle.textContent = 'Hidden content region ' + (rIdx + 1);
+        var _sectionLbl = rgn.label ? 'Hidden section: "' + rgn.label + '"' : 'Hidden content region ' + (rIdx + 1);
+        rgnTitle.textContent = _sectionLbl;
         var findingCount = rgnFindings.length;
         if (findingCount > 0) {
           rgnTitle.textContent += ' \u2014 ' + findingCount + ' finding' + (findingCount !== 1 ? 's' : '');
@@ -425,7 +427,7 @@ window.MilgViewer = (function() {
 
         var rgnImg = document.createElement('img');
         rgnImg.src = rgn.screenshot;
-        rgnImg.alt = 'Hidden content region ' + (rIdx + 1);
+        rgnImg.alt = _sectionLbl;
         rgnImg.style.cssText = 'display:block;max-width:100%;height:auto;';
         rgnInner.appendChild(rgnImg);
 

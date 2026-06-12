@@ -1173,19 +1173,41 @@ window.MilgExtract = (function() {
     }
 
     // Hidden panel detection — find all invisible interactive panels
+    // _iframeHiddenPanels: raw element list (kept for existing issues-loop below)
+    // _iframeHiddenPanelMeta: parallel array with {kind, label, triggerEl} per panel
     data.layout.hiddenPanelIssues = [];
     var _iframeHiddenPanels = [];
+    var _iframeHiddenPanelMeta = [];
+    function _hpAddPanel(el, kind, triggerEl) {
+      if (_iframeHiddenPanels.indexOf(el) !== -1) return;
+      _iframeHiddenPanels.push(el);
+      // Build a human label: summary text for details, trigger text for aria, else id/class
+      var label = '';
+      try {
+        if (kind === 'details') {
+          var sumEl = el.querySelector('summary');
+          label = sumEl ? (sumEl.textContent || '').trim() : '';
+        } else if ((kind === 'aria-expanded' || kind === 'aria-controls') && triggerEl) {
+          label = (triggerEl.getAttribute('aria-label') || triggerEl.textContent || '').trim();
+        }
+        if (!label) {
+          label = el.id ? '#' + el.id : (typeof el.className === 'string' && el.className ? '.' + el.className.trim().split(/\s+/)[0] : el.tagName.toLowerCase());
+        }
+        if (label.length > 40) label = label.slice(0, 40);
+      } catch (_le) { label = el.tagName ? el.tagName.toLowerCase() : 'panel'; }
+      _iframeHiddenPanelMeta.push({ kind: kind, label: label, triggerEl: triggerEl || null });
+    }
     document.querySelectorAll('[role="menu"], [role="listbox"], [role="dialog"], [role="tooltip"], [role="alertdialog"]').forEach(function(el) {
-      if (!isVisible(el) && _iframeHiddenPanels.indexOf(el) === -1) _iframeHiddenPanels.push(el);
+      if (!isVisible(el)) _hpAddPanel(el, 'aria-role', null);
     });
     var _iframeInlineRoles = { region: 1, tabpanel: 1, tab: 1 };
     document.querySelectorAll('[aria-controls]').forEach(function(trigger) {
       var targetId = trigger.getAttribute('aria-controls');
       if (targetId) {
         var target = document.getElementById(targetId);
-        if (target && !isVisible(target) && _iframeHiddenPanels.indexOf(target) === -1) {
+        if (target && !isVisible(target)) {
           var targetRole = (target.getAttribute('role') || '').toLowerCase();
-          if (!_iframeInlineRoles[targetRole]) _iframeHiddenPanels.push(target);
+          if (!_iframeInlineRoles[targetRole]) _hpAddPanel(target, 'aria-controls', trigger);
         }
       }
     });
@@ -1193,31 +1215,31 @@ window.MilgExtract = (function() {
       var ctrlId = trigger.getAttribute('aria-controls');
       if (ctrlId) {
         var t = document.getElementById(ctrlId);
-        if (t && !isVisible(t) && _iframeHiddenPanels.indexOf(t) === -1) _iframeHiddenPanels.push(t);
+        if (t && !isVisible(t)) _hpAddPanel(t, 'aria-controls', trigger);
         return;
       }
       var wrapper = trigger.parentElement;
       if (!wrapper) return;
       wrapper.querySelectorAll('[role="menu"], [role="listbox"], [role="dialog"]').forEach(function(c) {
-        if (!isVisible(c) && _iframeHiddenPanels.indexOf(c) === -1) _iframeHiddenPanels.push(c);
+        if (!isVisible(c)) _hpAddPanel(c, 'aria-controls', trigger);
       });
     });
     // Comprehensive hidden-panel detection: closed <details>, [hidden], aria-expanded=false targets,
     // and Tailwind-collapsed containers (max-h-0 + overflow-hidden, .hidden class).
     // Closed <details>: the <details> element itself is the "panel" container.
     document.querySelectorAll('details:not([open])').forEach(function(el) {
-      if (_iframeHiddenPanels.indexOf(el) === -1) _iframeHiddenPanels.push(el);
+      _hpAddPanel(el, 'details', null);
     });
     // Elements with [hidden] attribute (not already caught above)
     document.querySelectorAll('[hidden]').forEach(function(el) {
-      if (_iframeHiddenPanels.indexOf(el) === -1) _iframeHiddenPanels.push(el);
+      _hpAddPanel(el, 'hidden-attr', null);
     });
     // aria-expanded=false targets via aria-controls
     document.querySelectorAll('[aria-expanded="false"][aria-controls]').forEach(function(trigger) {
       var tid = trigger.getAttribute('aria-controls');
       if (!tid) return;
       var tgt = document.getElementById(tid);
-      if (tgt && _iframeHiddenPanels.indexOf(tgt) === -1) _iframeHiddenPanels.push(tgt);
+      if (tgt) _hpAddPanel(tgt, 'aria-expanded', trigger);
     });
     // Tailwind-collapsed: max-h-0 + overflow-hidden with clientHeight === 0,
     // or elements with literal class "hidden" (Tailwind utility).
@@ -1231,14 +1253,19 @@ window.MilgExtract = (function() {
         try {
           var _elS = getComputedStyle(el);
           if (_elS.overflow === 'hidden' && el.clientHeight === 0) {
-            _iframeHiddenPanels.push(el);
+            _hpAddPanel(el, 'collapsed', null);
           } else if (isTwHidden && (_elS.display === 'none' || el.clientHeight === 0)) {
-            _iframeHiddenPanels.push(el);
+            _hpAddPanel(el, 'collapsed', null);
           }
         } catch (e) {}
       }
     });
     data.layout.hiddenPanelCount = _iframeHiddenPanels.length;
+    // Stash element references for the region pipeline (runs later in the same iframe window)
+    window.__milgHiddenPanels = _iframeHiddenPanels.map(function(el, i) {
+      var m = _iframeHiddenPanelMeta[i] || { kind: 'unknown', label: '', triggerEl: null };
+      return { el: el, kind: m.kind, label: m.label, triggerEl: m.triggerEl };
+    });
     _iframeHiddenPanels.slice(0, 15).forEach(function(panel) {
       var origCssText = panel.style.cssText;
       var origAriaHidden = panel.getAttribute('aria-hidden');
