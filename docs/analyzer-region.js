@@ -350,7 +350,7 @@ window.MilgRegion = (function() {
             if (_sum) cr = _tryRect(_sum);
           }
           if (!cr && container.parentElement) cr = _tryRect(container.parentElement);
-          if (!cr) cr = { left: 0, top: 0, width: 320, height: 40 }; // last-resort
+          if (!cr) { cr = { left: 0, top: 0, width: 320, height: 40 }; rgn._noAnchor = true; } // no visible anchor on the main page
         } else {
           cr = container.getBoundingClientRect();
         }
@@ -487,6 +487,7 @@ window.MilgRegion = (function() {
                   pairIndices: rgn.pairIndices,
                   containerRect: { left: Math.round(cr.left), top: Math.round(cr.top), width: Math.round(cr.width), height: Math.round(cr.height) },
                   kind: _rgnKind,
+                  noAnchor: !!rgn._noAnchor,
                   label: rgn.label || '',
                   extractedData: extractedData,
                   maskResults: _mMaskResults

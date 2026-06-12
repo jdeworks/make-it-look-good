@@ -70,6 +70,7 @@ const dump = await page.evaluate(() => {
     kind: r.kind || 'clipped',
     label: r.label || '',
     containerRect: r.containerRect || null,
+    noAnchor: !!r.noAnchor,
   }));
   return out;
 });

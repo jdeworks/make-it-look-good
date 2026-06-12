@@ -265,6 +265,9 @@ window.MilgViewer = (function() {
           var _fs = Math.max(14, Math.round(14 * _s));
           _regions.forEach(function(rgn, ri) {
             if (!rgn.containerRect) return;
+            // Panels nested inside other hidden containers have no visible anchor
+            // on the main page — a marker would point at a meaningless spot.
+            if (rgn.noAnchor) return;
             var cr = rgn.containerRect;
             var cx = Math.round(cr.left * _s);
             var cy = Math.round(cr.top * _s) - _calibrationOffsetY;
