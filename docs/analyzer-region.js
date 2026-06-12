@@ -26,9 +26,13 @@ window.MilgRegion = (function() {
   // --- Force-reveal script ---
   // Runs inside the mini-page on DOMContentLoaded. Catches computed display:none
   // from CSS classes that the static CSS above can't target generically.
+  // Tag names to skip during force-reveal (non-rendered head/meta elements that must not be made visible)
+  var _REVEAL_SKIP = {HEAD:1,STYLE:1,SCRIPT:1,LINK:1,META:1,BASE:1,TITLE:1,NOSCRIPT:1,TEMPLATE:1};
   var FORCE_REVEAL_SCRIPT =
     'document.addEventListener("DOMContentLoaded",function(){' +
-    'document.querySelectorAll("*").forEach(function(el){' +
+    'var _skip={HEAD:1,STYLE:1,SCRIPT:1,LINK:1,META:1,BASE:1,TITLE:1,NOSCRIPT:1,TEMPLATE:1};' +
+    'document.body.querySelectorAll("*").forEach(function(el){' +
+    'if(_skip[el.tagName])return;' +
     'var cs=getComputedStyle(el);' +
     'if(cs.display==="none")el.style.setProperty("display","block","important");' +
     'if(cs.visibility==="hidden")el.style.setProperty("visibility","visible","important");' +
@@ -43,8 +47,10 @@ window.MilgRegion = (function() {
   function cleanupMiniPageDom(mDoc) {
     try {
       var dv = mDoc.defaultView;
-      // Force-reveal pass (redundant with script, but covers sandbox/CSP failures)
-      mDoc.querySelectorAll('*').forEach(function(el) {
+      // Force-reveal pass (redundant with script, but covers sandbox/CSP failures).
+      // Scoped to body content only — head elements (style/script/link/meta) must NOT be made visible.
+      mDoc.body.querySelectorAll('*').forEach(function(el) {
+        if (_REVEAL_SKIP[el.tagName]) return;
         var cs = dv.getComputedStyle(el);
         if (cs.display === 'none') el.style.setProperty('display', 'block', 'important');
         if (cs.visibility === 'hidden') el.style.setProperty('visibility', 'visible', 'important');
@@ -316,7 +322,8 @@ window.MilgRegion = (function() {
 
       var _revealScript =
         '<script>document.addEventListener("DOMContentLoaded",function(){' +
-        'document.querySelectorAll("*").forEach(function(el){var cs=getComputedStyle(el);' +
+        'var _sk={HEAD:1,STYLE:1,SCRIPT:1,LINK:1,META:1,BASE:1,TITLE:1,NOSCRIPT:1,TEMPLATE:1};' +
+        'document.body.querySelectorAll("*").forEach(function(el){if(_sk[el.tagName])return;var cs=getComputedStyle(el);' +
         'if(cs.display==="none")el.style.setProperty("display","block","important");' +
         'if(cs.visibility==="hidden")el.style.setProperty("visibility","visible","important");' +
         'if(parseFloat(cs.opacity)<0.1)el.style.setProperty("opacity","1","important");' +
@@ -389,10 +396,13 @@ window.MilgRegion = (function() {
               var mDoc = mf.contentDocument;
               if (!mDoc) { _rgnFinish(rIdx, mf, null); return; }
 
-              // DOM cleanup: force-reveal + targeted height reset on container/children only
+              // DOM cleanup: force-reveal + targeted height reset on container/children only.
+              // Scoped to body content only — head elements must NOT be made visible.
               try {
                 var dv = mDoc.defaultView;
-                mDoc.querySelectorAll('*').forEach(function(el) {
+                var _rvSkip = {HEAD:1,STYLE:1,SCRIPT:1,LINK:1,META:1,BASE:1,TITLE:1,NOSCRIPT:1,TEMPLATE:1};
+                mDoc.body.querySelectorAll('*').forEach(function(el) {
+                  if (_rvSkip[el.tagName]) return;
                   var cs = dv.getComputedStyle(el);
                   if (cs.display === 'none') el.style.setProperty('display', 'block', 'important');
                   if (cs.visibility === 'hidden') el.style.setProperty('visibility', 'visible', 'important');
@@ -414,6 +424,58 @@ window.MilgRegion = (function() {
               } catch (_e) {}
 
               void mDoc.body.offsetHeight; // reflow
+
+              // WP-D: Invisible text recolor.
+              // After force-reveal, any text-bearing element whose color nearly matches its
+              // effective background (contrast < 1.3) gets recolored to black or white so
+              // the region screenshot is legible.
+              var _recoloredCount = 0;
+              try {
+                var _rcDv = mDoc.defaultView;
+                function _rgbToLum(r, g, b) {
+                  function _lin(v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
+                  return 0.2126 * _lin(r) + 0.7152 * _lin(g) + 0.0722 * _lin(b);
+                }
+                function _parseRgba(s) {
+                  var m = /rgba?\(\s*(\d+),\s*(\d+),\s*(\d+)(?:,\s*([0-9.]+))?\)/.exec(s);
+                  if (!m) return null;
+                  return { r: +m[1], g: +m[2], b: +m[3], a: m[4] !== undefined ? +m[4] : 1 };
+                }
+                function _effectiveBg(el) {
+                  var cur = el.parentElement;
+                  while (cur && cur !== mDoc.documentElement) {
+                    var bg = _rcDv.getComputedStyle(cur).backgroundColor;
+                    var c = _parseRgba(bg);
+                    if (c && c.a > 0.05) return c;
+                    cur = cur.parentElement;
+                  }
+                  return { r: 255, g: 255, b: 255, a: 1 }; // default white
+                }
+                mDoc.body.querySelectorAll('*').forEach(function(el) {
+                  if (_rvSkip[el.tagName]) return;
+                  // Only elements with direct text content
+                  var hasText = false;
+                  for (var _tn = el.firstChild; _tn; _tn = _tn.nextSibling) {
+                    if (_tn.nodeType === 3 && _tn.textContent.trim()) { hasText = true; break; }
+                  }
+                  if (!hasText) return;
+                  var cs = _rcDv.getComputedStyle(el);
+                  var fgC = _parseRgba(cs.color);
+                  if (!fgC) return;
+                  var bgC = _effectiveBg(el);
+                  var fgL = _rgbToLum(fgC.r, fgC.g, fgC.b);
+                  var bgL = _rgbToLum(bgC.r, bgC.g, bgC.b);
+                  var lHi = Math.max(fgL, bgL), lLo = Math.min(fgL, bgL);
+                  var ratio = (lHi + 0.05) / (lLo + 0.05);
+                  if (ratio < 1.3) {
+                    var newColor = bgL > 0.5 ? '#000000' : '#ffffff';
+                    el.style.setProperty('color', newColor, 'important');
+                    el.style.setProperty('-webkit-text-fill-color', newColor, 'important');
+                    _recoloredCount++;
+                  }
+                });
+              } catch (_rcE) { console.warn('[milg-region] recolor pass failed:', _rcE.message); }
+              if (_recoloredCount) console.log('[milg-region] Recolored ' + _recoloredCount + ' invisible-text elements');
 
               // Harvest extraction data if available
               var extractedData = null;
@@ -489,6 +551,7 @@ window.MilgRegion = (function() {
                   kind: _rgnKind,
                   noAnchor: !!rgn._noAnchor,
                   label: rgn.label || '',
+                  recoloredCount: _recoloredCount,
                   extractedData: extractedData,
                   maskResults: _mMaskResults
                 };
@@ -733,6 +796,15 @@ window.MilgRegion = (function() {
         _rgnDone++;
         if (_rgnDone >= _rgnTotal) {
           clearTimeout(_rgnOverall);
+          // Sort by containerRect.top ascending so viewer order matches page top-to-bottom;
+          // noAnchor entries (no visible position on main page) go last.
+          _rgnResults.sort(function(a, b) {
+            var aNA = a.noAnchor ? 1 : 0, bNA = b.noAnchor ? 1 : 0;
+            if (aNA !== bNA) return aNA - bNA;
+            var aTop = (a.containerRect && a.containerRect.top) || 0;
+            var bTop = (b.containerRect && b.containerRect.top) || 0;
+            return aTop - bTop;
+          });
           console.log('[milg-region] Region screenshots done: ' + _rgnResults.length + '/' + _rgnTotal);
           rgnCb(_rgnResults);
         }

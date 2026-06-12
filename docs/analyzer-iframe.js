@@ -579,7 +579,7 @@ window.MilgIframe = (function() {
       // JS-enabled mode needs longer delays for React/Vue hydration
       var postLoadDelay = jsEnabled ? 2000 : 1000;
       var fallbackDelay = jsEnabled ? 8000 : 8000;
-      var extractScript = idVar + excludeVar + fragmentVar + screenshotScript + '<script>window.MilgExtract=(' + _extractFnSrc + ');window.addEventListener("load",function(){setTimeout(function(){window.MilgExtract()},' + postLoadDelay + ')});setTimeout(function(){window.MilgExtract()},' + fallbackDelay + ');</' + 'script>';
+      var extractScript = idVar + excludeVar + fragmentVar + screenshotScript + '<script>window.MilgExtract=(' + _extractFnSrc + ');window.addEventListener("load",function(){setTimeout(function(){window.MilgExtract()},' + postLoadDelay + ')});setTimeout(function(){if(!window.__milgData)window.MilgExtract()},' + fallbackDelay + ');</' + 'script>';
       if (/<\/body>/i.test(html)) {
         srcdoc = html.replace(/<\/body>/i, extractScript + '</body>');
       } else {

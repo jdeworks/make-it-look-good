@@ -543,8 +543,11 @@ window.MilgCapture = (function() {
                   _savedBboxes.forEach(function(s2) { var nb = { left: s2.left, top: s2.top, width: s2.width, height: s2.height }; if (s2._rcid) nb._rcid = s2._rcid; s2.obj[s2.key] = nb; });
 
                   var _maskResults = {}; // Defined HERE so _sendFinal can access it (same scope)
+                  // Snapshot __milgData NOW (before mask phases can re-run extraction).
+                  // _sendFinal must use THIS snapshot so mask indices align to the same array.
+                  var _snapRaw = window.__milgData || null;
                   function _sendFinal() {
-                    var _raw = window.__milgData || null;
+                    var _raw = _snapRaw;
                     // Build a lean updatedData with ONLY re-read bboxes (not full extraction + screenshots).
                     var updatedData = null;
                     if (_raw) {
@@ -637,8 +640,9 @@ window.MilgCapture = (function() {
                       console.log("[iframe-ss] Re-read bboxes post-mask-style: " + res3);
                     }
                     // Phase C: Collect pair elements and build overlap layers
+                    // Use the snapshot taken before mask phases (never re-read window.__milgData here).
                     var _refs = window.__milgBboxRefs || [];
-                    var _pairs = (window.__milgData && window.__milgData.colors && window.__milgData.colors.contrastPairs) || [];
+                    var _pairs = (_snapRaw && _snapRaw.colors && _snapRaw.colors.contrastPairs) || [];
                     var _pairEls = [];
                     _refs.forEach(function(ref) {
                       if (!ref.el || !ref.obj || ref.obj.ratio === undefined) return;

@@ -414,6 +414,13 @@ window.MilgViewer = (function() {
         rgnHeader.appendChild(rgnTitle);
         rgnHeader.appendChild(backLink);
         rgnSection.appendChild(rgnHeader);
+        // WP-D: warn when invisible text was recolored in the mini-page
+        if (rgn.recoloredCount && rgn.recoloredCount > 0) {
+          var rgnRecolorWarn = document.createElement('div');
+          rgnRecolorWarn.style.cssText = 'padding:4px 12px;background:rgba(251,191,36,0.15);border-bottom:1px solid rgba(251,191,36,0.3);font-size:11px;color:#fbbf24;';
+          rgnRecolorWarn.textContent = '⚠ ' + rgn.recoloredCount + ' invisible text element' + (rgn.recoloredCount !== 1 ? 's' : '') + ' recolored to be visible — original color had ~no contrast';
+          rgnSection.appendChild(rgnRecolorWarn);
+        }
 
         // Region frame: a scroll container (max-height cap) wrapping an inline-block
         // INNER box that shrink-wraps the image. The SVG overlay is sized to the INNER
