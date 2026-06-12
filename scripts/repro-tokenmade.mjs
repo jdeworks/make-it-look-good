@@ -67,7 +67,6 @@ const dump = await page.evaluate(() => {
     region: pairs.filter(p => p._regionContainerId).length,
     hiddenPanelCount: raw.layout && raw.layout.hiddenPanelCount,
     screenshots: (raw.screenshots || []).length,
-    screenshotsUnhidden: (raw.screenshotsUnhidden || []).length,
     regionScreenshots: (raw.regionScreenshots || []).length,
     verifyCount: vr.length,
     verifySkipped: vr.filter(r => r.skipped).length,

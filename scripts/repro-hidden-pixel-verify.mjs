@@ -48,7 +48,6 @@ const dump = await page.evaluate(() => {
     hiddenPanelCount: raw.layout && raw.layout.hiddenPanelCount,
     hiddenPanelIssues: (raw.layout && raw.layout.hiddenPanelIssues || []).map(h => h.selector),
     screenshots: (raw.screenshots || []).length,
-    screenshotsUnhidden: (raw.screenshotsUnhidden || []).length,
     pairCount: (raw.colors && raw.colors.contrastPairs || []).length,
     verify: null,
   };

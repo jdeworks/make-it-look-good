@@ -507,8 +507,8 @@ window.MilgIframe = (function() {
       }
       if (e.data.type === 'milg-analyzer-result') {
         // Guard: ignore the 8000ms fallback extraction if screenshots were already processed.
-        // The fallback fires after __milgDoUnhiddenScreenshots opens closed <details> elements,
-        // so it would report 0 hidden pairs and overwrite the correct data from the first extraction.
+        // The fallback can fire after capture mutated the page (force-reveals, scroll),
+        // so it would overwrite the correct data from the first extraction.
         if (iframe._milgScreenshotsDone) return;
         var data = e.data.data;
         data.meta.url = 'Pasted HTML';
@@ -555,19 +555,8 @@ window.MilgIframe = (function() {
           var _dRgns = (iframe._milgData.regionScreenshots || []).length;
           console.log('[D] parent pairs=' + _dp.length + ' rcid=' + _dRcid + ' clipped=' + _dClip + ' masks=' + _dMask + ' regions=' + _dRgns);
         }
-        // If hidden panels were detected, trigger unhidden screenshot pass
-        var hpc = iframe._milgData.layout && iframe._milgData.layout.hiddenPanelCount;
-        if (hpc > 0 && iframe.contentWindow && iframe.contentWindow.__milgDoUnhiddenScreenshots) {
-          try {
-            if (typeof _updateFocusModal === 'function') _updateFocusModal('Capturing expanded hidden panels');
-            setTimeout(function() { iframe.contentWindow.__milgDoUnhiddenScreenshots(); }, 100);
-          } catch(ex) { finish(iframe._milgData); }
-        } else {
-          finish(iframe._milgData);
-        }
-      }
-      if (e.data.type === 'milg-screenshots-unhidden' && iframe._milgData) {
-        iframe._milgData.screenshotsUnhidden = e.data.screenshots || [];
+        // Hidden-panel content is covered by the region pipeline (per-panel
+        // "Hidden section" screenshots) — no extra full-page unhidden pass.
         finish(iframe._milgData);
       }
     }
@@ -582,62 +571,7 @@ window.MilgIframe = (function() {
     var excludeVar = excludeSelector ? '<script>window.__milgExclude=' + JSON.stringify(excludeSelector) + ';</' + 'script>' : '';
     var fragmentVar = !isFullDoc ? '<script>window.__milgIsFragment=true;</' + 'script>' : '';
     // Screenshot capture: script that auto-runs after extraction, loads CDN library, captures page
-    // Also includes unhidden-panels screenshot if hidden panels are detected
-    var unhiddenScreenshotFn = 'window.__milgDoUnhiddenScreenshots=function(){' +
-      'var _mid=window.__milgIframeId||"";' +
-      // Unhide all interactive panels using !important overrides
-      'var panels=document.querySelectorAll("[role=menu],[role=listbox],[role=dialog],[role=tooltip],[role=alertdialog]");' +
-      'var hidden=[];' +
-      'function _revealPanel(p){' +
-        'var s=getComputedStyle(p);' +
-        'if(s.display==="none"||s.visibility==="hidden"||s.opacity==="0"){' +
-          'hidden.push({el:p,css:p.style.cssText,ariaH:p.getAttribute("aria-hidden"),hadHidden:p.hasAttribute("hidden"),isDetails:false});' +
-          'p.style.cssText=p.style.cssText+";display:block !important;visibility:visible !important;opacity:1 !important;";' +
-          'if(p.hasAttribute("hidden"))p.removeAttribute("hidden");' +
-          'if(p.getAttribute("aria-hidden")==="true")p.setAttribute("aria-hidden","false")' +
-        '}' +
-      '}' +
-      'panels.forEach(function(p){_revealPanel(p)});' +
-      // Also check aria-haspopup sibling panels
-      'document.querySelectorAll("[aria-haspopup]").forEach(function(t){' +
-        'var w=t.parentElement;if(!w)return;' +
-        'w.querySelectorAll("[role=menu],[role=listbox],[role=dialog]").forEach(function(p){_revealPanel(p)})' +
-      '});' +
-      // Closed <details>: set open=true (inline-expandable)
-      'document.querySelectorAll("details:not([open])").forEach(function(d){' +
-        'hidden.push({el:d,css:null,ariaH:null,hadHidden:false,isDetails:true,origOpen:false});' +
-        'd.open=true' +
-      '});' +
-      // [hidden] attribute elements (inline-expandable)
-      'document.querySelectorAll("[hidden]").forEach(function(p){' +
-        'hidden.push({el:p,css:p.style.cssText,ariaH:p.getAttribute("aria-hidden"),hadHidden:true,isDetails:false});' +
-        'p.removeAttribute("hidden");' +
-        'p.style.cssText=p.style.cssText+";display:block !important;visibility:visible !important;opacity:1 !important;"' +
-      '});' +
-      // aria-expanded=false targets (inline-expandable via display override)
-      'document.querySelectorAll("[aria-expanded=false][aria-controls]").forEach(function(t){' +
-        'var tid=t.getAttribute("aria-controls");if(!tid)return;' +
-        'var tgt=document.getElementById(tid);if(!tgt)return;' +
-        'var _dup=hidden.some(function(h){return h.el===tgt});if(_dup)return;' +
-        'hidden.push({el:tgt,css:tgt.style.cssText,ariaH:tgt.getAttribute("aria-hidden"),hadHidden:tgt.hasAttribute("hidden"),isDetails:false});' +
-        'tgt.style.cssText=tgt.style.cssText+";display:block !important;visibility:visible !important;opacity:1 !important;";' +
-        'if(tgt.hasAttribute("hidden"))tgt.removeAttribute("hidden")' +
-      '});' +
-      // NOTE: Tailwind max-h-0/overflow-hidden collapsed containers are NOT revealed inline here
-      // (they belong to region/hidden-area analysis via the existing region pipeline).
-      'if(hidden.length===0){parent.postMessage({type:"milg-screenshots-unhidden",screenshots:[],_iframeId:_mid},"*");return}' +
-      'void document.body.offsetHeight;' +
-      'setTimeout(function(){' +
-        // Direct capture (iframe already resized from main screenshot pass)
-        'var ms=window.modernScreenshot;' +
-        'if(!ms||!ms.domToCanvas){parent.postMessage({type:"milg-screenshots-unhidden",screenshots:[],_iframeId:_mid},"*");return}' +
-        'ms.domToCanvas(document.documentElement,{scale:' + SCREENSHOT_SCALE + ',timeout:30000}).then(function(fc){' +
-          'var uri;try{uri=fc.toDataURL("image/webp",' + SCREENSHOT_QUALITY + ')}catch(e){uri=""}' +
-          'parent.postMessage({type:"milg-screenshots-unhidden",screenshots:uri?[uri]:[],_iframeId:_mid},"*")' +
-        '}).catch(function(){parent.postMessage({type:"milg-screenshots-unhidden",screenshots:[],_iframeId:_mid},"*")})' +
-      '},300)' +
-    '};';
-    var screenshotScript = captureScreenshots ? '<script>window.__milgDoScreenshots=function(){' + buildScreenshotScript('milg-screenshots-result') + '};' + unhiddenScreenshotFn + '</' + 'script>' : '';
+    var screenshotScript = captureScreenshots ? '<script>window.__milgDoScreenshots=function(){' + buildScreenshotScript('milg-screenshots-result') + '};</' + 'script>' : '';
     var srcdoc;
     var _extractFnSrc = extractFromDocument.toString();
     if (isFullDoc) {
