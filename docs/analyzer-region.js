@@ -298,6 +298,14 @@ window.MilgRegion = (function() {
         console.log('[milg-region] Dropping ' + (_panelList.length - _slotsLeft) + ' hidden panels (cap 8 total)');
         _panelList = _panelList.slice(0, _slotsLeft);
       }
+      _panelList.sort(function(a, b) {
+        if (!a.el || !b.el || a.el === b.el) return 0;
+        var pos = a.el.compareDocumentPosition(b.el);
+        if (pos & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
+        if (pos & Node.DOCUMENT_POSITION_PRECEDING) return 1;
+        return 0;
+      });
+      _panelList.forEach(function(p, i) { p._domOrder = i; });
       console.log('[milg-region] Adding ' + _panelList.length + ' hidden-panel regions');
       var _allRegions = _clipContainerList.concat(_panelList);
       if (_allRegions.length === 0) { rgnCb([]); return; }
@@ -563,7 +571,7 @@ window.MilgRegion = (function() {
                   screenshot: rUri,
                   screenshotMeta: { scale: _sc, canvasWidth: finalCanvas.width, canvasHeight: finalCanvas.height, cropOffsetX: _cropOX, cropOffsetY: _cropOY, isRegion: true },
                   pairIndices: rgn.pairIndices,
-                  containerRect: { left: Math.round(cr.left), top: Math.round(cr.top), width: Math.round(cr.width), height: Math.round(cr.height) },
+                  containerRect: rgn._noAnchor ? null : { left: Math.round(cr.left), top: Math.round(cr.top), width: Math.round(cr.width), height: Math.round(cr.height) },
                   kind: _rgnKind,
                   noAnchor: !!rgn._noAnchor,
                   label: rgn.label || '',
@@ -813,15 +821,18 @@ window.MilgRegion = (function() {
         _rgnDone++;
         if (_rgnDone >= _rgnTotal) {
           clearTimeout(_rgnOverall);
-          // Sort by containerRect.top ascending so viewer order matches page top-to-bottom;
+          // Sort by DOM order (primary) so viewer order matches document order;
           // noAnchor entries (no visible position on main page) go last.
+          // containerRect.top is fallback only when domOrder ties.
           _rgnResults.sort(function(a, b) {
             var aNA = a.noAnchor ? 1 : 0, bNA = b.noAnchor ? 1 : 0;
             if (aNA !== bNA) return aNA - bNA;
+            var aD = (a._domOrder != null) ? a._domOrder : 1e9;
+            var bD = (b._domOrder != null) ? b._domOrder : 1e9;
+            if (aD !== bD) return aD - bD;
             var aTop = (a.containerRect && a.containerRect.top) || 0;
             var bTop = (b.containerRect && b.containerRect.top) || 0;
-            if (Math.abs(aTop - bTop) > 5) return aTop - bTop;
-            return (a._domOrder || 0) - (b._domOrder || 0);
+            return aTop - bTop;
           });
           console.log('[milg-region] Region screenshots done: ' + _rgnResults.length + '/' + _rgnTotal);
           rgnCb(_rgnResults);

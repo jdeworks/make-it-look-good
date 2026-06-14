@@ -2,7 +2,7 @@
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.62 loaded');
+console.log('[milg] analyzer.js v3.11.63 loaded');
 
 (function() {
   "use strict";
@@ -1021,6 +1021,24 @@ console.log('[milg] analyzer.js v3.11.62 loaded');
           if (spinner) spinner.parentNode.removeChild(spinner);
           // Only inject into DOM if this is still the active analysis
           if (_verifyGen !== _verifyGeneration) return;
+          // Recompute score with pixel-verify results factored in (scoreContrast reads _contrastVerifyResults)
+          if ((results || []).length > 0) {
+            try {
+              var _updatedReport = MilgScoring.runScoring(_verifyData);
+              if (_updatedReport && _updatedReport.overall !== undefined) {
+                _verifyReportData.overall = _updatedReport.overall;
+                _verifyReportData.grade = _updatedReport.grade;
+                _verifyReportData.gradeLabel = _updatedReport.gradeLabel;
+                _verifyReportData.categories = _updatedReport.categories;
+                var _gaugeEl = _verifyContainer.querySelector('.report-gauge');
+                if (_gaugeEl && MilgReport.renderGauge) {
+                  _gaugeEl.innerHTML = MilgReport.renderGauge(_updatedReport.overall, _updatedReport.grade) +
+                    '<div class="report-grade-label">' + _updatedReport.gradeLabel + '</div>';
+                }
+                saveToHistory(_verifyData, _updatedReport.overall, _updatedReport.grade);
+              }
+            } catch (_se) { console.warn('[milg] Score recompute after verify failed:', _se.message); }
+          }
           if (results.length === 0 && (!bboxEdgeResults || bboxEdgeResults.length === 0)) return;
           var summary = MilgContrastVerify.buildSummary(results, bboxEdgeResults);
           var summaryHtml = MilgContrastVerify.renderSummaryHtml(summary);

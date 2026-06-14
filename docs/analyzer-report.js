@@ -1581,5 +1581,5 @@ window.MilgReport = (function() {
     return { folder: folder, files: files, assets: assets };
   }
 
-  return { renderReport: renderReport, renderMarkdown: renderMarkdown, renderCrawlSummary: renderCrawlSummary, renderCrawlPageTab: renderCrawlPageTab, buildLlmPack: buildLlmPack, buildLlmPackMulti: buildLlmPackMulti };
+  return { renderReport: renderReport, renderMarkdown: renderMarkdown, renderCrawlSummary: renderCrawlSummary, renderCrawlPageTab: renderCrawlPageTab, buildLlmPack: buildLlmPack, buildLlmPackMulti: buildLlmPackMulti, renderGauge: renderGauge };
 })();

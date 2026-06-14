@@ -284,12 +284,26 @@ function scoreContrast(data) {
     });
   }
 
+  // Pixel-verify: count CSS-passing but pixel-failing pairs as additional failures (not demoted).
+  // Skip pairs that already have a CSS failure (same selector) to avoid double-counting.
+  var _pxExtraErrors = 0, _pxExtraWarnings = 0;
+  if (data._contrastVerifyResults && data._contrastVerifyResults.length > 0) {
+    var _cssFailSelectors = {};
+    Object.keys(failSeen).forEach(function(k) { _cssFailSelectors[failSeen[k].p.selector] = true; });
+    data._contrastVerifyResults.forEach(function(vr) {
+      if (vr.skipped || !vr.cssPasses || vr.pixelPasses) return;
+      if (_cssFailSelectors[vr.selector]) return;
+      if (vr.demoted === 'warning') _pxExtraWarnings++;
+      else if (!vr.demoted) _pxExtraErrors++;
+    });
+  }
+
   // Don't count uncertain results as failures in the score
   var total = (profilePairs.length - uncertain.length) || 1;
   var passing = total - failures.length;
   // Scale deduction by total pairs: more pairs = less impact per failure (large pages shouldn't be punished more)
   var failPenalty = total > 10 ? Math.max(3, Math.round(100 / total)) : 10;
-  var score = Math.max(0, 100 - (failures.length * failPenalty) - (nearMisses.length * 1));
+  var score = Math.max(0, 100 - (failures.length * failPenalty) - (nearMisses.length * 1) - (_pxExtraErrors * failPenalty) - (_pxExtraWarnings * 1));
 
   // Add baseline checks
   var checks = Math.max(total, 1);

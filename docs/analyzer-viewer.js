@@ -469,22 +469,11 @@ window.MilgViewer = (function() {
         rgnSection.appendChild(rgnFrame);
 
         // Findings summary bar — only count findings with bboxes (those are the ones rendered as overlays)
+        var summaryBar = null;
         if (rgn.regionReport) {
-          var errCount = 0, warnCount = 0, infoCount = 0;
-          (rgn.regionReport.categories || []).forEach(function(cat) {
-            (cat.findings || []).forEach(function(f) {
-              if (!f.locator || !f.locator.bboxes || f.locator.bboxes.length === 0) return;
-              if (f.severity === 'error') errCount++;
-              else if (f.severity === 'warning') warnCount++;
-              else if (f.severity === 'info') infoCount++;
-            });
-          });
-          var summaryBar = document.createElement('div');
+          summaryBar = document.createElement('div');
           summaryBar.style.cssText = 'padding:6px 12px;font-size:11px;color:rgba(255,255,255,0.8);background:rgba(0,0,0,0.4);border-top:1px solid rgba(59,130,246,0.2);display:flex;gap:12px;align-items:center;';
-          summaryBar.innerHTML = '<span style="font-weight:600;color:#93c5fd">Score: ' + (rgn.regionReport.overall || 0) + '/100 (' + (rgn.regionReport.grade || '?') + ')</span>' +
-            (errCount ? '<span style="color:#ef4444">' + errCount + ' error' + (errCount !== 1 ? 's' : '') + '</span>' : '') +
-            (warnCount ? '<span style="color:#eab308">' + warnCount + ' warning' + (warnCount !== 1 ? 's' : '') + '</span>' : '') +
-            (infoCount ? '<span style="color:#3b82f6">' + infoCount + ' info</span>' : '');
+          _buildRegionSummaryBar(summaryBar, rgn);
           rgnSection.appendChild(summaryBar);
         }
         regionSection.appendChild(rgnSection);
@@ -496,7 +485,8 @@ window.MilgViewer = (function() {
           img: rgnImg,
           frame: rgnFrame,
           meta: rgn.screenshotMeta,
-          regionRef: rgn  // live reference for async verify results (rgn.regionVerifyResults)
+          regionRef: rgn,  // live reference for async verify results (rgn.regionVerifyResults)
+          summaryBar: summaryBar
         });
       });
 
@@ -890,10 +880,61 @@ window.MilgViewer = (function() {
     });
   }
 
+  // Build (or re-build) the text content of a region summary bar, cross-referencing
+  // regionVerifyResults to downgrade error counts for demoted findings.
+  function _buildRegionSummaryBar(summaryBar, rgn) {
+    if (!summaryBar || !rgn.regionReport) return;
+    var errCount = 0, warnCount = 0, infoCount = 0;
+    var _demotedByPos = {};
+    (rgn.regionVerifyResults || []).forEach(function(vr) {
+      if (vr.demoted && vr.bbox) {
+        var k = Math.round(vr.bbox.left) + ',' + Math.round(vr.bbox.top) + ',' + Math.round(vr.bbox.width) + ',' + Math.round(vr.bbox.height);
+        _demotedByPos[k] = vr.demoted;
+      }
+    });
+    (rgn.regionReport.categories || []).forEach(function(cat) {
+      (cat.findings || []).forEach(function(f) {
+        if (!f.locator || !f.locator.bboxes || f.locator.bboxes.length === 0) return;
+        var effectiveSev = f.severity;
+        if (f.severity === 'error' && f.locator.bboxes.length > 0) {
+          var bbox = f.locator.bboxes[0];
+          if (bbox) {
+            var k = Math.round(bbox.left) + ',' + Math.round(bbox.top) + ',' + Math.round(bbox.width) + ',' + Math.round(bbox.height);
+            var demoted = _demotedByPos[k];
+            if (!demoted) {
+              for (var _bk = 0; _bk < f.locator.bboxes.length; _bk++) {
+                var bb = f.locator.bboxes[_bk];
+                if (!bb) continue;
+                var bL = Math.round(bb.left), bT = Math.round(bb.top), bW = Math.round(bb.width), bH = Math.round(bb.height);
+                for (var _dk in _demotedByPos) {
+                  var parts = _dk.split(',');
+                  if (Math.abs(+parts[0] - bL) <= 3 && Math.abs(+parts[1] - bT) <= 3 &&
+                      Math.abs(+parts[2] - bW) <= 3 && Math.abs(+parts[3] - bH) <= 3) {
+                    demoted = _demotedByPos[_dk]; break;
+                  }
+                }
+                if (demoted) break;
+              }
+            }
+            if (demoted) effectiveSev = demoted;
+          }
+        }
+        if (effectiveSev === 'error') errCount++;
+        else if (effectiveSev === 'warning') warnCount++;
+        else if (effectiveSev === 'info') infoCount++;
+      });
+    });
+    summaryBar.innerHTML = '<span style="font-weight:600;color:#93c5fd">Score: ' + (rgn.regionReport.overall || 0) + '/100 (' + (rgn.regionReport.grade || '?') + ')</span>' +
+      (errCount ? '<span style="color:#ef4444">' + errCount + ' error' + (errCount !== 1 ? 's' : '') + '</span>' : '') +
+      (warnCount ? '<span style="color:#eab308">' + warnCount + ' warning' + (warnCount !== 1 ? 's' : '') + '</span>' : '') +
+      (infoCount ? '<span style="color:#3b82f6">' + infoCount + ' info</span>' : '');
+  }
+
   // Render bbox overlays on all region screenshots — same filter behavior as main overlay
   function renderRegionOverlays() {
     console.log('[D] renderRegionOverlays regions=' + _regionData.length + ' filter=' + (_activeFilter ? _activeFilter.type + ':' + _activeFilter.value : 'none'));
     _regionData.forEach(function(rd, rIdx) {
+      if (rd.summaryBar && rd.regionRef) _buildRegionSummaryBar(rd.summaryBar, rd.regionRef);
       if (!rd.svg || !rd.findings) { console.log('[D] region ' + rIdx + ' skip: svg=' + !!rd.svg + ' findings=' + (rd.findings ? rd.findings.length : 'null')); return; }
       while (rd.svg.firstChild) rd.svg.removeChild(rd.svg.firstChild);
       // No filter active → no overlays (matches main renderOverlays behavior)
@@ -1095,13 +1136,13 @@ window.MilgViewer = (function() {
 
       var fill, stroke, dash;
       var _pxFail = vr.crossesBoundary && vr.cssPasses && !vr.pixelPasses;
-      // Worst-severity-wins: if any finding at this position is error, show red regardless of pixel result.
-      // Small-text demoted results show yellow (warning) / blue (info) instead of red.
-      if (worstSevAtPos === 'error' || (_pxFail && !vr.demoted)) {
-        fill = 'rgba(239,68,68,0.25)'; stroke = '#ef4444'; dash = '6 2';
-      } else if (vr.demoted === 'info') {
+      if (vr.demoted === 'info') {
         fill = 'rgba(59,130,246,0.15)'; stroke = '#3b82f6'; dash = '4 2';
-      } else if (vr.demoted === 'warning' || worstSevAtPos === 'warning' || vr.isVariableBg) {
+      } else if (vr.demoted === 'warning') {
+        fill = 'rgba(234,179,8,0.15)'; stroke = '#eab308'; dash = '4 2';
+      } else if (worstSevAtPos === 'error' || (_pxFail && !vr.demoted)) {
+        fill = 'rgba(239,68,68,0.25)'; stroke = '#ef4444'; dash = '6 2';
+      } else if (worstSevAtPos === 'warning' || vr.isVariableBg) {
         fill = 'rgba(234,179,8,0.15)'; stroke = '#eab308'; dash = '4 2';
       } else if (vr.crossesBoundary && !vr.cssPasses && vr.pixelPasses) {
         fill = 'rgba(34,197,94,0.2)'; stroke = '#22c55e'; dash = '4 3';
@@ -1752,11 +1793,13 @@ window.MilgViewer = (function() {
 
       var fill, stroke, dash;
       var _pxFail = vr.crossesBoundary && vr.cssPasses && !vr.pixelPasses;
-      if (worstSevAtPos === 'error' || (_pxFail && !vr.demoted)) {
-        fill = 'rgba(239,68,68,0.25)'; stroke = '#ef4444'; dash = '6 2';
-      } else if (vr.demoted === 'info') {
+      if (vr.demoted === 'info') {
         fill = 'rgba(59,130,246,0.15)'; stroke = '#3b82f6'; dash = '4 2';
-      } else if (vr.demoted === 'warning' || worstSevAtPos === 'warning' || vr.isVariableBg) {
+      } else if (vr.demoted === 'warning') {
+        fill = 'rgba(234,179,8,0.15)'; stroke = '#eab308'; dash = '4 2';
+      } else if (worstSevAtPos === 'error' || (_pxFail && !vr.demoted)) {
+        fill = 'rgba(239,68,68,0.25)'; stroke = '#ef4444'; dash = '6 2';
+      } else if (worstSevAtPos === 'warning' || vr.isVariableBg) {
         fill = 'rgba(234,179,8,0.15)'; stroke = '#eab308'; dash = '4 2';
       } else if (vr.crossesBoundary && !vr.cssPasses && vr.pixelPasses) {
         fill = 'rgba(34,197,94,0.2)'; stroke = '#22c55e'; dash = '4 3';
