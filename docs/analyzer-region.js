@@ -286,7 +286,7 @@ window.MilgRegion = (function() {
             try { if (pe.contains(hpEl) || hpEl.contains(pe)) { dup = true; break; } } catch (_pe2) {}
           }
           if (dup) return;
-          _panelList.push({ el: hpEl, id: 'hp-' + (_rgnCounter + _panelList.length + 1), pairIndices: [], kind: hp.kind || 'collapsed', label: hp.label || '', triggerEl: hp.triggerEl || null });
+          _panelList.push({ el: hpEl, id: 'hp-' + (_rgnCounter + _panelList.length + 1), pairIndices: [], kind: hp.kind || 'collapsed', label: hp.label || '', triggerEl: hp.triggerEl || null, _domOrder: _panelList.length });
         });
         // Sort panels by textContent length desc (richer panels first)
         _panelList.sort(function(a, b) {
@@ -481,6 +481,22 @@ window.MilgRegion = (function() {
               var extractedData = null;
               try { extractedData = mf.contentWindow.__milgData || null; } catch (_e) {}
 
+              // Bug 1 fix: mark contrast pairs whose elements were recolored so
+              // isUncertain() in contrast.js does not exempt them from failure.
+              if (_recoloredCount && extractedData && extractedData.colors) {
+                var _rcPairs = extractedData.colors.contrastPairs || [];
+                var _rcRefs = [];
+                try { _rcRefs = mf.contentWindow.__milgBboxRefs || []; } catch (_e2) {}
+                var _rcRecoloredEls = new Set();
+                mDoc.body.querySelectorAll('*').forEach(function(el) {
+                  if (el.style && el.style.getPropertyValue('color')) _rcRecoloredEls.add(el);
+                });
+                _rcRefs.forEach(function(ref) {
+                  if (!ref.el || !ref.obj) return;
+                  if (_rcRecoloredEls.has(ref.el)) ref.obj._wasRecolored = true;
+                });
+              }
+
               // Size iframe to full document first so getBoundingClientRect gives correct coords
               var cW = Math.max(mDoc.body.scrollWidth, mDoc.documentElement.scrollWidth);
               var cH = Math.max(mDoc.body.scrollHeight, mDoc.documentElement.scrollHeight);
@@ -545,7 +561,7 @@ window.MilgRegion = (function() {
                 var _mMaskResults = {}; // pair index → {bmp, packed, w, h, layer, dark}
                 var _rgnResult = {
                   screenshot: rUri,
-                  screenshotMeta: { scale: _sc, canvasWidth: finalCanvas.width, canvasHeight: finalCanvas.height, cropOffsetX: _cropOX, cropOffsetY: _cropOY },
+                  screenshotMeta: { scale: _sc, canvasWidth: finalCanvas.width, canvasHeight: finalCanvas.height, cropOffsetX: _cropOX, cropOffsetY: _cropOY, isRegion: true },
                   pairIndices: rgn.pairIndices,
                   containerRect: { left: Math.round(cr.left), top: Math.round(cr.top), width: Math.round(cr.width), height: Math.round(cr.height) },
                   kind: _rgnKind,
@@ -553,7 +569,8 @@ window.MilgRegion = (function() {
                   label: rgn.label || '',
                   recoloredCount: _recoloredCount,
                   extractedData: extractedData,
-                  maskResults: _mMaskResults
+                  maskResults: _mMaskResults,
+                  _domOrder: rgn._domOrder || 0
                 };
 
                 // --- Mask capture pipeline (same as main page Phase A-D) ---
@@ -803,7 +820,8 @@ window.MilgRegion = (function() {
             if (aNA !== bNA) return aNA - bNA;
             var aTop = (a.containerRect && a.containerRect.top) || 0;
             var bTop = (b.containerRect && b.containerRect.top) || 0;
-            return aTop - bTop;
+            if (Math.abs(aTop - bTop) > 5) return aTop - bTop;
+            return (a._domOrder || 0) - (b._domOrder || 0);
           });
           console.log('[milg-region] Region screenshots done: ' + _rgnResults.length + '/' + _rgnTotal);
           rgnCb(_rgnResults);

@@ -104,6 +104,7 @@ function scoreContrast(data) {
   // Separate uncertain results (very low ratio usually means bg couldn't be determined — gradient, SVG, image, etc.)
   // Cases: fg===bg (exact 1:1), or ratio < 1.5 with light text on light bg (white text on gradient that resolved to white)
   function isUncertain(p) {
+    if (p._wasRecolored) return false;
     if (p.passes) return false;
     if (p.ratio <= 1.01 && p.fg === p.bg) return true;
     // Very low ratio with light fg+bg suggests unresolved gradient background

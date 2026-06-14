@@ -588,7 +588,7 @@ window.MilgExtract = (function() {
     var interactive = document.querySelectorAll('a,button,input,select,textarea,[role="button"],[tabindex]');
     var touchIssues = [];
     interactive.forEach(function(el) {
-      if (!isVisible(el) || isDecorative(el) || _isScreenReaderOnly(el)) return;
+      if (!isVisible(el) || isDecorative(el) || _isScreenReaderOnly(el) || _isHiddenAtCapture(el)) return;
       var rect = el.getBoundingClientRect();
       var w = Math.round(rect.width), h = Math.round(rect.height);
       // Sub-2px inputs are implementation plumbing (Monaco's hidden textarea,

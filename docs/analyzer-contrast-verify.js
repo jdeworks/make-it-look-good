@@ -360,7 +360,7 @@ window.MilgContrastVerify = (function() {
     var FG_CLUSTER_R = 6;  // cluster averaging radius
 
     // Read expanded area from screenshot for BG sampling outside bbox
-    var PAD = BG_DIST_MAX + 2;
+    var PAD = (meta && meta.isRegion) ? 0 : BG_DIST_MAX + 2;
     var padL = Math.min(PAD, bx);
     var padT = Math.min(PAD, by);
     var padR = Math.min(PAD, ctx.sec.width - bx - bw);

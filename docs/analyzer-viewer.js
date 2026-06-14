@@ -77,6 +77,22 @@ window.MilgViewer = (function() {
       _allFindings.push({ severity: 'pass', title: t.element + ' ' + t.width + '\u00d7' + t.height + 'px', detail: (t.text || '') + ' — ' + t.selector, category: 'Touch Targets', icon: 'touch', bboxes: [t.bbox] });
     });
 
+    // Inject pixel verify failures (CSS passes but pixel fails) into findings
+    var _pvResults = (reportData && reportData._contrastVerifyResults) || [];
+    _pvResults.forEach(function(vr) {
+      if (!vr.bbox || !vr.cssPasses || vr.pixelPasses || vr.skipped) return;
+      var sev = vr.demoted === 'warning' ? 'warning' : vr.demoted === 'info' ? 'info' : 'error';
+      _allFindings.push({
+        severity: sev,
+        title: 'Contrast pixel-fail: ' + (vr.pixelRatioP10 || vr.pixelRatio || '?') + ':1 (CSS passes)',
+        detail: (vr.text ? '"' + vr.text.substring(0, 40) + '"' : vr.selector || ''),
+        category: 'Color & Contrast',
+        icon: 'contrast',
+        bboxes: [vr.bbox],
+        _isPixelVerify: true
+      });
+    });
+
     // Build overlay shell (image will be inserted after stitching)
     _overlay = document.createElement('div');
     _overlay.className = 'milg-viewer-overlay';
@@ -272,7 +288,7 @@ window.MilgViewer = (function() {
             var cx = Math.round(cr.left * _s);
             var cy = Math.round(cr.top * _s) - _calibrationOffsetY;
             var cw = Math.max(Math.round(cr.width * _s), 40);
-            var ch = Math.max(Math.round(cr.height * _s), 40);
+            var ch = Math.round(cr.height * _s);
             var ind = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
             ind.setAttribute('class', 'milg-region-indicator-' + ri);
             ind.setAttribute('x', cx); ind.setAttribute('y', cy);
@@ -743,11 +759,6 @@ window.MilgViewer = (function() {
             var _rb = _regionBounds[_ri];
             if (_bcx >= _rb.left && _bcx <= _rb.left + _rb.width && _bcy >= _rb.top && _bcy <= _rb.top + _rb.height) return;
           }
-          // Also check container rects (original geometry from getBoundingClientRect)
-          for (var _ri2 = 0; _ri2 < _regionContainerRects.length; _ri2++) {
-            var _rc = _regionContainerRects[_ri2];
-            if (_bcx >= _rc.left && _bcx <= _rc.left + _rc.width && _bcy >= _rc.top && _bcy <= _rc.top + _rc.height) return;
-          }
         }
         var x = Math.round(bbox.left * scaleX);
         var y = Math.round(bbox.top * scaleY) - _calibrationOffsetY;
@@ -1059,16 +1070,6 @@ window.MilgViewer = (function() {
       if (!filterSelector && filterLayer !== null && (vr.maskLayer || 0) !== filterLayer) return;
       var bbox = vr.bbox;
       if (!bbox) { _vrNoBbox++; return; }
-      // Exclude verify rects whose center falls inside a region container rect
-      if (_vRegionRects.length > 0) {
-        var _bcx = bbox.left + bbox.width / 2, _bcy = bbox.top + bbox.height / 2;
-        var _inRegion = false;
-        for (var _ri = 0; _ri < _vRegionRects.length; _ri++) {
-          var _rc = _vRegionRects[_ri];
-          if (_bcx >= _rc.left && _bcx <= _rc.left + _rc.width && _bcy >= _rc.top && _bcy <= _rc.top + _rc.height) { _inRegion = true; break; }
-        }
-        if (_inRegion) { _vrRegionExcluded++; return; }
-      }
 
       var x = Math.round(bbox.left * vScaleX);
       var y = Math.round(bbox.top * vScaleY) - _calibrationOffsetY;
@@ -2570,12 +2571,34 @@ window.MilgViewer = (function() {
     }, 500);
   }
 
+  function injectVerifyFindings(results) {
+    var toAdd = [];
+    (results || []).forEach(function(vr) {
+      if (!vr.bbox || !vr.cssPasses || vr.pixelPasses || vr.skipped) return;
+      var sev = vr.demoted === 'warning' ? 'warning' : vr.demoted === 'info' ? 'info' : 'error';
+      toAdd.push({
+        severity: sev,
+        title: 'Contrast pixel-fail: ' + (vr.pixelRatioP10 || vr.pixelRatio || '?') + ':1 (CSS passes)',
+        detail: (vr.text ? '"' + vr.text.substring(0, 40) + '"' : vr.selector || ''),
+        category: 'Color & Contrast',
+        icon: 'contrast',
+        bboxes: [vr.bbox],
+        _isPixelVerify: true
+      });
+    });
+    if (toAdd.length === 0) return;
+    toAdd.forEach(function(f) { _allFindings.push(f); });
+    renderOverlays();
+    renderRegionOverlays();
+  }
+
   return {
     open: open,
     close: close,
     showFinding: showFinding,
     showFindingBbox: showFindingBbox,
     showVerifyResult: showVerifyResult,
-    refreshRegionOverlays: renderRegionOverlays
+    refreshRegionOverlays: renderRegionOverlays,
+    injectVerifyFindings: injectVerifyFindings
   };
 })();
