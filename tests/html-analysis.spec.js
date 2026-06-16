@@ -62,6 +62,32 @@ test.describe('HTML Analysis', () => {
     expect(Math.abs(heights.diag - heights.dark)).toBeLessThanOrEqual(2);
   });
 
+  test('paste HTML tab analyzes markup and shows partial warning', async ({ page }) => {
+    await page.goto(ANALYZER_URL);
+    await page.click('[data-tab="tabHtml"]');
+    await expect(page.locator('#tabHtml')).toHaveClass(/active/);
+    await page.fill('#htmlInput', `<!doctype html>
+      <html><head><style>
+        body{font-family:Arial,sans-serif;margin:32px;background:#fff;color:#172033}
+        main{max-width:680px;margin:auto}
+        button{min-height:44px;padding:10px 16px;background:#123a6f;color:#fff;border:0;border-radius:6px}
+      </style></head><body><main><h1>Private dashboard</h1><p>Fallback markup analysis.</p><button>Save</button></main></body></html>`);
+    await page.click('#analyzeHtmlBtn');
+    await page.waitForSelector('.report-container.visible', { timeout: 30000 });
+    await expect(page.locator('#reportContainer')).toContainText('Partial HTML paste analysis');
+    const raw = await page.evaluate(() => {
+      const r = window.__milgLastReport && window.__milgLastReport.raw;
+      return {
+        method: r && r.meta && r.meta._inputMethod,
+        partial: r && r.meta && r.meta._partialAnalysis,
+        elements: r && r.structure && r.structure.totalElements,
+      };
+    });
+    expect(raw.method).toBe('html-paste');
+    expect(raw.partial).toBe(true);
+    expect(raw.elements).toBeGreaterThan(0);
+  });
+
   test('form preset produces report with findings', async ({ page }) => {
     await analyzeHtml(page, 'form');
     const findings = await page.locator('.finding-header').count();

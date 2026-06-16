@@ -1,8 +1,8 @@
-// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.64
+// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.65
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.64 loaded');
+console.log('[milg] analyzer.js v3.11.65 loaded');
 
 (function() {
   "use strict";
@@ -835,6 +835,7 @@ console.log('[milg] analyzer.js v3.11.64 loaded');
     var warningHtml = '';
     var inputMethod = (data.meta && data.meta._inputMethod) || '';
     var isUrlFetch = inputMethod === 'url';
+    var isHtmlPaste = inputMethod === 'html-paste';
     var elCount = (data.structure && data.structure.totalElements) || 0;
     var contentWidth = parseFloat(data.spacing && data.spacing.maxContentWidth) || 0;
     var contrastPairCount = (data.colors && data.colors.contrastPairs) ? data.colors.contrastPairs.length : 0;
@@ -923,6 +924,17 @@ console.log('[milg] analyzer.js v3.11.64 loaded');
         '</div>' +
         '<p style="color:' + wText + ';margin:10px 0 0;font-size:12px;opacity:0.8">The console snippet runs in the page\'s own context and captures everything. ' +
         'Trying with JS loads the site in a sandboxed frame — works for most sites but some block framing.</p>' +
+        '</div>';
+    }
+    if (isHtmlPaste) {
+      var pBg = document.body.classList.contains('dark-ui') ? '#1f2937' : '#f8fafc';
+      var pBorder = document.body.classList.contains('dark-ui') ? '#475569' : '#cbd5e1';
+      var pText = document.body.classList.contains('dark-ui') ? '#cbd5e1' : '#475569';
+      var pStrong = document.body.classList.contains('dark-ui') ? '#f8fafc' : '#0f172a';
+      warningHtml = '<div style="padding:14px 18px;background:' + pBg + ';border:1px solid ' + pBorder + ';border-radius:var(--radius);margin-bottom:14px;font-size:13px;line-height:1.6;color:' + pText + '">' +
+        '<strong style="color:' + pStrong + ';font-size:14px">Partial HTML paste analysis</strong>' +
+        '<p style="margin:6px 0 0">This report scores only the markup and resources that rendered from the pasted HTML. Relative URLs, private CSS/assets, file URLs, JavaScript runtime state, and authenticated resources may be missing. Missing-resource and sandbox warnings are expected.</p>' +
+        '<p style="margin:6px 0 0">For a more faithful result, export a self-contained HTML file with inline CSS/assets, use the console snippet when CSP allows it, or serve the page locally and analyze the <code>localhost</code> URL.</p>' +
         '</div>';
     }
 
@@ -1131,6 +1143,9 @@ console.log('[milg] analyzer.js v3.11.64 loaded');
     var analyzeUrlBtn = document.getElementById('analyzeUrlBtn');
     var urlInput = document.getElementById('urlInput');
     var urlStatus = document.getElementById('urlStatus');
+    var htmlInput = document.getElementById('htmlInput');
+    var analyzeHtmlBtn = document.getElementById('analyzeHtmlBtn');
+    var htmlStatus = document.getElementById('htmlStatus');
     // Store original input section HTML so we can restore it after preview analysis
     var _originalInputSectionHTML = inputSection.innerHTML;
 
@@ -1313,6 +1328,40 @@ console.log('[milg] analyzer.js v3.11.64 loaded');
         }
       });
     });
+
+    // Analyze pasted HTML fallback
+    if (analyzeHtmlBtn && htmlInput) {
+      analyzeHtmlBtn.addEventListener('click', function() {
+        var html = (htmlInput.value || '').trim();
+        if (!html) { showToast('Paste HTML markup first'); return; }
+        var screenshotCheck = document.getElementById('screenshotCheck');
+        var wantShots = screenshotCheck ? screenshotCheck.checked : false;
+        var exclude = window.__milgCombinedExclude || (document.getElementById('excludeSelector') && document.getElementById('excludeSelector').value) || '';
+        analyzeHtmlBtn.disabled = true;
+        analyzeHtmlBtn.textContent = 'Analyzing...';
+        if (htmlStatus) {
+          htmlStatus.style.display = 'block';
+          htmlStatus.textContent = wantShots ? 'Rendering pasted HTML and trying screenshot capture...' : 'Rendering pasted HTML...';
+        }
+        if (wantShots) { showFocusModal(); updateFocusModal('Rendering pasted HTML fallback'); }
+        showProgress(wantShots ? 35 : 45, 'Analyzing pasted HTML...');
+        MilgIframe.analyzeHtml(html, {
+          screenshots: wantShots,
+          exclude: exclude
+        }, function(data) {
+          analyzeHtmlBtn.disabled = false;
+          analyzeHtmlBtn.textContent = 'Analyze HTML';
+          hideFocusModal();
+          hideProgress();
+          if (htmlStatus) htmlStatus.style.display = 'none';
+          if (!data.meta) data.meta = {};
+          data.meta._inputMethod = 'html-paste';
+          data.meta._partialAnalysis = true;
+          data.meta.url = 'Pasted HTML';
+          runAnalysis(data);
+        });
+      });
+    }
 
     // Analyze URL
     analyzeUrlBtn.addEventListener('click', function() {
@@ -1582,8 +1631,10 @@ console.log('[milg] analyzer.js v3.11.64 loaded');
       }
       document.getElementById('reportActions').style.display = 'none'; document.getElementById('profileExplanation').style.display = 'none';
       var pi = document.getElementById('pasteInput'); if (pi) pi.value = '';
+      var hi = document.getElementById('htmlInput'); if (hi) hi.value = '';
       var ui = document.getElementById('urlInput'); if (ui) ui.value = '';
       var us = document.getElementById('urlStatus'); if (us) us.style.display = 'none';
+      var hs = document.getElementById('htmlStatus'); if (hs) hs.style.display = 'none';
       reportData = null;
       // Reset crawl state
       MilgCrawlUI.setCrawlSession(null);
