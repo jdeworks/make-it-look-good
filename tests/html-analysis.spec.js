@@ -68,6 +68,20 @@ test.describe('HTML Analysis', () => {
     const cards = await page.locator('.report-card').count();
     expect(cards).toBeGreaterThanOrEqual(5);
   });
+
+  test('touch target scoring exempts inline links but flags undersized controls', async ({ page }) => {
+    await analyzeUrl(page, `${BASE_URL}/tests/fixtures/touch-targets.html`);
+
+    const touchFindings = await page.evaluate(() => {
+      const report = window.__milgLastReport;
+      const cat = (report.categories || []).find(c => c.icon === 'touch' || c.label === 'Touch & Interaction');
+      return cat ? (cat.findings || []).map(f => ({ title: f.title, detail: f.detail, severity: f.severity })) : [];
+    });
+
+    expect(touchFindings.some(f => /normal inline text link/i.test(f.detail || '') || /inline text link/i.test(f.title || ''))).toBe(false);
+    expect(touchFindings.some(f => /a\.button-like|a is 2[0-9]×2[0-9]px/i.test((f.detail || '') + ' ' + (f.title || '')))).toBe(true);
+    expect(touchFindings.some(f => /Tiny delete|button is 20×20px/i.test((f.detail || '') + ' ' + (f.title || '')))).toBe(true);
+  });
 });
 
 // ── Export & Import Round-Trip ──
@@ -298,6 +312,37 @@ test.describe('Screenshot Pipeline', () => {
     // Should NOT have a preload warning for fragment URLs
     const fragWarn = consoleWarnings.find(w => w.includes('#fragment') || w.includes('%23fragment'));
     expect(fragWarn).toBeFalsy();
+  });
+
+  test('hidden region mini-pages preserve ancestor dark context and button sizing', async ({ page }) => {
+    await analyzeUrl(page, `${BASE_URL}/tests/fixtures/hidden-ancestor-context.html`);
+
+    const region = await page.evaluate(() => {
+      const raw = window.__milgLastReport && window.__milgLastReport.raw;
+      const regions = (raw && raw.regionScreenshots) || [];
+      const match = regions.find(r => {
+        const pairs = r.extractedData && r.extractedData.colors ? (r.extractedData.colors.contrastPairs || []) : [];
+        return pairs.some(p => (p.text || '').includes('Hidden action'));
+      });
+      if (!match) return null;
+      const pairs = match.extractedData.colors.contrastPairs || [];
+      const btnPair = pairs.find(p => (p.text || '').includes('Hidden action'));
+      const touchTargets = match.extractedData.interaction ? (match.extractedData.interaction.touchTargets || []) : [];
+      return {
+        darkModeMethod: match.extractedData.structure && match.extractedData.structure.darkModeMethod,
+        darknessLevel: match.extractedData.colors && match.extractedData.colors.darknessLevel,
+        buttonHeight: btnPair && btnPair.bbox ? btnPair.bbox.height : 0,
+        fidelity: match.regionFidelity || match.extractedData.regionFidelity || null,
+        touchTarget: touchTargets.find(t => (t.text || '').includes('Hidden action')) || null,
+      };
+    });
+
+    expect(region).not.toBeNull();
+    expect(region.darkModeMethod).not.toBe('none');
+    expect(region.darknessLevel).toBeGreaterThanOrEqual(6);
+    expect(region.buttonHeight).toBeGreaterThanOrEqual(44);
+    expect(region.touchTarget).toBeNull();
+    expect(region.fidelity && region.fidelity.compared).toBeGreaterThan(0);
   });
 });
 

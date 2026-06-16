@@ -338,10 +338,185 @@ window.MilgRegion = (function() {
         'if(cs.position==="absolute"||cs.position==="fixed")el.style.setProperty("position","relative","important");' +
         '});});</' + 'script>';
 
-      // Optional extraction: inject MilgExtract if available
+      // Optional extraction: inject MilgExtract if available. The parent calls it
+      // after force-reveal + fidelity correction so scoring uses the corrected
+      // source styles, not the screenshot-only recolor pass.
       var _extractScript = '';
       if (typeof window.MilgExtract === 'function') {
-        _extractScript = '<script>setTimeout(function(){try{(' + window.MilgExtract.toString() + ')()}catch(e){console.warn("[milg-region] Extraction failed:",e)}},100);</' + 'script>';
+        _extractScript = '<script>window.MilgExtract=(' + window.MilgExtract.toString() + ');</' + 'script>';
+      }
+
+      var _styleProps = [
+        'display','position','top','right','bottom','left','zIndex','float','clear',
+        'width','height','minWidth','minHeight','maxWidth','maxHeight',
+        'boxSizing','overflow','overflowX','overflowY','visibility','opacity',
+        'flex','flexBasis','flexDirection','flexGrow','flexShrink','flexWrap','alignItems','alignSelf','justifyContent',
+        'gridTemplateColumns','gridTemplateRows','gridColumn','gridRow','gap','rowGap','columnGap',
+        'marginTop','marginRight','marginBottom','marginLeft','paddingTop','paddingRight','paddingBottom','paddingLeft',
+        'fontFamily','fontSize','fontWeight','fontStyle','lineHeight','letterSpacing','textTransform','textAlign','textDecorationLine',
+        'color','webkitTextFillColor','background','backgroundColor','backgroundImage','backgroundPosition','backgroundSize','backgroundRepeat',
+        'borderTopColor','borderRightColor','borderBottomColor','borderLeftColor',
+        'borderTopWidth','borderRightWidth','borderBottomWidth','borderLeftWidth',
+        'borderTopStyle','borderRightStyle','borderBottomStyle','borderLeftStyle','borderRadius',
+        'boxShadow','textShadow','outlineColor','outlineStyle','outlineWidth',
+        'transform','transformOrigin','filter','backdropFilter','webkitBackdropFilter','mixBlendMode','isolation','colorScheme'
+      ];
+      function _escAttr(v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+      function _copyRootAttrs(el, skipStyle) {
+        var out = '';
+        if (!el || !el.attributes) return out;
+        for (var ai = 0; ai < el.attributes.length; ai++) {
+          var a = el.attributes[ai];
+          if (skipStyle && a.name === 'style') continue;
+          out += ' ' + a.name + '="' + _escAttr(a.value) + '"';
+        }
+        return out;
+      }
+      function _copyCssVars(style) {
+        var css = '';
+        if (!style) return css;
+        for (var si = 0; si < style.length; si++) {
+          var name = style[si];
+          if (name && name.indexOf('--') === 0) css += name + ':' + style.getPropertyValue(name) + ';';
+        }
+        return css;
+      }
+      function _shellAttrs(el) {
+        var out = '';
+        if (!el || !el.attributes) return out;
+        for (var ai = 0; ai < el.attributes.length; ai++) {
+          var a = el.attributes[ai], n = a.name;
+          if (n === 'id' || n === 'class' || n === 'role' || n.indexOf('data-') === 0 || n.indexOf('aria-') === 0) {
+            out += ' ' + n + '="' + _escAttr(a.value) + '"';
+          }
+        }
+        try {
+          var cs = getComputedStyle(el);
+          var vars = _copyCssVars(cs);
+          if (vars) out += ' style="' + _escAttr(vars) + '"';
+        } catch (_e) {}
+        return out;
+      }
+      function _buildAncestorShell(el, innerHtml) {
+        var ancestors = [], cur = el ? el.parentElement : null;
+        while (cur && cur !== document.body && cur !== document.documentElement) {
+          ancestors.unshift(cur);
+          cur = cur.parentElement;
+        }
+        var html = innerHtml;
+        for (var i = ancestors.length - 1; i >= 0; i--) {
+          var tag = (ancestors[i].tagName || 'div').toLowerCase();
+          html = '<' + tag + _shellAttrs(ancestors[i]) + ' data-milg-shell="1">' + html + '</' + tag + '>';
+        }
+        return html;
+      }
+      function _elementPath(root, el) {
+        var parts = [], cur = el;
+        while (cur && cur !== root) {
+          var p = cur.parentElement;
+          if (!p) return '';
+          var idx = 0;
+          for (var c = p.firstElementChild; c; c = c.nextElementSibling) {
+            if (c === cur) break;
+            idx++;
+          }
+          parts.unshift(idx);
+          cur = p;
+        }
+        return parts.join('.');
+      }
+      function _elementByPath(root, path) {
+        if (!root) return null;
+        if (!path) return root;
+        var cur = root, parts = path.split('.');
+        for (var i = 0; i < parts.length; i++) {
+          cur = cur.children[parseInt(parts[i], 10)];
+          if (!cur) return null;
+        }
+        return cur;
+      }
+      function _snapshotRegionStyles(root) {
+        var snaps = [];
+        if (!root) return snaps;
+        var els = [root].concat(Array.prototype.slice.call(root.querySelectorAll('*')));
+        els.forEach(function(el) {
+          if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE' || el.tagName === 'NOSCRIPT') return;
+          var cs;
+          try { cs = getComputedStyle(el); } catch (_e) { return; }
+          var rect = el.getBoundingClientRect();
+          var props = {};
+          _styleProps.forEach(function(p) { try { props[p] = cs[p] || cs.getPropertyValue(p) || ''; } catch (_e2) {} });
+          var vars = {};
+          for (var si = 0; si < cs.length; si++) {
+            var name = cs[si];
+            if (name && name.indexOf('--') === 0) vars[name] = cs.getPropertyValue(name);
+          }
+          snaps.push({
+            path: _elementPath(root, el),
+            selector: (el.id ? '#' + el.id : el.tagName.toLowerCase() + (el.className && typeof el.className === 'string' ? '.' + el.className.trim().split(/\s+/).slice(0, 3).join('.') : '')),
+            text: (el.textContent || '').trim().substring(0, 80),
+            rect: { width: Math.round(rect.width), height: Math.round(rect.height) },
+            props: props,
+            vars: vars
+          });
+        });
+        return snaps;
+      }
+      function _materialStyleDiff(prop, src, mini, srcSnap, miniRect) {
+        if (src === mini) return false;
+        if ((prop === 'display' && src === 'none') || (prop === 'visibility' && src === 'hidden') || (prop === 'opacity' && parseFloat(src) < 0.1)) return false;
+        if ((prop === 'width' || prop === 'height') && srcSnap && srcSnap.rect) {
+          var srcDim = prop === 'width' ? srcSnap.rect.width : srcSnap.rect.height;
+          var miniDim = prop === 'width' ? Math.round(miniRect.width) : Math.round(miniRect.height);
+          return srcDim > 0 && Math.abs(srcDim - miniDim) > 2;
+        }
+        if (/^(top|right|bottom|left|zIndex)$/.test(prop)) return false;
+        return true;
+      }
+      function _cssPropName(prop) {
+        return prop.replace(/^webkit/, '-webkit').replace(/[A-Z]/g, function(m) { return '-' + m.toLowerCase(); });
+      }
+      function _applyRegionFidelity(mDoc, sourceSnaps) {
+        var meta = { compared: 0, corrected: 0, changedProperties: {}, topMismatches: [] };
+        if (!mDoc || !sourceSnaps || !sourceSnaps.length) return meta;
+        var root = mDoc.querySelector('[data-milg-region-root="1"]');
+        if (!root) return meta;
+        var dv = mDoc.defaultView;
+        sourceSnaps.forEach(function(srcSnap) {
+          var el = _elementByPath(root, srcSnap.path);
+          if (!el) return;
+          var cs;
+          try { cs = dv.getComputedStyle(el); } catch (_e) { return; }
+          var rect = el.getBoundingClientRect();
+          meta.compared++;
+          var changed = [];
+          _styleProps.forEach(function(prop) {
+            var srcVal = srcSnap.props[prop] || '';
+            var miniVal = cs[prop] || cs.getPropertyValue(prop) || '';
+            if (!_materialStyleDiff(prop, srcVal, miniVal, srcSnap, rect)) return;
+            try {
+              el.style.setProperty(_cssPropName(prop), srcVal, 'important');
+              changed.push(prop);
+              meta.changedProperties[prop] = (meta.changedProperties[prop] || 0) + 1;
+            } catch (_e2) {}
+          });
+          for (var v in (srcSnap.vars || {})) {
+            try {
+              if (cs.getPropertyValue(v) !== srcSnap.vars[v]) {
+                el.style.setProperty(v, srcSnap.vars[v]);
+                changed.push(v);
+                meta.changedProperties[v] = (meta.changedProperties[v] || 0) + 1;
+              }
+            } catch (_e3) {}
+          }
+          if (changed.length) {
+            meta.corrected++;
+            if (meta.topMismatches.length < 12) {
+              meta.topMismatches.push({ path: srcSnap.path, selector: srcSnap.selector, text: srcSnap.text, properties: changed.slice(0, 12) });
+            }
+          }
+        });
+        return meta;
       }
 
       _prog('Capturing ' + _rgnTotal + ' region screenshots...');
@@ -370,7 +545,9 @@ window.MilgRegion = (function() {
           cr = container.getBoundingClientRect();
         }
 
+        var sourceSnapshot = _snapshotRegionStyles(container);
         var clone = container.cloneNode(true);
+        clone.setAttribute('data-milg-region-root', '1');
         // Per-kind clone prep: force-reveal CSS handles class-based hiding, but
         // UA-internal states (details[open], hidden attribute) need explicit DOM mutation.
         if (_rgnKind === 'details') {
@@ -380,11 +557,20 @@ window.MilgRegion = (function() {
         }
         clone.style.cssText += ';overflow:visible !important;max-height:none !important;height:auto !important;clip-path:none !important;width:' + Math.round(cr.width || 320) + 'px !important;';
 
-        var miniHtml = '<!DOCTYPE html><html><head><meta charset=UTF-8>' +
+        var htmlStyle = '';
+        var bodyStyle = 'margin:0;padding:0;overflow:visible;';
+        try {
+          htmlStyle += _copyCssVars(getComputedStyle(document.documentElement));
+          bodyStyle += _copyCssVars(getComputedStyle(document.body));
+          if (document.documentElement.style.colorScheme) htmlStyle += 'color-scheme:' + document.documentElement.style.colorScheme + ';';
+          if (document.body.style.colorScheme) bodyStyle += 'color-scheme:' + document.body.style.colorScheme + ';';
+        } catch (_ctxE) {}
+        var wrappedCloneHtml = _buildAncestorShell(container, clone.outerHTML);
+        var miniHtml = '<!DOCTYPE html><html' + _copyRootAttrs(document.documentElement, true) + ' style="' + _escAttr(htmlStyle) + '"><head><meta charset=UTF-8>' +
           (baseHref ? '<base href="' + baseHref.replace(/"/g, '&quot;') + '">' : '') +
           allLinks + allStyles +
           '<style>' + _revealCss + '</style>' + _revealScript + _extractScript +
-          '</head><body style="margin:0;padding:0;overflow:visible">' + clone.outerHTML + '</body></html>';
+          '</head><body' + _copyRootAttrs(document.body, true) + ' style="' + _escAttr(bodyStyle) + '">' + wrappedCloneHtml + '</body></html>';
 
         var iframeW = Math.max(Math.round(cr.width), 320);
         var mf = document.createElement('iframe');
@@ -417,7 +603,7 @@ window.MilgRegion = (function() {
                   if (parseFloat(cs.opacity) < 0.1) el.style.setProperty('opacity', '1', 'important');
                   if (cs.position === 'absolute' || cs.position === 'fixed') el.style.setProperty('position', 'relative', 'important');
                 });
-                var _cont = mDoc.body.firstElementChild;
+                var _cont = mDoc.querySelector('[data-milg-region-root="1"]') || mDoc.body.firstElementChild;
                 if (_cont) {
                   _cont.style.setProperty('height', 'auto', 'important');
                   _cont.style.setProperty('max-height', 'none', 'important');
@@ -432,6 +618,23 @@ window.MilgRegion = (function() {
               } catch (_e) {}
 
               void mDoc.body.offsetHeight; // reflow
+
+              var _regionFidelity = _applyRegionFidelity(mDoc, sourceSnapshot);
+              void mDoc.body.offsetHeight;
+
+              // Harvest extraction data before screenshot-only recoloring so the
+              // region report scores the user's real corrected styles.
+              var extractedData = null;
+              try {
+                if (mf.contentWindow.MilgExtract) {
+                  mf.contentWindow.__milgOnExtractComplete = function(d) { extractedData = d; };
+                  mf.contentWindow.MilgExtract();
+                  extractedData = extractedData || mf.contentWindow.__milgData || null;
+                } else {
+                  extractedData = mf.contentWindow.__milgData || null;
+                }
+              } catch (_xE) { console.warn('[milg-region] Extraction failed:', _xE.message); }
+              if (extractedData) extractedData.regionFidelity = _regionFidelity;
 
               // WP-D: Invisible text recolor.
               // After force-reveal, any text-bearing element whose color nearly matches its
@@ -484,10 +687,6 @@ window.MilgRegion = (function() {
                 });
               } catch (_rcE) { console.warn('[milg-region] recolor pass failed:', _rcE.message); }
               if (_recoloredCount) console.log('[milg-region] Recolored ' + _recoloredCount + ' invisible-text elements');
-
-              // Harvest extraction data if available
-              var extractedData = null;
-              try { extractedData = mf.contentWindow.__milgData || null; } catch (_e) {}
 
               // Bug 1 fix: mark contrast pairs whose elements were recolored so
               // isUncertain() in contrast.js does not exempt them from failure.
@@ -576,6 +775,7 @@ window.MilgRegion = (function() {
                   noAnchor: !!rgn._noAnchor,
                   label: rgn.label || '',
                   recoloredCount: _recoloredCount,
+                  regionFidelity: _regionFidelity,
                   extractedData: extractedData,
                   maskResults: _mMaskResults,
                   _domOrder: rgn._domOrder || 0

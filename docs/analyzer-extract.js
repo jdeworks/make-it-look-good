@@ -596,6 +596,24 @@ window.MilgExtract = (function() {
       // interactive surface is elsewhere, so flagging them is noise.
       if (w < 2 || h < 2) return;
       if (w < 44 || h < 44) {
+        var linkCtx = 'button';
+        var _ttStyle = getComputedStyle(el);
+        var _ttDisplay = _ttStyle.display || '';
+        var _ttLineHeight = parseFloat(_ttStyle.lineHeight) || parseFloat(_ttStyle.fontSize) * 1.2 || 16;
+        var _ttHasBg = _ttStyle.backgroundColor && _ttStyle.backgroundColor !== 'rgba(0, 0, 0, 0)' && _ttStyle.backgroundColor !== 'transparent';
+        var _ttHasBorder = _ttStyle.borderStyle !== 'none' && parseFloat(_ttStyle.borderWidth) > 0;
+        var _ttHasControlPadding = parseFloat(_ttStyle.paddingTop) > 4 || parseFloat(_ttStyle.paddingBottom) > 4 || parseFloat(_ttStyle.paddingLeft) > 6 || parseFloat(_ttStyle.paddingRight) > 6;
+        var _ttIsButtonLike = el.tagName !== 'A' || _ttHasBg || _ttHasBorder || _ttHasControlPadding || el.getAttribute('role') === 'button' || /\b(btn|button|cta|nav-link|menu-item|tab)\b/i.test(el.className || '');
+        if (el.tagName === 'A') {
+          if (el.closest('nav,[role="navigation"],[role="menubar"],[role="tablist"]')) linkCtx = 'nav';
+          else if (el.closest('footer')) linkCtx = 'footer';
+          else if (el.closest('p, blockquote, figcaption, td, th, dd, li') && !_ttIsButtonLike) linkCtx = 'inline';
+          else linkCtx = _ttIsButtonLike ? 'button' : 'standalone';
+        }
+        // WCAG 2.5.8 exempts inline text links. A line-height-constrained
+        // unstyled anchor inside prose is not a touch-control failure.
+        if (linkCtx === 'inline' && (_ttDisplay === 'inline' || h <= Math.ceil(_ttLineHeight + 4))) return;
+
         // Checkbox/radio: check if label provides adequate touch target
         if (el.tagName === 'INPUT' && (el.type === 'checkbox' || el.type === 'radio')) {
           var label = el.closest('label') || (el.id && document.querySelector('label[for="' + el.id + '"]'));
@@ -607,14 +625,7 @@ window.MilgExtract = (function() {
             if (w >= 44 && h >= 44) return;
           }
         }
-        var linkCtx = 'button';
-        if (el.tagName === 'A') {
-          if (el.closest('nav')) linkCtx = 'nav';
-          else if (el.closest('footer')) linkCtx = 'footer';
-          else if (el.closest('p, blockquote, figcaption, td, th, dd')) linkCtx = 'inline';
-          else { var ls = getComputedStyle(el); if ((ls.backgroundColor !== 'rgba(0, 0, 0, 0)' && ls.backgroundColor !== 'transparent') || (ls.borderStyle !== 'none' && ls.borderWidth !== '0px') || parseFloat(ls.paddingTop) > 4 || parseFloat(ls.paddingBottom) > 4) linkCtx = 'button'; else linkCtx = 'standalone'; }
-        }
-        var _ttEntry = { element: el.tagName.toLowerCase(), width: w, height: h, text: (el.textContent || el.getAttribute('aria-label') || '').trim().substring(0, 40), selector: cssSelector(el), passes: false, isButton: el.tagName !== 'A' || linkCtx === 'button' || linkCtx === 'nav', linkContext: linkCtx, bbox: null };
+        var _ttEntry = { element: el.tagName.toLowerCase(), width: w, height: h, text: (el.textContent || el.getAttribute('aria-label') || '').trim().substring(0, 40), selector: cssSelector(el), passes: false, isButton: el.tagName !== 'A' || linkCtx === 'button' || linkCtx === 'nav', linkContext: linkCtx, display: _ttDisplay, lineHeight: Math.round(_ttLineHeight), bbox: null };
         trackBbox(el, _ttEntry, 'bbox');
         touchIssues.push(_ttEntry);
       }

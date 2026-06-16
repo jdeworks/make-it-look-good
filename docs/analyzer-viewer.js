@@ -125,7 +125,9 @@ window.MilgViewer = (function() {
     // Pixel verification pills
     var verifyPill = '';
     var vResults = reportData._contrastVerifyResults || [];
-    if (vResults.length > 0) {
+    var regionVerifyCount = countRegionVerifyResults(reportData);
+    var regionPixelAvailable = countRegionPixelAvailable(reportData);
+    if (vResults.length > 0 || regionVerifyCount > 0 || regionPixelAvailable > 0) {
       var vFails = vResults.filter(function(r) { return r.crossesBoundary; }).length;
       // Count layers
       var layerCounts = {};
@@ -137,8 +139,11 @@ window.MilgViewer = (function() {
           layerPills += '<button class="milg-viewer-filter-btn" data-filter-type="verify" data-filter-value="layer' + l + '">L' + l + ' <span class="milg-viewer-count">' + layerCounts[l] + '</span></button>';
         });
       }
+      var verifyTotal = vResults.length + regionVerifyCount;
+      var verifyLabel = verifyTotal > 0 ? verifyTotal : vResults.length;
+      var regionTitle = regionVerifyCount > 0 ? 'Main + region pixel verification results' : 'Right-click a box here to cycle mask → zones → off';
       verifyPill = '<span class="milg-viewer-sep"></span>' +
-        '<button class="milg-viewer-filter-btn milg-viewer-sev-verify milg-viewer-verify-hl" data-filter-type="verify" data-filter-value="all" title="Right-click a box here to cycle mask → zones → off">Pixel Verified <span class="milg-viewer-count">' + vResults.length + '</span></button>' +
+        '<button class="milg-viewer-filter-btn milg-viewer-sev-verify milg-viewer-verify-hl" data-filter-type="verify" data-filter-value="all" title="' + regionTitle + '">Pixel Verified <span class="milg-viewer-count" data-verify-total="1">' + verifyLabel + '</span>' + (regionVerifyCount > 0 ? ' <span class="milg-viewer-count" data-region-verify-total="1">R ' + regionVerifyCount + '</span>' : '') + '</button>' +
         (vFails > 0 ? '<button class="milg-viewer-filter-btn milg-viewer-sev-error" data-filter-type="verify" data-filter-value="fails" title="Pixel results that differ from CSS: red = error, yellow = warning (small text demoted), blue = info (small text demoted), green = passes despite CSS fail">Conspicuous Pixels <span class="milg-viewer-count">' + vFails + '</span></button>' : '') +
         layerPills;
     }
@@ -404,6 +409,12 @@ window.MilgViewer = (function() {
         if (findingCount > 0) {
           rgnTitle.textContent += ' \u2014 ' + findingCount + ' finding' + (findingCount !== 1 ? 's' : '');
         }
+        var rgnStatus = document.createElement('span');
+        rgnStatus.className = 'milg-region-pixel-status';
+        rgnStatus.style.cssText = 'font-size:11px;color:rgba(147,197,253,0.85);margin-left:auto;margin-right:12px;';
+        var _rvCount = (rgn.regionVerifyResults || []).length;
+        var _maskCount = Object.keys(rgn.maskResults || {}).length;
+        rgnStatus.textContent = _rvCount > 0 ? ('Pixel verified: ' + _rvCount) : (_maskCount > 0 ? 'Pixel data available' : '');
         var backLink = document.createElement('a');
         backLink.style.cssText = 'font-size:11px;color:#60a5fa;cursor:pointer;text-decoration:none;';
         backLink.textContent = '\u2191 Back to main screenshot';
@@ -428,6 +439,7 @@ window.MilgViewer = (function() {
           }
         });
         rgnHeader.appendChild(rgnTitle);
+        if (rgnStatus.textContent) rgnHeader.appendChild(rgnStatus);
         rgnHeader.appendChild(backLink);
         rgnSection.appendChild(rgnHeader);
         // WP-D: warn when invisible text was recolored in the mini-page
@@ -596,7 +608,7 @@ window.MilgViewer = (function() {
     if (e.key === 'Escape') close();
   }
 
-  function updateFilterButtons() {
+    function updateFilterButtons() {
     if (!_overlay) return;
     var btns = _overlay.querySelectorAll('.milg-viewer-filter-btn');
     btns.forEach(function(btn) {
@@ -605,6 +617,45 @@ window.MilgViewer = (function() {
       var isActive = _activeFilter && _activeFilter.type === type && _activeFilter.value === value;
       btn.classList.toggle('active', isActive);
     });
+  }
+
+  function countRegionVerifyResults(reportData) {
+    var regions = (reportData && reportData.raw && reportData.raw.regionScreenshots) || [];
+    var n = 0;
+    regions.forEach(function(r) { n += (r.regionVerifyResults || []).length; });
+    return n;
+  }
+
+  function countRegionPixelAvailable(reportData) {
+    var regions = (reportData && reportData.raw && reportData.raw.regionScreenshots) || [];
+    var n = 0;
+    regions.forEach(function(r) {
+      n += (r.regionVerifyResults || []).length;
+      if (!r.regionVerifyResults || r.regionVerifyResults.length === 0) n += Object.keys(r.maskResults || {}).length;
+    });
+    return n;
+  }
+
+  function updateVerifyToolbarCounts() {
+    if (!_overlay || !_reportData) return;
+    var mainCount = ((_reportData && _reportData._contrastVerifyResults) || []).length;
+    var regionCount = countRegionVerifyResults(_reportData);
+    var total = mainCount + regionCount;
+    var totalEl = _overlay.querySelector('[data-verify-total]');
+    if (totalEl && total > 0) totalEl.textContent = total;
+    var btn = _overlay.querySelector('.milg-viewer-filter-btn[data-filter-type="verify"][data-filter-value="all"]');
+    if (!btn) return;
+    var regionEl = btn.querySelector('[data-region-verify-total]');
+    if (regionCount > 0) {
+      if (!regionEl) {
+        regionEl = document.createElement('span');
+        regionEl.className = 'milg-viewer-count';
+        regionEl.setAttribute('data-region-verify-total', '1');
+        btn.appendChild(document.createTextNode(' '));
+        btn.appendChild(regionEl);
+      }
+      regionEl.textContent = 'R ' + regionCount;
+    }
   }
 
   function renderOverlays() {
@@ -933,8 +984,17 @@ window.MilgViewer = (function() {
   // Render bbox overlays on all region screenshots — same filter behavior as main overlay
   function renderRegionOverlays() {
     console.log('[D] renderRegionOverlays regions=' + _regionData.length + ' filter=' + (_activeFilter ? _activeFilter.type + ':' + _activeFilter.value : 'none'));
+    updateVerifyToolbarCounts();
     _regionData.forEach(function(rd, rIdx) {
       if (rd.summaryBar && rd.regionRef) _buildRegionSummaryBar(rd.summaryBar, rd.regionRef);
+      if (rd.regionRef && rd.frame) {
+        var status = rd.frame.closest('.milg-viewer-region-section') && rd.frame.closest('.milg-viewer-region-section').querySelector('.milg-region-pixel-status');
+        if (status) {
+          var rvCount = (rd.regionRef.regionVerifyResults || []).length;
+          var maskCount = Object.keys(rd.regionRef.maskResults || {}).length;
+          status.textContent = rvCount > 0 ? ('Pixel verified: ' + rvCount) : (maskCount > 0 ? 'Pixel data available' : '');
+        }
+      }
       if (!rd.svg || !rd.findings) { console.log('[D] region ' + rIdx + ' skip: svg=' + !!rd.svg + ' findings=' + (rd.findings ? rd.findings.length : 'null')); return; }
       while (rd.svg.firstChild) rd.svg.removeChild(rd.svg.firstChild);
       // No filter active → no overlays (matches main renderOverlays behavior)
@@ -1935,20 +1995,20 @@ window.MilgViewer = (function() {
       var f = entry.f;
       var sevClass = 'milg-viewer-sev-' + f.severity;
       var shortTitle = f.title.length > 60 ? f.title.substring(0, 57) + '...' : f.title;
-      html += '<div class="milg-tt-row" data-tt-idx="' + oi + '" style="padding:3px 0;cursor:pointer;display:flex;align-items:baseline;gap:6px' + (oi > 0 ? ';border-top:1px solid rgba(255,255,255,0.1)' : '') + '">';
+      html += '<div class="milg-tt-row" data-tt-idx="' + oi + '"' + (oi > 0 ? ' data-separated="1"' : '') + '>';
       html += '<span class="milg-viewer-tooltip-badge ' + sevClass + '" style="flex-shrink:0;font-size:9px;padding:1px 5px">' + f.severity + '</span>';
-      html += '<span style="font-size:11px;color:#e2e8f0;line-height:1.3;flex:1">' + shortTitle + '</span>';
-      html += '<span class="milg-tt-showgroup" data-viewer-idx="' + entry.viewerIdx + '" title="Show all elements in this group" style="flex-shrink:0;cursor:pointer;font-size:12px;opacity:0.5;padding:0 2px">&#9678;</span>';
+      html += '<span class="milg-tt-title">' + shortTitle + '</span>';
+      html += '<span class="milg-tt-showgroup" data-viewer-idx="' + entry.viewerIdx + '" title="Show all elements in this group">&#9678;</span>';
       html += '</div>';
-      html += '<div class="milg-tt-detail" data-tt-idx="' + oi + '" style="display:none;padding:4px 0 4px 36px;font-size:10px;color:rgba(255,255,255,0.6);line-height:1.5">';
-      if (f.detail) html += '<div style="color:rgba(255,255,255,0.5)">' + f.detail.substring(0, 300) + '</div>';
-      html += '<div style="margin-top:2px;color:rgba(255,255,255,0.35)">' + f.category + '</div>';
+      html += '<div class="milg-tt-detail" data-tt-idx="' + oi + '" style="display:none">';
+      if (f.detail) html += '<div class="milg-tt-detail-text">' + f.detail.substring(0, 300) + '</div>';
+      html += '<div class="milg-tt-category">' + f.category + '</div>';
       html += '</div>';
     });
-    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;padding-top:4px;border-top:1px solid rgba(255,255,255,0.1)">';
-    if (overlapping.length > 1) html += '<span style="font-size:9px;color:rgba(255,255,255,0.3)">' + overlapping.length + ' findings</span>';
+    html += '<div class="milg-tt-actions">';
+    if (overlapping.length > 1) html += '<span class="milg-tt-muted">' + overlapping.length + ' findings</span>';
     else html += '<span></span>';
-    html += '<button class="milg-tt-copy" style="font-size:9px;color:rgba(255,255,255,0.5);background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:4px;padding:2px 8px;cursor:pointer">Copy</button>';
+    html += '<button class="milg-tt-copy">Copy</button>';
     html += '</div>';
     _tooltip.innerHTML = html;
 
@@ -2489,6 +2549,7 @@ window.MilgViewer = (function() {
     _activeFilter = { type: 'verifySelector', value: selector };
     updateFilterButtons();
     renderOverlays();
+    renderRegionOverlays();
     // Find the matching verify result to get bbox
     var verifyResults = (_reportData._contrastVerifyResults || []);
     var bboxEdgeResults = (_reportData._bboxEdgeResults || []);

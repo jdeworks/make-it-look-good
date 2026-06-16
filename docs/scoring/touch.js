@@ -10,11 +10,15 @@ function scoreTouchTargets(data) {
   var findings = [];
   var targets = data.interaction.touchTargets || [];
 
-  // Viewport-aware thresholds, adjusted by profile:
+  // WCAG 2.2 AA target size is 24x24 CSS px. Larger 44px targets are
+  // platform/AAA comfort guidance, and only strict profiles make them hard
+  // requirements.
   var vw = (data.meta && data.meta.viewportWidth) || 1280;
   var isDesktop = vw >= 1024;
-  var minSize = isDesktop ? profile.touchTargetDesktop : profile.touchTarget;
-  var warnSize = isDesktop ? profile.touchTargetDesktopWarn : profile.touchTarget;
+  var strictProfile = data.profile === 'elderly' || data.profile === 'low_vision' || data.profile === 'motor_impairment' || data.profile === 'children';
+  var aaMin = 24;
+  var minSize = strictProfile ? (isDesktop ? profile.touchTargetDesktop : profile.touchTarget) : aaMin;
+  var comfortSize = isDesktop ? (profile.touchTargetDesktopWarn || 32) : (profile.touchTarget || 44);
   var context = isDesktop ? 'desktop' : 'touch/mobile';
   var issueCount = 0;
 
@@ -22,45 +26,31 @@ function scoreTouchTargets(data) {
     var w = t.width, h = t.height;
     var minDim = Math.min(w, h);
 
-    // WCAG 2.5.8 exception: inline text links are exempt from target size requirements.
-    // Detect by checking if element is an <a> without button-like styling (no bg, no border, no padding > 4px)
     var isInlineLink = t.element === 'a' && !t.isButton;
+    var isControl = t.isButton || t.element !== 'a' || t.linkContext === 'nav';
+    var isPlainDesktopLink = isDesktop && t.element === 'a' && !t.isButton && t.linkContext !== 'nav';
+    if (isInlineLink || t.linkContext === 'inline') return;
 
     if (minDim < minSize) {
       issueCount++;
-      var ctx = t.linkContext || (isInlineLink ? 'inline' : 'button');
+      var ctx = t.linkContext || 'button';
 
-      // On desktop, determine severity based on how far below threshold:
-      // - ≥20px (just 4px short of 24px) → info (barely noticeable with mouse)
-      // - ≥16px → warning (small but usable with mouse)
-      // - <16px → error (genuinely too small even for mouse)
-      // On mobile, all failures are errors (fingers need the full 44px)
       function desktopSeverity(dim) {
         if (!isDesktop) return 'error';
-        if (dim >= 20) return 'info';
+        if (dim >= 20) return 'warning';
         if (dim >= 16) return 'warning';
         return 'error';
       }
 
-      if (ctx === 'inline') {
-        // True inline text links (inside <p>, <blockquote>, etc.) — WCAG 2.5.8 exempt
-        findings.push({
-          severity: 'info',
-          title: 'Inline text link ' + w + '×' + h + 'px — exempt from target size',
-          detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-          fix: 'Inline text links in paragraphs are exempt per WCAG 2.5.8. Consider adding padding for better usability.',
-          source: 'WCAG 2.2 §2.5.8 inline exception — https://www.w3.org/TR/WCAG22/#target-size-minimum',
-          locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
-        });
-      } else if (ctx === 'footer') {
+      if (ctx === 'footer') {
         // Footer links — relaxed but still error below hard minimum (16px)
-        var footerHardMin = isDesktop ? 16 : 24;
+        var footerHardMin = 24;
         findings.push({
           severity: minDim < footerHardMin ? 'error' : 'info',
-          title: 'Footer link ' + w + '×' + h + 'px' + (minDim < footerHardMin ? ' (too small even for footer — min ' + footerHardMin + 'px)' : ' (below ' + minSize + 'px, relaxed for footer)'),
+          title: 'Footer link ' + w + '×' + h + 'px' + (minDim < footerHardMin ? ' (below WCAG AA 24px)' : ' (below comfort size)'),
           detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
           fix: minDim < footerHardMin
-            ? 'Even footer links need at least ' + footerHardMin + 'px height. Add padding to increase click area.'
+            ? 'Footer links need at least 24px target size unless an exception applies. Add padding to increase click area.'
             : 'Footer links have relaxed sizing expectations. Consider padding for touch accessibility.',
           source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
           locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
@@ -82,24 +72,24 @@ function scoreTouchTargets(data) {
         var sev = desktopSeverity(minDim);
         findings.push({
           severity: sev,
-          title: t.element + ' is ' + w + '×' + h + 'px (' + (isDesktop ? 'desktop min: ' + minSize + 'px' : 'touch min: ' + minSize + 'px') + ')',
+          title: t.element + ' is ' + w + '×' + h + 'px (WCAG AA min: ' + minSize + 'px)',
           detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
           fix: isDesktop
             ? (sev === 'info'
-              ? 'Slightly below ' + minSize + 'px desktop minimum — usable with mouse but consider adding padding.'
-              : 'Click targets need at least ' + minSize + '×' + minSize + 'px. Increase padding or min-height/min-width.')
-            : 'Touch targets need ' + minSize + '×' + minSize + 'px minimum. Add min-h-[' + minSize + 'px] min-w-[' + minSize + 'px] or increase padding.',
+              ? 'Slightly below the 24px WCAG AA target size. Consider adding padding.'
+              : 'Click targets need at least 24×24px unless an exception applies. Increase padding or min-height/min-width.')
+            : 'Touch targets need at least 24×24px for WCAG AA. Add padding or min-height/min-width.',
           presetRef: isDesktop ? null : 'Button presets use py-3 px-6 (48px height)',
           source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
           locator: { selector: t.selector, text: t.text || '', bboxes: t.bbox ? [t.bbox] : [] }
         });
       }
-    } else if (minDim < warnSize && isDesktop && !isInlineLink) {
+    } else if (minDim < comfortSize && isControl && !isPlainDesktopLink) {
       findings.push({
-        severity: 'warning',
-        title: t.element + ' is ' + w + '×' + h + 'px (recommended for desktop: ≥' + warnSize + 'px)',
+        severity: strictProfile ? 'warning' : 'info',
+        title: t.element + ' is ' + w + '×' + h + 'px (comfort target: ≥' + comfortSize + 'px)',
         detail: (t.text ? '"' + t.text + '" — ' : '') + t.selector,
-        fix: 'While ' + minSize + 'px meets minimum, ' + warnSize + 'px+ improves click comfort. Consider adding padding.',
+        fix: 'This meets WCAG AA 24px minimum. Use a larger target for touch comfort or strict accessibility profiles.',
         presetRef: null,
         source: 'WCAG 2.2 §2.5.8 — https://www.w3.org/TR/WCAG22/#target-size-minimum',
         locator: { selector: t.selector, text: t.text || '' }
@@ -107,19 +97,23 @@ function scoreTouchTargets(data) {
     }
   });
 
-  // Also flag targets that pass the current threshold but would fail on touch
+  // Also note controls that meet WCAG AA but fall short of larger touch comfort
+  // guidance when analyzed at a desktop viewport.
   if (isDesktop && targets.length > 0) {
-    var touchMin = profile.touchTarget;
-    var touchFails = targets.filter(function(t) { return Math.min(t.width, t.height) < touchMin; });
+    var touchMin = profile.touchTarget || 44;
+    var touchFails = targets.filter(function(t) {
+      var d = Math.min(t.width, t.height);
+      return t.linkContext !== 'inline' && d >= minSize && d < touchMin && (t.isButton || t.element !== 'a' || t.linkContext === 'nav');
+    });
     if (touchFails.length > 0) {
       var allBboxes = touchFails.map(function(t) { return t.bbox; }).filter(Boolean);
       var allSelectors = touchFails.map(function(t) { return t.selector; }).filter(Boolean);
       var allTexts = touchFails.map(function(t) { return t.text || ''; });
       findings.push({
         severity: 'info',
-        title: touchFails.length + ' element(s) below ' + touchMin + 'px touch target (analyzed at ' + vw + 'px desktop viewport)',
-        detail: 'These meet desktop minimums but would fail on touch devices. Consider responsive sizing if the site is also used on mobile.',
-        fix: 'For responsive touch support: add touch-target sizing at mobile breakpoints, e.g. sm:min-h-[' + touchMin + 'px]',
+        title: touchFails.length + ' element(s) below ' + touchMin + 'px comfort target (analyzed at ' + vw + 'px desktop viewport)',
+        detail: 'These meet the WCAG AA 24px minimum but are below larger platform touch guidance. Consider responsive sizing if the site is also used on mobile.',
+        fix: 'For responsive touch comfort: add larger mobile target sizing, e.g. sm:min-h-[' + touchMin + 'px]',
         presetRef: null,
         source: 'Material Design 3 — https://m3.material.io/foundations/layout/applying-layout',
         locator: { selector: '', text: '', bboxes: allBboxes, selectors: allSelectors, texts: allTexts }
