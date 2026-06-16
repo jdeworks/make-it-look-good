@@ -38,3 +38,39 @@ test('capture core returns synthetic screenshot when screenshot library cannot l
   expect(result.screenshotMeta.screenshotError.stage).toBe('library-load-error');
   expect(result.regionScreenshots).toEqual([]);
 });
+
+test('capture core uses live hooks without eval for console snippet mode', async ({ page }) => {
+  await page.goto(`${BASE_URL}/tests/fixtures/parity-page.html`);
+  await page.addScriptTag({ url: `${BASE_URL}/lib/modern-screenshot.min.js?v=no-eval` });
+  await page.addScriptTag({ url: `${BASE_URL}/analyzer-capture.js?v=no-eval` });
+
+  const result = await page.evaluate(async () => {
+    const originalEval = window.eval;
+    window.__milgData = { colors: { contrastPairs: [] } };
+    window.eval = () => { throw new Error('unsafe-eval blocked by test'); };
+    const preHook = (_p, done) => done();
+    const preloadFn = (_p, _proxyUrl, done) => done();
+    const regionFn = () => (cb) => cb([]);
+
+    try {
+      return await new Promise((resolve) => {
+        const opts = {
+          msgType: 'milg-screenshots-result',
+          cdnUrl: 'unused-when-modern-screenshot-is-present.js',
+          proxyUrl: '',
+          expand: false,
+          preHook,
+          preloadFn,
+          regionFn,
+          sendFn: (payload) => resolve(payload),
+        };
+        window.MilgCapture.getCaptureFn()(1, 0.75, () => {}, opts)(() => {});
+      });
+    } finally {
+      window.eval = originalEval;
+    }
+  });
+
+  expect(result.screenshotFull).toMatch(/^data:image\/webp;base64,/);
+  expect(result.screenshotError).toBeFalsy();
+});

@@ -189,9 +189,12 @@ window.MilgCapture = (function() {
   //   cdnUrl:      modern-screenshot CDN script URL
   //   proxyUrl:    CORS proxy URL for image preload (passed to preloadFn)
   //   expand:      bool — do the carousel-expanded second screenshot (iframe: true)
-  //   preHookSrc:  source string of preHook(prog, done) — mode-specific PRE prep
-  //   preloadSrc:  source string of preloadFn(prog, proxyUrl, done) — image preload
-  //   regionFnSrc: source string of MilgRegion.getRegionFn() — region screenshots
+  //   preHook:     OPTIONAL live preHook(prog, done) for same-realm callers (snippet)
+  //   preloadFn:   OPTIONAL live preloadFn(prog, proxyUrl, done) for same-realm callers
+  //   regionFn:    OPTIONAL live MilgRegion.getRegionFn() for same-realm callers
+  //   preHookSrc:  source string of preHook(prog, done) — serialized iframe mode
+  //   preloadSrc:  source string of preloadFn(prog, proxyUrl, done) — serialized iframe mode
+  //   regionFnSrc: source string of MilgRegion.getRegionFn() — serialized iframe mode
   //   sendFn:      OPTIONAL live function sendFn(payload, isFinal) — pluggable output
   //                sink. Used when the core runs in the SAME realm as the caller
   //                (snippet mode: getCaptureFn() is called directly, not serialized),
@@ -216,10 +219,12 @@ window.MilgCapture = (function() {
       var vh = window.innerHeight || 900;
       var fullH = 0;
 
-      // Rebuild mode-specific hooks from source strings (serialization-safe).
-      var _preHook = (0, eval)("(" + opts.preHookSrc + ")");
-      var _preloadFn = (0, eval)("(" + opts.preloadSrc + ")");
-      var _regionFn = (0, eval)("(" + opts.regionFnSrc + ")");
+      // Rebuild mode-specific hooks from source strings only when necessary.
+      // Console-snippet mode runs in the same realm and can pass live functions;
+      // strict pages such as ChatGPT block unsafe-eval, so live functions must win.
+      var _preHook = (typeof opts.preHook === "function") ? opts.preHook : (0, eval)("(" + opts.preHookSrc + ")");
+      var _preloadFn = (typeof opts.preloadFn === "function") ? opts.preloadFn : (0, eval)("(" + opts.preloadSrc + ")");
+      var _regionFn = (typeof opts.regionFn === "function") ? opts.regionFn : (0, eval)("(" + opts.regionFnSrc + ")");
 
       // Pluggable output sink. Default = original iframe behavior (postMessage to
       // parent). The snippet supplies opts.sendFnSrc to route results into its

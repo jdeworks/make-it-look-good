@@ -1,5 +1,5 @@
 // make-it-look-good — Design Extraction Snippet (with screenshots)
-// Version: v3.11.65
+// Version: v3.11.66
 // Run this in the browser console on any page.
 // Loads extraction engine from CDN (single source of truth), then captures screenshots.
 // Output is larger (~200-800KB extra) but includes visual reference.
@@ -7,7 +7,7 @@
 
 (function() {
   'use strict';
-  var _MILG_VERSION = 'v3.11.65';
+  var _MILG_VERSION = 'v3.11.66';
   console.log('%c[milg] Snippet version: ' + _MILG_VERSION, 'color: #64748b;');
 
   // --- Pixel verify option ---
@@ -147,13 +147,13 @@
 
     // --- Unified capture via window.MilgCapture (shared with URL/iframe mode) ---
     // The full-page screenshot + multi-layer text mask + carousel-expanded screenshot
-    // + region screenshots all run inside the SAME serializable core that iframe mode
+    // + region screenshots all run inside the SAME capture core that iframe mode
     // uses. We supply:
     //   - a live-page PRE hook (pre-scroll -> reset scroll containers -> settle), which
     //     replaces the snippet's old Phase 1 + _startCapture prep,
     //   - a no-op preloadFn (live pages have no CORS proxy; images are already loaded),
     //   - expand:true to get the carousel-expanded screenshot upgrade,
-    //   - regionFnSrc=MilgRegion so regions run THROUGH the core (no separate call),
+    //   - regionFn=MilgRegion so regions run THROUGH the core (no separate call),
     //   - a sendFn that merges the unified result into `data` and calls outputData.
     if (!window.MilgCapture || !window.MilgCapture.getCaptureFn) {
       console.warn('[ss] MilgCapture not available - skipping screenshots');
@@ -415,9 +415,9 @@
 
     try {
       function _noopRegionFn(_s, _q, _p, _cp) { return function(cb) { cb([]); }; }
-      var _regionFnSrc = (window.MilgRegion && window.MilgRegion.getRegionFn)
-        ? window.MilgRegion.getRegionFn().toString()
-        : _noopRegionFn.toString();
+      var _regionFn = (window.MilgRegion && window.MilgRegion.getRegionFn)
+        ? window.MilgRegion.getRegionFn()
+        : _noopRegionFn;
       if (!window.MilgRegion || !window.MilgRegion.getRegionFn) {
         console.warn('[ss] MilgRegion not available - capturing main screenshot without hidden regions');
       }
@@ -426,9 +426,12 @@
         cdnUrl: 'https://cdn.jsdelivr.net/npm/modern-screenshot@4.6.8/dist/index.js',
         proxyUrl: '',
         expand: true,
+        preHook: _snippetPreHook,
+        preloadFn: _domPreload,
+        regionFn: _regionFn,
         preHookSrc: _snippetPreHook.toString(),
         preloadSrc: _domPreload.toString(),
-        regionFnSrc: _regionFnSrc,
+        regionFnSrc: _regionFn.toString(),
         sendFn: _snippetSend
       };
       // Scale 1.5 / quality 0.8 -- same as the snippet has always used (and iframe mode).
