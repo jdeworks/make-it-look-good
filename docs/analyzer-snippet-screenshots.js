@@ -7,7 +7,7 @@
 
 (function() {
   'use strict';
-  var _MILG_VERSION = 'v1.7';
+  var _MILG_VERSION = 'v1.8';
   console.log('%c[milg] Snippet version: ' + _MILG_VERSION, 'color: #64748b;');
 
   // --- Pixel verify option ---
