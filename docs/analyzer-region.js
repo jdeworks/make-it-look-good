@@ -462,6 +462,52 @@ window.MilgRegion = (function() {
         });
         return snaps;
       }
+      function _withSourceRegionRevealed(root, kind, fn) {
+        var touched = [];
+        function save(el) {
+          if (!el || touched.some(function(t) { return t.el === el; })) return null;
+          var rec = {
+            el: el,
+            cssText: el.style ? el.style.cssText : '',
+            hidden: el.hasAttribute && el.hasAttribute('hidden'),
+            ariaHidden: el.getAttribute && el.getAttribute('aria-hidden'),
+            open: el.tagName && el.tagName.toLowerCase() === 'details' ? el.open : null
+          };
+          touched.push(rec);
+          return rec;
+        }
+        try {
+          var chain = [], cur = root;
+          while (cur && cur !== document.documentElement) { chain.push(cur); cur = cur.parentElement; }
+          for (var i = chain.length - 1; i >= 0; i--) {
+            var el = chain[i];
+            save(el);
+            if (el.hasAttribute && el.hasAttribute('hidden')) el.removeAttribute('hidden');
+            if (el.setAttribute && el.getAttribute && el.getAttribute('aria-hidden') === 'true') el.setAttribute('aria-hidden', 'false');
+            if (el.tagName && el.tagName.toLowerCase() === 'details') el.open = true;
+            var cs = getComputedStyle(el);
+            if (cs.display === 'none') el.style.setProperty('display', 'block', 'important');
+            if (cs.visibility === 'hidden') el.style.setProperty('visibility', 'visible', 'important');
+            if (parseFloat(cs.opacity) < 0.1) el.style.setProperty('opacity', '1', 'important');
+            if (cs.contentVisibility === 'hidden') el.style.setProperty('content-visibility', 'visible', 'important');
+            if ((cs.overflow === 'hidden' || cs.overflowY === 'hidden') && el === root) el.style.setProperty('overflow', 'visible', 'important');
+          }
+          if (kind === 'details' && root && root.tagName && root.tagName.toLowerCase() === 'details') root.open = true;
+          void document.body.offsetHeight;
+          return fn();
+        } finally {
+          for (var ri = touched.length - 1; ri >= 0; ri--) {
+            var r = touched[ri], elr = r.el;
+            if (elr.style) elr.style.cssText = r.cssText;
+            if (r.hidden) elr.setAttribute('hidden', '');
+            else if (elr.removeAttribute) elr.removeAttribute('hidden');
+            if (r.ariaHidden == null) { if (elr.removeAttribute) elr.removeAttribute('aria-hidden'); }
+            else if (elr.setAttribute) elr.setAttribute('aria-hidden', r.ariaHidden);
+            if (r.open !== null) elr.open = r.open;
+          }
+          try { void document.body.offsetHeight; } catch (_e) {}
+        }
+      }
       function _materialStyleDiff(prop, src, mini, srcSnap, miniRect) {
         if (src === mini) return false;
         if ((prop === 'display' && src === 'none') || (prop === 'visibility' && src === 'hidden') || (prop === 'opacity' && parseFloat(src) < 0.1)) return false;
@@ -532,7 +578,9 @@ window.MilgRegion = (function() {
           var _tryRect = function(el) {
             try { var r = el.getBoundingClientRect(); return (r.width >= 40 && r.height >= 20) ? r : null; } catch (_) { return null; }
           };
-          cr = _tryRect(container);
+          cr = _withSourceRegionRevealed(container, _rgnKind, function() {
+            return _tryRect(container);
+          });
           if (!cr && rgn.triggerEl) cr = _tryRect(rgn.triggerEl);
           // For details, try the summary child as a visible anchor
           if (!cr && _rgnKind === 'details') {
@@ -545,7 +593,9 @@ window.MilgRegion = (function() {
           cr = container.getBoundingClientRect();
         }
 
-        var sourceSnapshot = _snapshotRegionStyles(container);
+        var sourceSnapshot = _withSourceRegionRevealed(container, _rgnKind, function() {
+          return _snapshotRegionStyles(container);
+        });
         var clone = container.cloneNode(true);
         clone.setAttribute('data-milg-region-root', '1');
         // Per-kind clone prep: force-reveal CSS handles class-based hiding, but
@@ -716,6 +766,16 @@ window.MilgRegion = (function() {
               var _cTop = 1e9, _cBot = 0, _cLeft = 1e9, _cRight = 0;
               var _cropOX = 0, _cropOY = 0;
               try {
+                var _regionRoot = mDoc.querySelector('[data-milg-region-root="1"]');
+                if (_regionRoot && _rgnKind !== 'clipped') {
+                  var _rr = _regionRoot.getBoundingClientRect();
+                  if (_rr.width > 0 && _rr.height > 0) {
+                    _cTop = Math.min(_cTop, _rr.top);
+                    _cBot = Math.max(_cBot, _rr.bottom);
+                    _cLeft = Math.min(_cLeft, _rr.left);
+                    _cRight = Math.max(_cRight, _rr.right);
+                  }
+                }
                 mDoc.body.querySelectorAll('*').forEach(function(el) {
                   var r = el.getBoundingClientRect();
                   if (r.height <= 0 || r.width <= 0) return;

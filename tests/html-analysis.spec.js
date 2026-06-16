@@ -344,6 +344,45 @@ test.describe('Screenshot Pipeline', () => {
     expect(region.touchTarget).toBeNull();
     expect(region.fidelity && region.fidelity.compared).toBeGreaterThan(0);
   });
+
+  test('analyzer details regions keep outer details box and hidden ancestor geometry', async ({ page }) => {
+    await analyzeUrl(page, `${BASE_URL}/analyzer.html`);
+
+    const regions = await page.evaluate(() => {
+      const raw = window.__milgLastReport && window.__milgLastReport.raw;
+      const list = (raw && raw.regionScreenshots) || [];
+      function compact(label) {
+        const r = list.find(x => x.label === label);
+        if (!r) return null;
+        const pairs = r.extractedData && r.extractedData.colors ? (r.extractedData.colors.contrastPairs || []) : [];
+        const buttonPair = pairs.find(p => (p.text || '').includes('Switch to Console Snippet tab'));
+        return {
+          label: r.label,
+          kind: r.kind,
+          noAnchor: !!r.noAnchor,
+          containerRect: r.containerRect,
+          screenshotMeta: r.screenshotMeta,
+          buttonHeight: buttonPair && buttonPair.bbox ? buttonPair.bbox.height : 0,
+        };
+      }
+      return {
+        how: compact('How it works'),
+        prefer: compact('Prefer the Console Snippet (safer)'),
+      };
+    });
+
+    expect(regions.how).not.toBeNull();
+    expect(regions.how.kind).toBe('details');
+    expect(regions.how.noAnchor).toBe(false);
+    expect(regions.how.containerRect.width).toBeGreaterThan(650);
+    expect(regions.how.screenshotMeta.canvasHeight).toBeGreaterThan(regions.how.containerRect.height * regions.how.screenshotMeta.scale);
+
+    expect(regions.prefer).not.toBeNull();
+    expect(regions.prefer.kind).toBe('details');
+    expect(regions.prefer.noAnchor).toBe(false);
+    expect(regions.prefer.containerRect.width).toBeGreaterThan(600);
+    expect(regions.prefer.buttonHeight).toBeGreaterThanOrEqual(44);
+  });
 });
 
 // ── URL Analysis: Real Sites ──
