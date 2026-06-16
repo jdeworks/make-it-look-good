@@ -99,6 +99,8 @@ test.describe('HTML Analysis', () => {
       })) : [];
       return {
         pair,
+        screenshot: raw && (raw.screenshotClean || raw.screenshotFull || ((raw.screenshots || [])[0])),
+        scale: raw && raw.screenshotMeta && raw.screenshotMeta.scale || 1,
         placeholderFindings: findings.filter(f => /placeholder/i.test((f.title || '') + ' ' + (f.detail || ''))),
       };
     });
@@ -110,6 +112,36 @@ test.describe('HTML Analysis', () => {
     expect(result.pair.passes).toBe(false);
     expect(result.placeholderFindings.some(f => f.severity === 'warning')).toBe(true);
     expect(result.placeholderFindings.some(f => f.severity === 'error')).toBe(false);
+    expect(result.screenshot).toBeTruthy();
+
+    const pixels = await page.evaluate(async ({ src, bbox, scale }) => {
+      const img = new Image();
+      img.src = src;
+      await img.decode();
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0);
+      const sx = Math.round((bbox.left + 16) * scale);
+      const sy = Math.round((bbox.top + 10) * scale);
+      const sw = Math.round(190 * scale);
+      const sh = Math.round(24 * scale);
+      const data = ctx.getImageData(sx, sy, sw, sh).data;
+      let placeholderLike = 0;
+      let whiteLike = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
+        if (a < 20) continue;
+        const d = Math.abs(r - 100) + Math.abs(g - 116) + Math.abs(b - 139);
+        if (d < 80) placeholderLike++;
+        if (r > 220 && g > 220 && b > 220) whiteLike++;
+      }
+      return { placeholderLike, whiteLike };
+    }, { src: result.screenshot, bbox: result.pair.bbox, scale: result.scale });
+
+    expect(pixels.placeholderLike).toBeGreaterThan(20);
+    expect(pixels.whiteLike).toBeLessThan(20);
   });
 });
 
@@ -428,6 +460,10 @@ test.describe('Screenshot Pipeline', () => {
         bodyClass: document.body.className,
         mainMethod: raw && raw.structure && raw.structure.darkModeMethod,
         mainDarkness: raw && raw.colors && raw.colors.darknessLevel,
+        placeholderPair: raw && raw.colors && (raw.colors.contrastPairs || []).find(p => p.selector === '#urlInput' && p.isPlaceholder),
+        placeholderWarning: !!((window.__milgLastReport.categories || []).find(c => c.label === 'Color & Contrast') || { findings: [] }).findings.find(f =>
+          f.severity === 'warning' && /placeholder/i.test(f.title || '') && /#urlInput/.test(f.detail || '')
+        ),
         regions: ((raw && raw.regionScreenshots) || []).map(r => ({
           label: r.label,
           method: r.extractedData && r.extractedData.structure && r.extractedData.structure.darkModeMethod,
@@ -440,6 +476,9 @@ test.describe('Screenshot Pipeline', () => {
     expect(darkRegions.bodyClass).toContain('dark-ui');
     expect(darkRegions.mainMethod).toBe('body-class');
     expect(darkRegions.mainDarkness).toBeGreaterThanOrEqual(6);
+    expect(darkRegions.placeholderPair).toBeTruthy();
+    expect(darkRegions.placeholderPair.passes).toBe(false);
+    expect(darkRegions.placeholderWarning).toBe(true);
     const how = darkRegions.regions.find(r => r.label === 'How it works');
     expect(how).toBeTruthy();
     expect(how.method).toBe('body-class');

@@ -228,6 +228,35 @@ window.MilgRegion = (function() {
         console.log('[milg-region] mark: tagged ' + _rcc + ' clip containers, clipped=' + window.__milgBboxRefs.filter(function(r) { return r.obj && r.obj._isClipped; }).length + '/' + window.__milgBboxRefs.length);
       }
 
+      function _escapeCssString(s) {
+        return String(s || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, ' ');
+      }
+
+      function _injectPlaceholderCaptureStyles(rootDoc) {
+        try {
+          var rules = [];
+          var idx = 0;
+          rootDoc.querySelectorAll('input[placeholder],textarea[placeholder]').forEach(function(el) {
+            if (el.value || !el.placeholder) return;
+            var ph = rootDoc.defaultView.getComputedStyle(el, '::placeholder');
+            if (!ph || !ph.color) return;
+            var id = 'rph' + (++idx);
+            el.setAttribute('data-milg-ph-style', id);
+            var opacity = ph.opacity || '1';
+            rules.push('[data-milg-ph-style="' + id + '"]::placeholder{color:' + _escapeCssString(ph.color) + ' !important;-webkit-text-fill-color:' + _escapeCssString(ph.color) + ' !important;opacity:' + _escapeCssString(opacity) + ' !important;}');
+            el.setAttribute('data-milg-placeholder-rendered', '1');
+            el.value = el.placeholder;
+            el.style.setProperty('color', ph.color, 'important');
+            el.style.setProperty('-webkit-text-fill-color', ph.color, 'important');
+          });
+          if (!rules.length) return;
+          var style = rootDoc.createElement('style');
+          style.setAttribute('data-milg-placeholder-capture', '1');
+          style.textContent = rules.join('\n');
+          rootDoc.head.appendChild(style);
+        } catch (_e) {}
+      }
+
       // Detect clipping containers from tracked bbox refs
       var _rgnCounter = 0, _clipContainerList = [], _clipContainers = {};
       if (window.__milgBboxRefs) {
@@ -807,6 +836,7 @@ window.MilgRegion = (function() {
 
               var pms = window.modernScreenshot;
               if (!pms || !pms.domToCanvas) { _rgnFinish(rIdx, mf, null); return; }
+              _injectPlaceholderCaptureStyles(mDoc);
               pms.domToCanvas(mDoc.documentElement, { scale: _sc, timeout: 12000, filter: function(n) { return !(n && n.getAttribute && n.getAttribute('data-milg-overlay')); } }).then(function(rc) {
                 // Crop canvas to DOM-computed content bounds (avoids pixel scanning)
                 var finalCanvas = rc;

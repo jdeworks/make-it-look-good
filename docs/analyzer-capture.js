@@ -253,6 +253,38 @@ window.MilgCapture = (function() {
       // the user for the WHOLE capture without being baked into screenshots/masks.
       function _msFilter(n) { return !(n && n.getAttribute && n.getAttribute("data-milg-overlay")); }
 
+      function _escapeCssString(s) {
+        return String(s || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, " ");
+      }
+
+      function _injectPlaceholderCaptureStyles(rootDoc) {
+        try {
+          var rules = [];
+          var idx = 0;
+          rootDoc.querySelectorAll("input[placeholder],textarea[placeholder]").forEach(function(el) {
+            if (el.value || !el.placeholder) return;
+            var ph = rootDoc.defaultView.getComputedStyle(el, "::placeholder");
+            if (!ph || !ph.color) return;
+            var id = "ph" + (++idx);
+            el.setAttribute("data-milg-ph-style", id);
+            var opacity = ph.opacity || "1";
+            rules.push('[data-milg-ph-style="' + id + '"]::placeholder{color:' + _escapeCssString(ph.color) + ' !important;-webkit-text-fill-color:' + _escapeCssString(ph.color) + ' !important;opacity:' + _escapeCssString(opacity) + ' !important;}');
+            el.setAttribute("data-milg-placeholder-rendered", "1");
+            el.value = el.placeholder;
+            el.style.setProperty("color", ph.color, "important");
+            el.style.setProperty("-webkit-text-fill-color", ph.color, "important");
+          });
+          if (!rules.length) return;
+          var style = rootDoc.createElement("style");
+          style.setAttribute("data-milg-placeholder-capture", "1");
+          style.textContent = rules.join("\n");
+          rootDoc.head.appendChild(style);
+          console.log("[iframe-ss] Applied explicit placeholder capture styles: " + rules.length);
+        } catch (e) {
+          console.warn("[iframe-ss] Placeholder capture style prep failed:", e.message);
+        }
+      }
+
       // modern-screenshot rasterizes by loading the cloned DOM as an SVG data: URL
       // in an <img>. If the page's CSP img-src blocks data: URLs, that load can
       // never paint — every capture would come back correctly sized but fully
@@ -467,6 +499,7 @@ window.MilgCapture = (function() {
               });
               if (_ifrPh) console.log("[iframe-ss] " + _ifrPh + " inaccessible iframe(s) → placeholder overlay in screenshot");
             } catch (e) {}
+            _injectPlaceholderCaptureStyles(document);
             // Phase A: Clean screenshot (page as-rendered, before overflow expansion)
             _prog("Rendering screenshot (0s)…");
             console.log("[iframe-ss] Capturing clean screenshot at " + _sc + "x...");
