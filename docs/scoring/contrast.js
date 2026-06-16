@@ -98,7 +98,23 @@ function scoreContrast(data) {
     }
 
     var passes = ratio >= needed;
-    return { ratio: ratio, needed: needed, passes: passes, isLarge: p.isLarge, text: p.text, fontSize: p.fontSize, selector: p.selector, fg: p.fg, bg: p.bg, filter: p.filter || '', bbox: p.bbox };
+    return {
+      ratio: ratio,
+      needed: needed,
+      passes: passes,
+      isLarge: p.isLarge,
+      text: p.text,
+      fontSize: p.fontSize,
+      selector: p.selector,
+      fg: p.fg,
+      bg: p.bg,
+      filter: p.filter || '',
+      bbox: p.bbox,
+      backdropFilter: p.backdropFilter,
+      minBgAlpha: p.minBgAlpha,
+      isPlaceholder: !!p.isPlaceholder,
+      _wasRecolored: !!p._wasRecolored
+    };
   });
 
   // Separate uncertain results (very low ratio usually means bg couldn't be determined — gradient, SVG, image, etc.)
@@ -121,7 +137,9 @@ function scoreContrast(data) {
     return false;
   }
   var uncertain = profilePairs.filter(function(p) { return isUncertain(p); });
-  var failures = profilePairs.filter(function(p) { return !p.passes && !isUncertain(p); });
+  var failedPairs = profilePairs.filter(function(p) { return !p.passes && !isUncertain(p); });
+  var placeholderFailures = failedPairs.filter(function(p) { return p.isPlaceholder; });
+  var failures = failedPairs.filter(function(p) { return !p.isPlaceholder; });
   var nearMisses = profilePairs.filter(function(p) { return p.passes && p.ratio < p.needed + 0.5; });
 
   // Deduplicate failures with identical ratio + selector
@@ -151,6 +169,30 @@ function scoreContrast(data) {
         : 'Normal text needs ' + profile.contrast + ':1 minimum. Use a darker text color or lighter background.') + bgNote,
       presetRef: null,
       source: p.isLarge ? 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum' : 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum',
+      locator: { selector: p.selector, text: p.text, bboxes: entry.bboxes, selectors: entry.selectors, texts: entry.texts },
+      _colors: { fg: p.fg, bg: p.bg, ratio: p.ratio }
+    });
+  });
+
+  // Placeholder contrast matters, but placeholder text is advisory rather than
+  // the main label/content in a correct form. Report it separately as a warning.
+  var phSeen = {};
+  placeholderFailures.forEach(function(p) {
+    var dedup = p.ratio + '|' + p.selector;
+    if (phSeen[dedup]) { phSeen[dedup].count++; if (p.bbox) phSeen[dedup].bboxes.push(p.bbox); if (p.selector) phSeen[dedup].selectors.push(p.selector); phSeen[dedup].texts.push(p.text || ''); return; }
+    phSeen[dedup] = { p: p, count: 1, bboxes: p.bbox ? [p.bbox] : [], selectors: p.selector ? [p.selector] : [], texts: [p.text || ''] };
+  });
+  Object.keys(phSeen).forEach(function(key) {
+    var entry = phSeen[key];
+    var p = entry.p;
+    var countNote = entry.count > 1 ? ' (' + entry.count + ' instances)' : '';
+    findings.push({
+      severity: 'warning',
+      title: 'Placeholder text has low contrast ' + p.ratio + ':1 (needs ' + p.needed + ':1)' + countNote,
+      detail: '"' + p.text + '" at ' + p.fontSize + 'px — ' + p.selector,
+      fix: 'Use a darker placeholder color or provide persistent helper/label text. Placeholder text should stay readable, but it should not be the only label.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum',
       locator: { selector: p.selector, text: p.text, bboxes: entry.bboxes, selectors: entry.selectors, texts: entry.texts },
       _colors: { fg: p.fg, bg: p.bg, ratio: p.ratio }
     });
@@ -196,6 +238,7 @@ function scoreContrast(data) {
   // check verify results and downgrade pass → fail if pixel check disagrees.
   var failSelectors = {};
   Object.keys(failSeen).forEach(function(k) { failSelectors[failSeen[k].p.selector] = true; });
+  Object.keys(phSeen).forEach(function(k) { failSelectors[phSeen[k].p.selector] = true; });
   Object.keys(nearSeen).forEach(function(k) { failSelectors[nearSeen[k].p.selector] = true; });
   var passingPairs = profilePairs.filter(function(p) {
     return p.passes && !(p.ratio < p.needed + 0.5) && !failSelectors[p.selector];
@@ -300,10 +343,10 @@ function scoreContrast(data) {
 
   // Don't count uncertain results as failures in the score
   var total = (profilePairs.length - uncertain.length) || 1;
-  var passing = total - failures.length;
+  var passing = total - failures.length - placeholderFailures.length;
   // Scale deduction by total pairs: more pairs = less impact per failure (large pages shouldn't be punished more)
   var failPenalty = total > 10 ? Math.max(3, Math.round(100 / total)) : 10;
-  var score = Math.max(0, 100 - (failures.length * failPenalty) - (nearMisses.length * 1) - (_pxExtraErrors * failPenalty) - (_pxExtraWarnings * 1));
+  var score = Math.max(0, 100 - (failures.length * failPenalty) - (placeholderFailures.length * 1) - (nearMisses.length * 1) - (_pxExtraErrors * failPenalty) - (_pxExtraWarnings * 1));
 
   // Add baseline checks
   var checks = Math.max(total, 1);

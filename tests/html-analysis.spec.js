@@ -82,6 +82,35 @@ test.describe('HTML Analysis', () => {
     expect(touchFindings.some(f => /a\.button-like|a is 2[0-9]×2[0-9]px/i.test((f.detail || '') + ' ' + (f.title || '')))).toBe(true);
     expect(touchFindings.some(f => /Tiny delete|button is 20×20px/i.test((f.detail || '') + ' ' + (f.title || '')))).toBe(true);
   });
+
+  test('placeholder contrast is reported as warning and keeps placeholder color', async ({ page }) => {
+    await analyzeUrl(page, `${BASE_URL}/tests/fixtures/placeholder-contrast.html`);
+
+    const result = await page.evaluate(() => {
+      const report = window.__milgLastReport;
+      const raw = report && report.raw;
+      const pair = raw && raw.colors && (raw.colors.contrastPairs || []).find(p => p.isPlaceholder);
+      const cat = (report.categories || []).find(c => c.icon === 'contrast' || c.label === 'Color & Contrast');
+      const findings = cat ? (cat.findings || []).map(f => ({
+        title: f.title,
+        severity: f.severity,
+        detail: f.detail,
+        colors: f._colors || null,
+      })) : [];
+      return {
+        pair,
+        placeholderFindings: findings.filter(f => /placeholder/i.test((f.title || '') + ' ' + (f.detail || ''))),
+      };
+    });
+
+    expect(result.pair).toBeTruthy();
+    expect(result.pair.isPlaceholder).toBe(true);
+    expect(result.pair.fg.replace(/\s+/g, '')).toBe('rgb(100,116,139)');
+    expect(result.pair.bg.replace(/\s+/g, '')).toBe('rgb(30,41,59)');
+    expect(result.pair.passes).toBe(false);
+    expect(result.placeholderFindings.some(f => f.severity === 'warning')).toBe(true);
+    expect(result.placeholderFindings.some(f => f.severity === 'error')).toBe(false);
+  });
 });
 
 // ── Export & Import Round-Trip ──

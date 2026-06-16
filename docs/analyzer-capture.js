@@ -348,9 +348,17 @@ window.MilgCapture = (function() {
           // Large unrendered background images get a placeholder hatch too (heroes, cards).
           if (cs.backgroundImage && cs.backgroundImage.indexOf("url(") !== -1 && r.width * r.height > 10000) { _drawPh(px, py, pw, ph); }
           if ((tag === "INPUT" || tag === "TEXTAREA") && (el.value || el.placeholder)) {
-            x.fillStyle = cs.color; x.textBaseline = "middle";
+            var _controlText = el.value || el.placeholder;
+            var _controlColor = cs.color;
+            if (!el.value && el.placeholder) {
+              try {
+                var _phCs = getComputedStyle(el, "::placeholder");
+                if (_phCs && _phCs.color) _controlColor = _phCs.color;
+              } catch (e) {}
+            }
+            x.fillStyle = _controlColor; x.textBaseline = "middle";
             x.font = cs.fontStyle + " " + cs.fontWeight + " " + ((parseFloat(cs.fontSize) || 14) * _sc) + "px " + cs.fontFamily;
-            x.fillText(el.value || el.placeholder, px + 8 * _sc, py + ph / 2);
+            x.fillText(_controlText, px + 8 * _sc, py + ph / 2);
             _texts++;
             continue;
           }
