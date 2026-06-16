@@ -7,7 +7,7 @@
 
 (function() {
   'use strict';
-  var _MILG_VERSION = 'v1.8';
+  var _MILG_VERSION = 'v1.9';
   console.log('%c[milg] Snippet version: ' + _MILG_VERSION, 'color: #64748b;');
 
   // --- Pixel verify option ---
@@ -58,11 +58,26 @@
     window.__milgOnExtractComplete = function(data) {
       window.__milgData = data;
       console.log('%c[milg] Extraction complete, starting screenshot capture...', 'color: #3b82f6;');
+      window.__milgSnippetSent = false;
 
   // --- Screenshot capture ---
   // The modern-screenshot library is loaded inline to bypass CSP restrictions.
   // Console-pasted code is executed directly by the engine, not subject to CSP script-src.
   console.log('%c\uD83D\uDCF8 Capturing screenshots...', 'color: #3b82f6; font-weight: bold; font-size: 14px;');
+  function _milgErrMsg(e) {
+    if (!e) return '';
+    try { return e.message || String(e); } catch (x) { return ''; }
+  }
+  function _recordScreenshotError(stage, reason, err, extra) {
+    data.screenshotError = {
+      stage: stage || 'snippet-unknown',
+      reason: reason || 'Screenshot capture failed before the shared capture core reported a reason.',
+      error: _milgErrMsg(err),
+      snippetVersion: _MILG_VERSION
+    };
+    if (extra) Object.keys(extra).forEach(function(k) { data.screenshotError[k] = extra[k]; });
+    console.warn('[milg] screenshotError:', data.screenshotError);
+  }
 
   // Inline modern-screenshot library (loaded from separate file at build time)
   // This block is replaced by scripts/build-screenshot-snippet.sh
@@ -109,6 +124,7 @@
     var ms = window.modernScreenshot;
     if (!ms || !ms.domToCanvas) {
       console.log('%c\u26A0 Screenshot API not found. Skipping.', 'color: #b45309;');
+      _recordScreenshotError('snippet-screenshot-api-missing', 'modernScreenshot.domToCanvas was not available after the screenshot library loader completed.', null, { hasModernScreenshot: !!ms });
       data.screenshots = [];
       outputData(data);
       return;
@@ -142,6 +158,7 @@
     if (!window.MilgCapture || !window.MilgCapture.getCaptureFn) {
       console.warn('[ss] MilgCapture not available - skipping screenshots');
       if (_overlay.parentNode) _overlay.parentNode.removeChild(_overlay);
+      _recordScreenshotError('snippet-capture-module-missing', 'MilgCapture.getCaptureFn was not available in the assembled console snippet.', null, { hasMilgCapture: !!window.MilgCapture });
       data.screenshots = [];
       outputData(data);
       return;
@@ -396,19 +413,37 @@
       outputData(data);
     }
 
-    var _captureOpts = {
-      msgType: 'milg-screenshots-result',
-      cdnUrl: 'https://cdn.jsdelivr.net/npm/modern-screenshot@4.6.8/dist/index.js',
-      proxyUrl: '',
-      expand: true,
-      preHookSrc: _snippetPreHook.toString(),
-      preloadSrc: _domPreload.toString(),
-      regionFnSrc: window.MilgRegion.getRegionFn().toString(),
-      sendFn: _snippetSend
-    };
-    // Scale 1.5 / quality 0.8 -- same as the snippet has always used (and iframe mode).
-    window.MilgCapture.getCaptureFn()(1.5, 0.8, _prog, _captureOpts)(function() {});
-  }).catch(function() {
+    try {
+      function _noopRegionFn(_s, _q, _p, _cp) { return function(cb) { cb([]); }; }
+      var _regionFnSrc = (window.MilgRegion && window.MilgRegion.getRegionFn)
+        ? window.MilgRegion.getRegionFn().toString()
+        : _noopRegionFn.toString();
+      if (!window.MilgRegion || !window.MilgRegion.getRegionFn) {
+        console.warn('[ss] MilgRegion not available - capturing main screenshot without hidden regions');
+      }
+      var _captureOpts = {
+        msgType: 'milg-screenshots-result',
+        cdnUrl: 'https://cdn.jsdelivr.net/npm/modern-screenshot@4.6.8/dist/index.js',
+        proxyUrl: '',
+        expand: true,
+        preHookSrc: _snippetPreHook.toString(),
+        preloadSrc: _domPreload.toString(),
+        regionFnSrc: _regionFnSrc,
+        sendFn: _snippetSend
+      };
+      // Scale 1.5 / quality 0.8 -- same as the snippet has always used (and iframe mode).
+      window.MilgCapture.getCaptureFn()(1.5, 0.8, _prog, _captureOpts)(function() {});
+    } catch (e) {
+      if (_overlay.parentNode) _overlay.parentNode.removeChild(_overlay);
+      _recordScreenshotError('snippet-capture-start-error', 'The snippet failed while building capture options or starting MilgCapture.', e, {
+        hasMilgCapture: !!window.MilgCapture,
+        hasMilgRegion: !!window.MilgRegion
+      });
+      data.screenshots = [];
+      outputData(data);
+    }
+  }).catch(function(e) {
+    _recordScreenshotError('snippet-library-promise-rejected', 'The screenshot library loader promise rejected before capture could start.', e);
     data.screenshots = [];
     outputData(data);
   });

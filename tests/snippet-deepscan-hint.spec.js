@@ -17,8 +17,10 @@ test('snippet code surfaces the multi-viewport / deep-scan hint', async ({ page 
   }, { timeout: 30000 });
   const code = await page.evaluate(() => document.getElementById('snippetCode').textContent);
   expect(code).toMatch(HINT);
-  expect(code).toContain("var _MILG_VERSION = 'v1.8'");
+  expect(code).toContain("var _MILG_VERSION = 'v1.9'");
   expect(code).toContain('capture failed at stage');
   expect(code).toContain('screenshotError');
+  expect(code).toContain('snippet-capture-start-error');
+  expect(code).toContain('snippet-library-promise-rejected');
   expect(code).not.toContain('the page render was likely tainted by a cross-origin image without CORS');
 });
