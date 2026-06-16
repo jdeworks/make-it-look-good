@@ -92,6 +92,18 @@ console.log('[milg] analyzer.js v3.11.63 loaded');
     setTimeout(function() { t.classList.remove('show'); }, 5000);
   }
 
+  function isAnalyzerSelfUrl(url) {
+    try {
+      var u = new URL(url, location.href);
+      var p = u.pathname.replace(/\/+$/, '');
+      var here = location.pathname.replace(/\/+$/, '').replace(/\/analyzer(?:\.html)?$/, '');
+      return u.origin === location.origin &&
+        (p === here + '/analyzer' || p === here + '/analyzer.html');
+    } catch (e) {
+      return false;
+    }
+  }
+
   // --- Focus modal: warns users that Chrome throttles background tabs ---
   // --- Focus modal with live progress log ---
   var _focusModal = null;
@@ -699,7 +711,8 @@ console.log('[milg] analyzer.js v3.11.63 loaded');
         jsEnabled: jsEnabled,
         screenshots: wantShots,
         exclude: exclude,
-        viewport: { w: vp.w, h: vp.h }
+        viewport: { w: vp.w, h: vp.h },
+        forceBodyDarkUi: isAnalyzerSelfUrl(url) && document.body.classList.contains('dark-ui')
       }, function(data) {
         if (data) data.meta.url = url;
         results[i] = data;
@@ -1435,7 +1448,8 @@ console.log('[milg] analyzer.js v3.11.63 loaded');
             url: url,
             jsEnabled: wantJs,
             screenshots: wantShots,
-            exclude: exclude
+            exclude: exclude,
+            forceBodyDarkUi: isAnalyzerSelfUrl(url) && document.body.classList.contains('dark-ui')
           }, function(data) {
             _finishUrl(data);
           });

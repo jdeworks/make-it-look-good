@@ -420,7 +420,7 @@ window.MilgIframe = (function() {
 
   // --- Unified analysis entry point ---
   // analyzeHtml(html, opts, callback)
-  // opts: { url, jsEnabled, screenshots, viewport, exclude, editorDark, editorEffectCSS }
+  // opts: { url, jsEnabled, screenshots, viewport, exclude, editorDark, editorEffectCSS, forceBodyDarkUi }
   // Preprocesses HTML (base tag, URL patch, sandbox, font proxy) then creates iframe.
   function analyzeHtml(html, opts, callback) {
     opts = opts || {};
@@ -430,6 +430,7 @@ window.MilgIframe = (function() {
     var excludeSelector = opts.exclude || null;
     var viewportOverride = opts.viewport || null;
     var editorDark = !!opts.editorDark;
+    var forceBodyDarkUi = !!opts.forceBodyDarkUi;
     var editorEffectCSS = opts.editorEffectCSS || '';
 
     // Preprocess HTML based on mode
@@ -441,12 +442,12 @@ window.MilgIframe = (function() {
       fetchPatch: jsEnabled && !!sourceUrl
     });
 
-    _analyzeHtmlInIframe(html, callback, sourceUrl, excludeSelector, captureScreenshots, viewportOverride, editorDark, editorEffectCSS, jsEnabled);
+    _analyzeHtmlInIframe(html, callback, sourceUrl, excludeSelector, captureScreenshots, viewportOverride, editorDark, editorEffectCSS, jsEnabled, forceBodyDarkUi);
   }
 
   // Internal implementation: creates iframe, injects extraction, handles messages.
   // HTML must already be preprocessed (base tag, URL patch, etc.) before calling this.
-  function _analyzeHtmlInIframe(html, callback, sourceUrl, excludeSelector, captureScreenshots, viewportOverride, editorDark, editorEffectCSS, jsEnabled) {
+  function _analyzeHtmlInIframe(html, callback, sourceUrl, excludeSelector, captureScreenshots, viewportOverride, editorDark, editorEffectCSS, jsEnabled, forceBodyDarkUi) {
     var extractFromDocument = window.MilgExtract;
     var iframe = document.createElement('iframe');
     // Unique ID for this iframe — used to match postMessage responses in parallel mode
@@ -570,6 +571,7 @@ window.MilgIframe = (function() {
     var idVar = '<script>window.__milgIframeId="' + _iframeId + '";</' + 'script>';
     var excludeVar = excludeSelector ? '<script>window.__milgExclude=' + JSON.stringify(excludeSelector) + ';</' + 'script>' : '';
     var fragmentVar = !isFullDoc ? '<script>window.__milgIsFragment=true;</' + 'script>' : '';
+    var darkUiVar = forceBodyDarkUi ? '<script>(function(){document.documentElement.style.colorScheme="dark";function d(){if(document.body)document.body.classList.add("dark-ui")}d();document.addEventListener("DOMContentLoaded",d);})();</' + 'script>' : '';
     // Screenshot capture: script that auto-runs after extraction, loads CDN library, captures page
     var screenshotScript = captureScreenshots ? '<script>window.__milgDoScreenshots=function(){' + buildScreenshotScript('milg-screenshots-result') + '};</' + 'script>' : '';
     var srcdoc;
@@ -579,7 +581,7 @@ window.MilgIframe = (function() {
       // JS-enabled mode needs longer delays for React/Vue hydration
       var postLoadDelay = jsEnabled ? 2000 : 1000;
       var fallbackDelay = jsEnabled ? 8000 : 8000;
-      var extractScript = idVar + excludeVar + fragmentVar + screenshotScript + '<script>window.MilgExtract=(' + _extractFnSrc + ');window.addEventListener("load",function(){setTimeout(function(){window.MilgExtract()},' + postLoadDelay + ')});setTimeout(function(){if(!window.__milgData)window.MilgExtract()},' + fallbackDelay + ');</' + 'script>';
+      var extractScript = idVar + excludeVar + fragmentVar + darkUiVar + screenshotScript + '<script>window.MilgExtract=(' + _extractFnSrc + ');window.addEventListener("load",function(){setTimeout(function(){window.MilgExtract()},' + postLoadDelay + ')});setTimeout(function(){if(!window.__milgData)window.MilgExtract()},' + fallbackDelay + ');</' + 'script>';
       if (/<\/body>/i.test(html)) {
         srcdoc = html.replace(/<\/body>/i, extractScript + '</body>');
       } else {

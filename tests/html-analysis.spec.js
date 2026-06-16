@@ -383,6 +383,40 @@ test.describe('Screenshot Pipeline', () => {
     expect(regions.prefer.containerRect.width).toBeGreaterThan(600);
     expect(regions.prefer.buttonHeight).toBeGreaterThanOrEqual(44);
   });
+
+  test('analyzer self regions keep dark mode when analyzer UI is dark', async ({ page }) => {
+    await page.goto(ANALYZER_URL);
+    await page.evaluate(() => localStorage.setItem('milg-dark', 'true'));
+    await page.reload();
+    await page.click('[data-tab="tabUrl"]');
+    await page.fill('#urlInput', `${BASE_URL}/analyzer.html`);
+    await page.click('#analyzeUrlBtn');
+    await page.waitForSelector('.report-container.visible', { timeout: 90000 });
+
+    const darkRegions = await page.evaluate(() => {
+      const raw = window.__milgLastReport && window.__milgLastReport.raw;
+      return {
+        bodyClass: document.body.className,
+        mainMethod: raw && raw.structure && raw.structure.darkModeMethod,
+        mainDarkness: raw && raw.colors && raw.colors.darknessLevel,
+        regions: ((raw && raw.regionScreenshots) || []).map(r => ({
+          label: r.label,
+          method: r.extractedData && r.extractedData.structure && r.extractedData.structure.darkModeMethod,
+          darkness: r.extractedData && r.extractedData.colors && r.extractedData.colors.darknessLevel,
+          bg: r.extractedData && r.extractedData.colors && (r.extractedData.colors.bgColors || [])[0],
+        })),
+      };
+    });
+
+    expect(darkRegions.bodyClass).toContain('dark-ui');
+    expect(darkRegions.mainMethod).toBe('body-class');
+    expect(darkRegions.mainDarkness).toBeGreaterThanOrEqual(6);
+    const how = darkRegions.regions.find(r => r.label === 'How it works');
+    expect(how).toBeTruthy();
+    expect(how.method).toBe('body-class');
+    expect(how.darkness).toBeGreaterThanOrEqual(6);
+    expect(how.bg && how.bg.value).toBe('rgb(30, 41, 59)');
+  });
 });
 
 // ── URL Analysis: Real Sites ──
