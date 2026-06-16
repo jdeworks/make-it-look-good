@@ -249,6 +249,25 @@ window.MilgCapture = (function() {
       var _cspViolations = [];
       try { document.addEventListener("securitypolicyviolation", function(ev) { _cspViolations.push((ev.effectiveDirective || ev.violatedDirective || "?") + " → " + (ev.blockedURI || "?")); }); } catch (e) {}
 
+      function _errMsg(e) {
+        if (!e) return "";
+        try { return e.message || String(e); } catch (x) { return ""; }
+      }
+
+      function _failure(stage, reason, err, extra) {
+        var o = {
+          stage: stage || "unknown",
+          reason: reason || "Screenshot capture failed",
+          error: _errMsg(err),
+          cspViolations: _cspViolations.slice(0, 12),
+          dataUrlProbe: window.__milgDataUrlOk
+        };
+        if (extra) {
+          Object.keys(extra).forEach(function(k) { o[k] = extra[k]; });
+        }
+        return o;
+      }
+
       // Skip the capture overlay while cloning the DOM, so it can stay visible to
       // the user for the WHOLE capture without being baked into screenshots/masks.
       function _msFilter(n) { return !(n && n.getAttribute && n.getAttribute("data-milg-overlay")); }
@@ -423,7 +442,7 @@ window.MilgCapture = (function() {
 
       // Send a synthetic-fallback result. Masks and regions are skipped on purpose:
       // pixel-verify against a repainted approximation would be meaningless.
-      function _sendSynthetic(reason) {
+      function _sendSynthetic(reason, stage, err, extra) {
         try {
           _prog("CSP blocks rendering — drawing fallback screenshot…");
           console.warn("%c[milg] " + reason + " Building a canvas-drawn fallback instead: layout, colors and text are repainted; readable images are pixel-copied; blocked ones become placeholders. Pixel-level text masks are skipped.", "color:#b45309");
@@ -431,6 +450,9 @@ window.MilgCapture = (function() {
           var _syn = _syntheticRender();
           var c = _syn.canvas;
           var uri; try { uri = c.toDataURL("image/webp", _q); } catch (e) { uri = ""; }
+          var failureExtra = { fallback: "synthetic-canvas", fallbackEncoded: !!uri, imagesCopied: _syn.imgsDrawn, imagePlaceholders: _syn.imgsPh, textRuns: _syn.texts };
+          if (extra) Object.keys(extra).forEach(function(k) { failureExtra[k] = extra[k]; });
+          var failureInfo = _failure(stage || "synthetic-fallback", reason, err, failureExtra);
           console.log("[iframe-ss] Synthetic fallback screenshot: " + c.width + "x" + c.height + " (" + _syn.imgsDrawn + " images copied, " + _syn.imgsPh + " placeholders, " + _syn.texts + " text runs)" + (uri ? "" : " — encode failed"));
           _sendFn({
             type: _msgType, _iframeId: _mid,
@@ -438,14 +460,23 @@ window.MilgCapture = (function() {
             screenshotFull: uri || null,
             screenshotClean: uri || null,
             textMask: null,
-            screenshotMeta: { scale: _sc, viewportHeight: vh, sectionCount: 1, canvasWidth: c.width, canvasHeight: c.height, docHeightAtCapture: fullH, calibrationOffsetY: 0, calibrationSamples: [], synthetic: true, syntheticReason: reason },
+            screenshotMeta: { scale: _sc, viewportHeight: vh, sectionCount: 1, canvasWidth: c.width, canvasHeight: c.height, docHeightAtCapture: fullH, calibrationOffsetY: 0, calibrationSamples: [], synthetic: true, syntheticReason: reason, screenshotError: failureInfo },
             screenshotCleanMeta: { canvasWidth: c.width, canvasHeight: c.height, synthetic: true },
             regionScreenshots: [],
-            updatedData: null
+            updatedData: null,
+            screenshotError: failureInfo
           }, true);
         } catch (e) {
           console.warn("[iframe-ss] synthetic fallback failed:", e);
-          _sendFn({ type: _msgType, screenshots: [], _iframeId: _mid }, true);
+          _sendFn({
+            type: _msgType,
+            screenshots: [],
+            screenshotFull: null,
+            screenshotClean: null,
+            screenshotMeta: null,
+            screenshotError: _failure("synthetic-fallback-encode", "The synthetic fallback renderer also failed, so no screenshot could be produced.", e),
+            _iframeId: _mid
+          }, true);
         }
       }
 
@@ -456,7 +487,7 @@ window.MilgCapture = (function() {
         _probeDataUrl(function(_dataOk) {
         window.__milgDataUrlOk = _dataOk;
         if (!_dataOk) {
-          _sendSynthetic("This page's CSP blocks data: image URLs, which the screenshot renderer needs internally — it can never rasterize here (that's also why captures came back transparent).");
+          _sendSynthetic("This page's CSP blocks data: image URLs, which the screenshot renderer needs internally — it can never rasterize here (that's also why captures came back transparent).", "data-url-probe");
           return;
         }
         var s = document.createElement("script");
@@ -474,7 +505,7 @@ window.MilgCapture = (function() {
           var ms = window.modernScreenshot;
           if (!ms || !ms.domToCanvas) {
             console.warn("[iframe-ss] screenshot library loaded but window.modernScreenshot is missing (AMD loader conflict?)");
-            _sendSynthetic("The screenshot library was unavailable after load, so the DOM rasterizer cannot run.");
+            _sendSynthetic("The screenshot library was unavailable after load, so the DOM rasterizer cannot run.", "library-api-missing");
             return;
           }
 
@@ -516,7 +547,7 @@ window.MilgCapture = (function() {
               if (typeof _hb !== "undefined") clearInterval(_hb);
               if (_isBlank(_cleanCanvas)) {
                 console.warn("[iframe-ss] Clean screenshot rendered fully transparent (" + _cleanCanvas.width + "x" + _cleanCanvas.height + ")");
-                _sendSynthetic("The rendered screenshot came back empty — the page's CSP (or a rasterizer failure) blocked the internal image load.");
+                _sendSynthetic("The rendered screenshot came back empty — the page's CSP (or a rasterizer failure) blocked the internal image load.", "clean-render-blank", null, { cleanCanvasWidth: _cleanCanvas.width, cleanCanvasHeight: _cleanCanvas.height });
                 return;
               }
               var _cleanUri; try { _cleanUri = _cleanCanvas.toDataURL("image/webp", _q); } catch (e) { _cleanUri = ""; }
@@ -862,7 +893,7 @@ window.MilgCapture = (function() {
             }).catch(function(e) {
               if (typeof _hb !== "undefined") clearInterval(_hb);
               console.warn("[iframe-ss] clean capture failed:", e);
-              _sendSynthetic("The DOM rasterizer failed on this page (usually the site's Content-Security-Policy — see the 'Refused to connect/load' errors above).");
+              _sendSynthetic("The DOM rasterizer failed on this page (usually the site's Content-Security-Policy — see the 'Refused to connect/load' errors above).", "clean-render-error", e);
             });
           }); // close _preloadFn callback
         }
@@ -870,7 +901,7 @@ window.MilgCapture = (function() {
         s.onerror = function() {
           _amdRestore();
           console.warn("[iframe-ss] failed to load screenshot library (" + _cdn + ")");
-          _sendSynthetic("The screenshot library could not be loaded on this page.");
+          _sendSynthetic("The screenshot library could not be loaded on this page.", "library-load-error", null, { cdnUrl: _cdn });
         };
         // If the library is already present (snippet "Embed screenshot library" prepends
         // it into the page realm), skip the CDN <script> entirely — it would be blocked by

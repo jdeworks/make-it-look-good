@@ -341,6 +341,7 @@
         data.screenshotCleanMeta = payload.screenshotCleanMeta || null;
         data.textMask = payload.textMask || null;
         data.screenshotMeta = payload.screenshotMeta || null;
+        data.screenshotError = payload.screenshotError || (payload.screenshotMeta && payload.screenshotMeta.screenshotError) || null;
         data.regionScreenshots = payload.regionScreenshots || [];
         // Merge re-read bboxes + per-pair mask fields back onto data (the core
         // builds a lean updatedData with masks attached to contrastPairs).
@@ -457,7 +458,22 @@
       + ', regions:' + _regN
       + ', total:' + jsonKB + 'KB. Access via window.__milgData_json',
       data.screenshotFull ? 'color:#16a34a;font-weight:bold' : 'color:#b45309;font-weight:bold');
-    if (!data.screenshotFull) console.log('%c[milg] No screenshot in payload — the page render was likely tainted by a cross-origin image without CORS. The design data above is still valid.', 'color:#b45309');
+    if (!data.screenshotFull) {
+      var _se = data.screenshotError || (data.screenshotMeta && data.screenshotMeta.screenshotError) || null;
+      if (_se) {
+        console.log('%c[milg] No screenshot in payload — capture failed at stage "' + (_se.stage || 'unknown') + '": ' + (_se.reason || 'unknown failure'), 'color:#b45309;font-weight:bold');
+        if (_se.error) console.log('%c[milg] Browser error: ' + _se.error, 'color:#b45309');
+        if (_se.cspViolations && _se.cspViolations.length) console.log('%c[milg] CSP violations observed: ' + _se.cspViolations.join(' | '), 'color:#b45309');
+        console.log('[milg] screenshotError:', _se);
+      } else {
+        console.log('%c[milg] No screenshot in payload — capture returned empty output without a recorded failure stage. Check earlier [iframe-ss] logs; this is a bug if no capture error appears above.', 'color:#b45309;font-weight:bold');
+      }
+      console.log('%c[milg] The design data above is still valid.', 'color:#64748b');
+    } else if (data.screenshotMeta && data.screenshotMeta.synthetic) {
+      var _synErr = data.screenshotError || data.screenshotMeta.screenshotError || null;
+      console.log('%c[milg] Screenshot uses fallback renderer — original DOM rasterizer failed at stage "' + ((_synErr && _synErr.stage) || 'unknown') + '". Pixel masks/region screenshots may be skipped.', 'color:#b45309;font-weight:bold');
+      if (_synErr) console.log('[milg] screenshot fallback detail:', _synErr);
+    }
     window.__milgData = data;
     window.__milgData_json = json;
 
@@ -714,6 +730,7 @@
               data.screenshotCleanMeta = payload.screenshotCleanMeta || null;
               data.textMask = payload.textMask || null;
               data.screenshotMeta = payload.screenshotMeta || null;
+              data.screenshotError = payload.screenshotError || (payload.screenshotMeta && payload.screenshotMeta.screenshotError) || null;
               data.regionScreenshots = payload.regionScreenshots || [];
               var ud = payload.updatedData;
               if (ud) {

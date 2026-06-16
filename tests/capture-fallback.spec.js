@@ -32,5 +32,9 @@ test('capture core returns synthetic screenshot when screenshot library cannot l
   expect(result.screenshotFull).toMatch(/^data:image\/webp;base64,/);
   expect(result.screenshots).toHaveLength(1);
   expect(result.screenshotMeta.synthetic).toBe(true);
+  expect(result.screenshotError.stage).toBe('library-load-error');
+  expect(result.screenshotError.reason).toContain('screenshot library could not be loaded');
+  expect(result.screenshotError.fallback).toBe('synthetic-canvas');
+  expect(result.screenshotMeta.screenshotError.stage).toBe('library-load-error');
   expect(result.regionScreenshots).toEqual([]);
 });
