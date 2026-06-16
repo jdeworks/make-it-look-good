@@ -293,8 +293,8 @@ window.MilgContrastVerify = (function() {
     }
     // Variable BG: BG pixels actually differ significantly (gradient/photo)
     // FG AA variance: BG is uniform but FG varies from sub-pixel antialiasing
-    var isVariableBg = bgVariance > 3.0 && bgColorSpread > 15;
-    var isFgAaVariance = bgVariance > 3.0 && bgColorSpread <= 15 && fgColorSpread > 10;
+    var isVariableBg = bgVariance > 3.0 && bgColorSpread > 35 && bgColorSpread >= Math.max(18, fgColorSpread * 0.6);
+    var isFgAaVariance = bgVariance > 3.0 && !isVariableBg && fgColorSpread > 10;
     return {
       cssRatio: pair.ratio, neededRatio: cssNeeded,
       pixelRatio: p10Ratio, pixelRatioWorst: worstRatio, pixelRatioAvg: avgRatio, pixelRatioBest: bestRatio,
@@ -304,7 +304,7 @@ window.MilgContrastVerify = (function() {
       cssPasses: cssPasses, pixelPasses: pixelPasses,
       crossesBoundary: cssPasses !== pixelPasses,
       // Skip flagging high-contrast pairs (P10 > 12.5:1 and CSS > 12.5:1) — excellent regardless of variance
-      significant: (p10Ratio > 12.5 && pair.ratio > 12.5) ? false : ((cssPasses !== pixelPasses) || ratioDiff > 1.5 || bgVariance > 3.0),
+      significant: (p10Ratio > 12.5 && pair.ratio > 12.5) ? false : ((cssPasses !== pixelPasses) || ratioDiff > 1.5 || isVariableBg),
       pixelFg: rgbStr(fgColor), expectedFg: rgbStr(ctx.expectedFg), effectiveOpacity: ctx.opacity,
       pixelRatioP10: p10Ratio, pixelRatioMedian: medianRatio,
       pixelBgWorst: worstBg ? rgbStr(worstBg) : '', pixelBgAvg: rgbStr(avgBg),
@@ -1047,8 +1047,8 @@ window.MilgContrastVerify = (function() {
       });
       fgColorSpread = Math.max(fgMaxR - fgMinR, fgMaxG - fgMinG, fgMaxB - fgMinB);
     }
-    var isVariableBg = bgVariance > 3.0 && bgColorSpread > 15;
-    var isFgAaVariance = bgVariance > 3.0 && bgColorSpread <= 15 && fgColorSpread > 10;
+    var isVariableBg = bgVariance > 3.0 && bgColorSpread > 35 && bgColorSpread >= Math.max(18, fgColorSpread * 0.6);
+    var isFgAaVariance = bgVariance > 3.0 && !isVariableBg && fgColorSpread > 10;
 
     return {
       cssRatio: cssRatio,

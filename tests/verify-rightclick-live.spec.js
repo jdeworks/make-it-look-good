@@ -28,13 +28,68 @@ async function tagAndLocate(page, rootSelector) {
     const scope = sel ? document.querySelector(sel) : document;
     if (!scope) return false;
     const svg = sel ? scope.querySelector('svg') : document.querySelector('svg.milg-viewer-svg');
-    const rects = svg ? Array.from(svg.querySelectorAll('rect[data-verify]')) : [];
-    const wd = rects.find((r) => r._debug);
-    if (!wd) return false;
     document.querySelectorAll('rect[data-repro]').forEach((r) => r.removeAttribute('data-repro'));
-    wd.setAttribute('data-repro', '1');
-    wd.scrollIntoView({ block: 'center', inline: 'center' });
-    return true;
+    const rects = svg ? Array.from(svg.querySelectorAll('rect[data-verify]')).filter((r) => r._debug) : [];
+    for (const wd of rects) {
+      if (sel) {
+        const section = wd.closest('.milg-viewer-region-section');
+        const frame = section && section.querySelector('div[style*="overflow"]');
+        const img = section && section.querySelector('img');
+        if (frame && img && img.naturalWidth) {
+          const scale = img.offsetWidth / img.naturalWidth;
+          const x = parseFloat(wd.getAttribute('x')) || 0;
+          const y = parseFloat(wd.getAttribute('y')) || 0;
+          frame.scrollLeft = Math.max(0, x * scale - frame.clientWidth / 2);
+          frame.scrollTop = Math.max(0, y * scale - frame.clientHeight / 2);
+        }
+      }
+      wd.scrollIntoView({ block: 'center', inline: 'center' });
+      const b = wd.getBoundingClientRect();
+      const el = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+      if (el === wd) {
+        wd.setAttribute('data-repro', '1');
+        return true;
+      }
+    }
+    return false;
+  }, rootSelector);
+  if (!ok) return null;
+  await page.waitForTimeout(300);
+  return page.evaluate(() => {
+    const wd = document.querySelector('rect[data-repro]');
+    const r = wd.getBoundingClientRect();
+    const el = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return { cx: r.left + r.width / 2, cy: r.top + r.height / 2, hitsRect: el === wd };
+  });
+}
+
+async function tagAndLocateSample(page, rootSelector) {
+  const ok = await page.evaluate((sel) => {
+    const scope = sel ? document.querySelector(sel) : document;
+    if (!scope) return false;
+    const svg = sel ? scope.querySelector('svg') : document.querySelector('svg.milg-viewer-svg');
+    document.querySelectorAll('rect[data-repro]').forEach((r) => r.removeAttribute('data-repro'));
+    const rects = svg ? Array.from(svg.querySelectorAll('rect[data-verify]')).filter((r) => r._samplePoints && r._samplePoints.fg && r._samplePoints.fg.length) : [];
+    for (const wd of rects) {
+      const section = wd.closest('.milg-viewer-region-section');
+      const frame = section && section.querySelector('div[style*="overflow"]');
+      const img = section && section.querySelector('img');
+      if (frame && img && img.naturalWidth) {
+        const scale = img.offsetWidth / img.naturalWidth;
+        const x = parseFloat(wd.getAttribute('x')) || 0;
+        const y = parseFloat(wd.getAttribute('y')) || 0;
+        frame.scrollLeft = Math.max(0, x * scale - frame.clientWidth / 2);
+        frame.scrollTop = Math.max(0, y * scale - frame.clientHeight / 2);
+      }
+      wd.scrollIntoView({ block: 'center', inline: 'center' });
+      const b = wd.getBoundingClientRect();
+      const el = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+      if (el === wd) {
+        wd.setAttribute('data-repro', '1');
+        return true;
+      }
+    }
+    return false;
   }, rootSelector);
   if (!ok) return null;
   await page.waitForTimeout(300);
@@ -148,6 +203,27 @@ test.describe('Verify-box right-click (real mouse)', () => {
     expect(seq[1].overlays).toBeGreaterThan(0);
     expect(seq[2].mode).toBe('none');
     expect(seq[2].overlays).toBe(0);
+  });
+
+  test('REGION verify box: real left-click shows sample dots', async () => {
+    const hasRegion = await page.evaluate(() => {
+      const secs = Array.from(document.querySelectorAll('.milg-viewer-region-section'));
+      return secs.some((s) => { const svg = s.querySelector('svg'); return svg && Array.from(svg.querySelectorAll('rect[data-verify]')).some((r) => r._samplePoints && r._samplePoints.fg && r._samplePoints.fg.length); });
+    });
+    test.skip(!hasRegion, 'fixture produced no region verify box with sample points');
+
+    const loc = await tagAndLocateSample(page, '.milg-viewer-region-section');
+    expect(loc, 'a region verify box with sample points exists').not.toBeNull();
+    expect(loc.hitsRect, 'region box centre is the topmost element').toBe(true);
+
+    await page.mouse.click(loc.cx, loc.cy, { button: 'left' });
+    await page.waitForTimeout(200);
+    const dots = await page.evaluate(() => {
+      const repro = document.querySelector('rect[data-repro]');
+      const svg = repro && repro.ownerSVGElement;
+      return svg ? svg.querySelectorAll('.milg-sample-dot').length : 0;
+    });
+    expect(dots).toBeGreaterThan(0);
   });
 
   test('FINDINGS filter: real right-click opens the copy-debug menu, not the cycle', async () => {

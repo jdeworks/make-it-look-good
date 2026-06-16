@@ -141,7 +141,7 @@ window.MilgViewer = (function() {
       }
       var verifyTotal = vResults.length + regionVerifyCount;
       var verifyLabel = verifyTotal > 0 ? verifyTotal : vResults.length;
-      var regionTitle = regionVerifyCount > 0 ? 'Main + region pixel verification results' : 'Right-click a box here to cycle mask → zones → off';
+        var regionTitle = regionVerifyCount > 0 ? 'Main + region pixel verification results. Right-click a box to cycle mask → zones → off' : 'Right-click a box here to cycle mask → zones → off';
       verifyPill = '<span class="milg-viewer-sep"></span>' +
         '<button class="milg-viewer-filter-btn milg-viewer-sev-verify milg-viewer-verify-hl" data-filter-type="verify" data-filter-value="all" title="' + regionTitle + '">Pixel Verified <span class="milg-viewer-count" data-verify-total="1">' + verifyLabel + '</span>' + (regionVerifyCount > 0 ? ' <span class="milg-viewer-count" data-region-verify-total="1">R ' + regionVerifyCount + '</span>' : '') + '</button>' +
         (vFails > 0 ? '<button class="milg-viewer-filter-btn milg-viewer-sev-error" data-filter-type="verify" data-filter-value="fails" title="Pixel results that differ from CSS: red = error, yellow = warning (small text demoted), blue = info (small text demoted), green = passes despite CSS fail">Conspicuous Pixels <span class="milg-viewer-count">' + vFails + '</span></button>' : '') +
@@ -658,6 +658,184 @@ window.MilgViewer = (function() {
     }
   }
 
+  function setZoomLevel(level) {
+    _zoomLevel = level || 1;
+    var zoomSelect = _overlay && _overlay.querySelector('.milg-viewer-zoom-select');
+    if (zoomSelect) {
+      for (var zi = 0; zi < zoomSelect.options.length; zi++) {
+        if (parseFloat(zoomSelect.options[zi].value) === _zoomLevel) { zoomSelect.selectedIndex = zi; break; }
+      }
+    }
+    var frame = _overlay && _overlay.querySelector('.milg-viewer-frame');
+    if (frame) applyZoom(frame);
+    applyRegionZoom();
+  }
+
+  function mapReportFindingIndex(findingIdx) {
+    var reportCounter = 0;
+    for (var ai = 0; ai < _allFindings.length; ai++) {
+      if (_allFindings[ai].severity === 'pass') continue;
+      if (reportCounter === findingIdx) return ai;
+      reportCounter++;
+    }
+    return -1;
+  }
+
+  function bboxMatches(a, b, tol) {
+    tol = tol === undefined ? 3 : tol;
+    if (!a || !b) return false;
+    return Math.abs(Math.round(a.left) - Math.round(b.left)) <= tol &&
+      Math.abs(Math.round(a.top) - Math.round(b.top)) <= tol &&
+      Math.abs(Math.round(a.width) - Math.round(b.width)) <= tol &&
+      Math.abs(Math.round(a.height) - Math.round(b.height)) <= tol;
+  }
+
+  function findRegionFocusForBbox(bbox) {
+    if (!bbox) return null;
+    for (var ri = 0; ri < _regionData.length; ri++) {
+      var rd = _regionData[ri];
+      for (var fi = 0; fi < (rd.findings || []).length; fi++) {
+        var f = rd.findings[fi];
+        for (var bi = 0; bi < (f.bboxes || []).length; bi++) {
+          if (bboxMatches(f.bboxes[bi], bbox, 4)) return { regionIndex: ri, findingIndex: fi, bboxIndex: bi, bbox: f.bboxes[bi] };
+        }
+      }
+    }
+    return null;
+  }
+
+  function focusRectElements(svg, predicate) {
+    if (!svg) return;
+    svg.querySelectorAll('rect[data-finding],rect[data-verify]').forEach(function(rect) {
+      if (!predicate(rect)) return;
+      rect.classList.add('milg-viewer-focused-rect');
+      var origFill = rect.getAttribute('fill');
+      var origStroke = rect.getAttribute('stroke');
+      var origWidth = rect.getAttribute('stroke-width') || '1.5';
+      rect.setAttribute('fill', 'rgba(245,158,11,0.45)');
+      rect.setAttribute('stroke', '#f59e0b');
+      rect.setAttribute('stroke-width', '3');
+      setTimeout(function() {
+        rect.classList.remove('milg-viewer-focused-rect');
+        rect.setAttribute('fill', origFill);
+        rect.setAttribute('stroke', origStroke);
+        rect.setAttribute('stroke-width', origWidth);
+      }, 3200);
+    });
+  }
+
+  function scrollContentToCanvasPoint(content, imgEl, x, y) {
+    if (!content || !imgEl || imgEl.naturalWidth <= 0) return;
+    var displayScale = imgEl.offsetWidth / imgEl.naturalWidth;
+    content.scrollTop = Math.max(0, (y * displayScale) - content.clientHeight / 2);
+    content.scrollLeft = Math.max(0, (x * displayScale) - content.clientWidth / 2);
+  }
+
+  function normalizeSamplePoints(sp) {
+    if (!sp || !sp.fg || sp.fg.length === 0) return sp;
+    var bg = sp.bg || [];
+    sp.fg.forEach(function(p, i) {
+      if (p.ratio !== undefined) return;
+      var b = bg[i];
+      if (!b) return;
+      p.bgX = b.x; p.bgY = b.y;
+      p.bgR = b.r; p.bgG = b.g; p.bgB = b.b;
+      if (b.ratio !== undefined) p.ratio = b.ratio;
+      else if (p.r !== undefined && b.r !== undefined) p.ratio = Math.round(contrastRatio(p, b) * 100) / 100;
+    });
+    return sp;
+  }
+
+  var _dotModes = ['all', 'worst', 'P10', 'median', 'P90', 'best', 'off'];
+  var _dotState = {};
+
+  function _toggleDots(rect, svg) {
+    var owner = (svg === (rect && rect.ownerSVGElement) ? '' : 'svg') + (rect.getAttribute('data-verify') || '0');
+    var sp = normalizeSamplePoints(rect._samplePoints || null);
+    if (!sp || !sp.fg || sp.fg.length === 0) return;
+    var secOff = rect._sectionOffset || 0;
+    var modeIdx = (_dotState[owner] !== undefined) ? (_dotState[owner] + 1) % _dotModes.length : 0;
+    _dotState[owner] = modeIdx;
+    var mode = _dotModes[modeIdx];
+    svg.querySelectorAll('.milg-sample-dot[data-owner="' + owner + '"]').forEach(function(d) { d.remove(); });
+    if (mode === 'off') { delete _dotState[owner]; return; }
+
+    var byPos = {};
+    (sp.fg || []).forEach(function(p) {
+      if (p.ratio === undefined) return;
+      var key = p.x + ',' + p.y;
+      if (!byPos[key] || p.ratio < byPos[key].ratio) byPos[key] = p;
+    });
+    var unique = Object.keys(byPos).map(function(k) { return byPos[k]; });
+    if (!unique.length) return;
+    unique.sort(function(a, b) { return (a.ratio || 0) - (b.ratio || 0); });
+    var namedPts = {
+      worst: unique[0],
+      P10: unique[Math.min(Math.max(1, Math.floor(unique.length * 0.1)), unique.length - 1)],
+      median: unique[Math.floor(unique.length * 0.5)],
+      P90: unique[Math.min(Math.floor(unique.length * 0.9), unique.length - 1)],
+      best: unique[unique.length - 1]
+    };
+    var labels = ['worst', 'P10', 'median', 'P90', 'best'];
+    var colors = { worst: '#ef4444', P10: '#f97316', median: '#eab308', P90: '#22c55e', best: '#06b6d4' };
+    var seen = {};
+    labels.forEach(function(lbl) {
+      var pt = namedPts[lbl]; if (!pt) return;
+      var key = pt.x + ',' + pt.y;
+      if (seen[key] && lbl !== mode) return;
+      seen[key] = true;
+      if (mode === 'all' || lbl === mode) _renderSampleDot(svg, pt, lbl, colors[lbl], secOff, owner, mode !== 'all' && lbl === mode);
+      else if (mode !== 'all') _renderSampleDot(svg, pt, lbl, colors[lbl], secOff, owner, false, true);
+    });
+  }
+
+  function _renderSampleDot(svg, pt, label, col, secOff, owner, showLabel, dimmed) {
+    var group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    group.setAttribute('class', 'milg-sample-dot');
+    group.setAttribute('data-owner', owner);
+    group.style.opacity = dimmed ? '0.25' : '1';
+    var dotR = _zoomLevel >= 2 ? 3 : 2;
+    if (pt.bgX !== undefined && pt.bgY !== undefined) {
+      var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', pt.x); line.setAttribute('y1', pt.y + secOff);
+      line.setAttribute('x2', pt.bgX); line.setAttribute('y2', pt.bgY + secOff);
+      line.setAttribute('stroke', col); line.setAttribute('stroke-width', showLabel ? '1.5' : '0.5');
+      if (!showLabel) line.setAttribute('stroke-dasharray', '2 1');
+      line.setAttribute('pointer-events', 'none');
+      group.appendChild(line);
+      var bgDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      bgDot.setAttribute('cx', pt.bgX); bgDot.setAttribute('cy', pt.bgY + secOff);
+      bgDot.setAttribute('r', showLabel ? dotR * 1.3 : dotR * 0.7);
+      bgDot.setAttribute('fill', 'none'); bgDot.setAttribute('stroke', col);
+      bgDot.setAttribute('stroke-width', showLabel ? '1.5' : '0.5');
+      bgDot.setAttribute('pointer-events', 'none');
+      group.appendChild(bgDot);
+    }
+    var fgDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    fgDot.setAttribute('cx', pt.x); fgDot.setAttribute('cy', pt.y + secOff);
+    fgDot.setAttribute('r', showLabel ? dotR * 1.5 : dotR);
+    fgDot.setAttribute('fill', col); fgDot.setAttribute('stroke', '#fff');
+    fgDot.setAttribute('stroke-width', showLabel ? '1' : '0.5');
+    fgDot.setAttribute('pointer-events', 'none');
+    group.appendChild(fgDot);
+    if (showLabel) {
+      var bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      bg.setAttribute('x', pt.x + 5); bg.setAttribute('y', pt.y + secOff - 14);
+      bg.setAttribute('width', 66); bg.setAttribute('height', 18);
+      bg.setAttribute('rx', 3); bg.setAttribute('fill', 'rgba(0,0,0,0.75)');
+      bg.setAttribute('pointer-events', 'none');
+      group.appendChild(bg);
+      var text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      text.setAttribute('x', pt.x + 8); text.setAttribute('y', pt.y + secOff - 3);
+      text.setAttribute('font-size', '7'); text.setAttribute('fill', col);
+      text.setAttribute('font-family', 'system-ui'); text.setAttribute('font-weight', '700');
+      text.setAttribute('pointer-events', 'none');
+      text.textContent = label + ' ' + (pt.ratio || '?') + ':1';
+      group.appendChild(text);
+    }
+    svg.appendChild(group);
+  }
+
   function renderOverlays() {
     var svg = _overlay && _overlay.querySelector('.milg-viewer-svg');
     if (!svg || !_meta) return;
@@ -683,11 +861,12 @@ window.MilgViewer = (function() {
     }
     if (hint) hint.parentNode.removeChild(hint);
 
-    // Handle pixel verification filter (including single-selector mode)
-    if (_activeFilter.type === 'verify' || _activeFilter.type === 'verifySelector') {
-      renderVerifyOverlays(svg);
-      return;
-    }
+      // Handle pixel verification filter (including single-selector mode)
+      if (_activeFilter.type === 'verify' || _activeFilter.type === 'verifySelector') {
+        renderVerifyOverlays(svg);
+        return;
+      }
+      if (_activeFilter.type === 'regionFinding' || _activeFilter.type === 'regionFindingBbox') return;
 
     // Compute actual scale from canvas dimensions vs document dimensions.
     // The document may have grown between extraction (bboxes) and capture (screenshots)
@@ -999,25 +1178,29 @@ window.MilgViewer = (function() {
       while (rd.svg.firstChild) rd.svg.removeChild(rd.svg.firstChild);
       // No filter active → no overlays (matches main renderOverlays behavior)
       if (!_activeFilter) return;
-      // Verify filters → delegate to region verify renderer
-      if (_activeFilter.type === 'verify' || _activeFilter.type === 'verifySelector') {
-        renderRegionVerifyOverlays(rd);
-        return;
-      }
-      // finding/findingBbox are main-screenshot-specific (indices into _allFindings)
-      if (_activeFilter.type === 'finding' || _activeFilter.type === 'findingBbox') return;
+        // Verify filters → delegate to region verify renderer
+        if (_activeFilter.type === 'verify' || _activeFilter.type === 'verifySelector') {
+          renderRegionVerifyOverlays(rd);
+          return;
+        }
+        // Main-screenshot finding filters are intentionally hidden from region sections.
+        if (_activeFilter.type === 'finding' || _activeFilter.type === 'findingBbox') return;
+        if ((_activeFilter.type === 'regionFinding' || _activeFilter.type === 'regionFindingBbox') && _activeFilter.regionIndex !== rIdx) return;
 
       var scale = rd.meta.scale || 1.5;
       var cox = rd.meta.cropOffsetX || 0;
       var coy = rd.meta.cropOffsetY || 0;
 
-      var bboxCount = 0;
-      rd.findings.forEach(function(finding, fIdx) {
-        if (_activeFilter.type === 'category' && finding.icon !== _activeFilter.value) return;
-        if (_activeFilter.type === 'severity' && _activeFilter.value !== 'all' && finding.severity !== _activeFilter.value) return;
-        var color = COLORS[finding.severity] || COLORS.info;
-        finding.bboxes.forEach(function(bbox) {
-          if (!bbox) return;
+        var bboxCount = 0;
+        rd.findings.forEach(function(finding, fIdx) {
+          if (_activeFilter.type === 'regionFinding' && fIdx !== _activeFilter.value) return;
+          if (_activeFilter.type === 'regionFindingBbox' && fIdx !== _activeFilter.value) return;
+          if (_activeFilter.type === 'category' && finding.icon !== _activeFilter.value) return;
+          if (_activeFilter.type === 'severity' && _activeFilter.value !== 'all' && finding.severity !== _activeFilter.value) return;
+          var color = COLORS[finding.severity] || COLORS.info;
+          finding.bboxes.forEach(function(bbox, bbIdx) {
+            if (_activeFilter.type === 'regionFindingBbox' && bbIdx !== _activeFilter.bboxIdx) return;
+            if (!bbox) return;
           var x = Math.round(bbox.left * scale) - cox;
           var y = Math.round(bbox.top * scale) - coy;
           var w = Math.max(Math.round(bbox.width * scale), 4);
@@ -1239,7 +1422,7 @@ window.MilgViewer = (function() {
 
       // Selector + sample points + debug layers + group data stored for interaction
       rect._selector = vr.selector || null;
-      rect._samplePoints = vr.samplePoints || null;
+        rect._samplePoints = normalizeSamplePoints(vr.samplePoints || null);
       rect._worstPoint = vr.worstPoint || null;
       rect._debug = vr._debug || null;
       rect._bgKeyMap = vr._bgKeyMap || null;
@@ -1904,7 +2087,7 @@ window.MilgViewer = (function() {
       var vr = results[_viIdx];
       rect.style.cursor = 'pointer';
       // Store data for interactions (same as main verify rects)
-      rect._samplePoints = vr ? vr.samplePoints || null : null;
+        rect._samplePoints = vr ? normalizeSamplePoints(vr.samplePoints || null) : null;
       rect._debug = vr ? vr._debug || null : null;
       rect._sectionOffset = 0; // regions have no section offset
       rect._bgKeyMap = null;
@@ -2428,8 +2611,8 @@ window.MilgViewer = (function() {
     document.addEventListener('keydown', function onKey(e) { if (e.key === 'Escape') { closeSimple(); document.removeEventListener('keydown', onKey); } });
   }
 
-  // Open viewer focused on a specific finding — shows ONLY that finding's bboxes
-  function showFinding(findingIdx, reportData) {
+    // Open viewer focused on a specific finding — shows ONLY that finding's bboxes
+    function showFinding(findingIdx, reportData) {
     if (!reportData || !reportData.raw || !reportData.raw.screenshots || !reportData.raw.screenshotMeta) {
       console.warn('[milg-viewer] showFinding: missing screenshots or meta');
       return;
@@ -2441,107 +2624,94 @@ window.MilgViewer = (function() {
     dummyImg.src = reportData.raw.screenshots[0];
     open(dummyImg, 0, reportData);
 
-    // Now map report findingIdx → _allFindings index
-    // Report counts non-pass findings with bboxes. _allFindings includes pass too.
-    var viewerIdx = -1;
-    var reportCounter = 0;
-    for (var ai = 0; ai < _allFindings.length; ai++) {
-      if (_allFindings[ai].severity === 'pass') continue;
-      if (reportCounter === findingIdx) { viewerIdx = ai; break; }
-      reportCounter++;
-    }
-    if (viewerIdx === -1 || !_allFindings[viewerIdx]) {
-      console.warn('[milg-viewer] showFinding: could not map index', findingIdx, '(counted', reportCounter, 'non-pass in', _allFindings.length, ')');
-      return;
-    }
-    var target = _allFindings[viewerIdx];
-    if (!target.bboxes || !target.bboxes[0]) return;
-
-    // Show ONLY this finding's bboxes (not the whole category)
-    var meta = reportData.raw.screenshotMeta;
-    _activeFilter = { type: 'finding', value: viewerIdx };
-    updateFilterButtons();
-    renderOverlays();
-
-    // Auto-zoom for small elements
-    var maxDim = 0;
-    target.bboxes.forEach(function(bb) {
-      var dim = Math.max(bb.width || 0, bb.height || 0);
-      if (dim > maxDim) maxDim = dim;
-    });
-    var frame = _overlay && _overlay.querySelector('.milg-viewer-frame');
-    var zoomSelect = _overlay && _overlay.querySelector('.milg-viewer-zoom-select');
-    if (maxDim > 0 && maxDim < 50) {
-      _zoomLevel = 3;
-    } else if (maxDim > 0 && maxDim < 100) {
-      _zoomLevel = 2;
-    } else {
-      _zoomLevel = 1;
-    }
-    if (zoomSelect) {
-      for (var zi = 0; zi < zoomSelect.options.length; zi++) {
-        if (parseFloat(zoomSelect.options[zi].value) === _zoomLevel) { zoomSelect.selectedIndex = zi; break; }
+      // Now map report findingIdx → _allFindings index.
+      var viewerIdx = mapReportFindingIndex(findingIdx);
+      if (viewerIdx === -1 || !_allFindings[viewerIdx]) {
+        console.warn('[milg-viewer] showFinding: could not map index', findingIdx, '(non-pass in', _allFindings.length, ')');
+        return;
       }
-    }
-    if (frame) applyZoom(frame);
+      var target = _allFindings[viewerIdx];
+      if (!target.bboxes || !target.bboxes[0]) return;
+      var regionFocus = findRegionFocusForBbox(target.bboxes[0]);
+      if (regionFocus) {
+        focusRegionFinding(regionFocus.regionIndex, regionFocus.findingIndex, null);
+        return;
+      }
 
-    // Scroll to the finding's first bbox and highlight ALL its rects
-    var bbox = target.bboxes[0];
-    var scale = meta.scale;
+      // Show ONLY this finding's bboxes (not the whole category)
+      var meta = reportData.raw.screenshotMeta;
+      _activeFilter = { type: 'finding', value: viewerIdx };
+      updateFilterButtons();
+      renderOverlays();
+      renderRegionOverlays();
+
+      setZoomLevel(1);
+
+      // Scroll to the finding's first bbox and highlight ALL its rects
+      var bbox = target.bboxes[0];
+      var scale = meta.scale;
     setTimeout(function() {
       var content = _overlay && _overlay.querySelector('.milg-viewer-content');
       var svg = _overlay && _overlay.querySelector('.milg-viewer-svg');
       if (!content || !svg) return;
 
-      var targetY = Math.round(bbox.top * scale) - _calibrationOffsetY;
+        var frameEl = _overlay.querySelector('.milg-viewer-frame');
+        var imgEl = frameEl && frameEl.querySelector('.milg-viewer-img');
+        var targetY = Math.round(bbox.top * scale) - _calibrationOffsetY;
+        var targetX = Math.round((bbox.left + bbox.width / 2) * scale);
+        scrollContentToCanvasPoint(content, imgEl, targetX, targetY);
 
-      // Scroll to center the first bbox
-      var frameEl = _overlay.querySelector('.milg-viewer-frame');
-      if (frameEl) {
-        var imgEl = frameEl.querySelector('.milg-viewer-img');
-        if (imgEl && imgEl.naturalWidth > 0) {
-          var displayScale = imgEl.offsetWidth / imgEl.naturalWidth;
-          var scrollY = (targetY * displayScale) - content.clientHeight / 2;
-          content.scrollTop = Math.max(0, scrollY);
+        focusRectElements(svg, function(rect) { return parseInt(rect.getAttribute('data-finding')) === viewerIdx; });
+      }, 500);
+    }
+
+    function focusRegionFinding(regionIndex, findingIndex, bboxIndex) {
+      var rd = _regionData[regionIndex];
+      if (!rd || !rd.findings || !rd.findings[findingIndex]) return;
+      _activeFilter = bboxIndex === null || bboxIndex === undefined
+        ? { type: 'regionFinding', regionIndex: regionIndex, value: findingIndex }
+        : { type: 'regionFindingBbox', regionIndex: regionIndex, value: findingIndex, bboxIdx: bboxIndex };
+      updateFilterButtons();
+      renderOverlays();
+      renderRegionOverlays();
+      setZoomLevel(1);
+      setTimeout(function() {
+        var section = rd.frame && rd.frame.closest('.milg-viewer-region-section');
+        if (section) {
+          section.classList.remove('milg-region-focus-reveal');
+          void section.offsetWidth;
+          section.classList.add('milg-region-focus-reveal');
         }
-      }
-
-      // Flash ALL rects for this finding with pulsing highlight
-      svg.querySelectorAll('rect[data-finding]').forEach(function(rect) {
-        var rfi = parseInt(rect.getAttribute('data-finding'));
-        if (rfi === viewerIdx) {
-          var origFill = rect.getAttribute('fill');
-          var origStroke = rect.getAttribute('stroke');
-          var origWidth = rect.getAttribute('stroke-width');
-          // Flash 3 times
-          var flash = 0;
-          (function pulse() {
-            var on = flash % 2 === 0;
-            rect.setAttribute('fill', on ? 'rgba(245,158,11,0.4)' : origFill);
-            rect.setAttribute('stroke', on ? '#f59e0b' : origStroke);
-            rect.setAttribute('stroke-width', on ? '3' : origWidth);
-            flash++;
-            if (flash < 6) setTimeout(pulse, 300);
-            else { rect.setAttribute('fill', origFill); rect.setAttribute('stroke', origStroke); rect.setAttribute('stroke-width', origWidth); }
-          })();
+        var f = rd.findings[findingIndex];
+        var bbox = f && f.bboxes ? f.bboxes[(bboxIndex === null || bboxIndex === undefined) ? 0 : bboxIndex] : null;
+        var content = _overlay && _overlay.querySelector('.milg-viewer-content');
+        if (content && rd.img && rd.frame && bbox) {
+          var scale = rd.meta.scale || 1;
+          var cox = rd.meta.cropOffsetX || 0;
+          var coy = rd.meta.cropOffsetY || 0;
+          var sectionTop = section ? section.offsetTop : rd.frame.offsetTop;
+          var displayScale = rd.img.offsetWidth / rd.img.naturalWidth;
+          var x = (Math.round((bbox.left + bbox.width / 2) * scale) - cox) * displayScale;
+          var y = sectionTop + (Math.round((bbox.top + bbox.height / 2) * scale) - coy) * displayScale;
+          content.scrollTop = Math.max(0, y - content.clientHeight / 2);
+          content.scrollLeft = Math.max(0, x - content.clientWidth / 2);
+        } else if (section) {
+          section.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
-      });
-
-      // If this finding has pixel verify data, activate verify overlay
-      var verifyResults = (_reportData && _reportData._contrastVerifyResults) || [];
-      if (verifyResults.length > 0 && target.detail) {
-        var matchedVerify = null;
-        verifyResults.forEach(function(vr) {
-          if (vr.selector && target.detail.indexOf(vr.selector) !== -1) matchedVerify = vr;
+        focusRectElements(rd.svg, function(rect) {
+          if (parseInt(rect.getAttribute('data-finding')) !== findingIndex) return false;
+          if (bboxIndex === null || bboxIndex === undefined) return true;
+          var rx = parseFloat(rect.getAttribute('x'));
+          var ry = parseFloat(rect.getAttribute('y'));
+          var bb = rd.findings[findingIndex].bboxes[bboxIndex];
+          var scale = rd.meta.scale || 1;
+          var cox = rd.meta.cropOffsetX || 0;
+          var coy = rd.meta.cropOffsetY || 0;
+          return Math.abs(rx - (Math.round(bb.left * scale) - cox)) <= 4 &&
+            Math.abs(ry - (Math.round(bb.top * scale) - coy)) <= 4;
         });
-        if (matchedVerify) {
-          _activeFilter = { type: 'verify', value: 'all' };
-          updateFilterButtons();
-          renderOverlays();
-        }
-      }
-    }, 500);
-  }
+      }, 500);
+    }
 
   // Open viewer in verify mode focused on a specific selector's bbox
   function showVerifyResult(selector) {
@@ -2594,7 +2764,7 @@ window.MilgViewer = (function() {
   }
 
   // Open viewer and zoom to a specific bbox within a finding
-  function showFindingBbox(findingIdx, bboxIdx, reportData) {
+    function showFindingBbox(findingIdx, bboxIdx, reportData) {
     if (!reportData || !reportData.raw || !reportData.raw.screenshots || !reportData.raw.screenshotMeta) return;
     if (!reportData.raw.screenshots.length) return;
 
@@ -2603,77 +2773,51 @@ window.MilgViewer = (function() {
     dummyImg.src = reportData.raw.screenshots[0];
     open(dummyImg, 0, reportData);
 
-    // Map findingIdx → viewerIdx (same as showFinding)
-    var viewerIdx = -1;
-    var reportCounter = 0;
-    for (var ai = 0; ai < _allFindings.length; ai++) {
-      if (_allFindings[ai].severity === 'pass') continue;
-      if (reportCounter === findingIdx) { viewerIdx = ai; break; }
-      reportCounter++;
-    }
-    if (viewerIdx === -1 || !_allFindings[viewerIdx]) return;
-    var target = _allFindings[viewerIdx];
-    var bbox = target.bboxes[bboxIdx] || target.bboxes[0];
-    if (!bbox) return;
+      // Map findingIdx → viewerIdx (same as showFinding)
+      var viewerIdx = mapReportFindingIndex(findingIdx);
+      if (viewerIdx === -1 || !_allFindings[viewerIdx]) return;
+      var target = _allFindings[viewerIdx];
+      var bbox = target.bboxes[bboxIdx] || target.bboxes[0];
+      if (!bbox) return;
+      var regionFocus = findRegionFocusForBbox(bbox);
+      if (regionFocus) {
+        focusRegionFinding(regionFocus.regionIndex, regionFocus.findingIndex, regionFocus.bboxIndex);
+        return;
+      }
 
     // Filter to show only this specific bbox (not the whole finding group)
     var meta = reportData.raw.screenshotMeta;
-    _activeFilter = { type: 'findingBbox', value: viewerIdx, bboxIdx: bboxIdx };
-    updateFilterButtons();
-    renderOverlays();
+      _activeFilter = { type: 'findingBbox', value: viewerIdx, bboxIdx: bboxIdx };
+      updateFilterButtons();
+      renderOverlays();
+      renderRegionOverlays();
 
-    // Auto-zoom for the specific bbox
-    var dim = Math.max(bbox.width || 0, bbox.height || 0);
-    var frame = _overlay && _overlay.querySelector('.milg-viewer-frame');
-    var zoomSelect = _overlay && _overlay.querySelector('.milg-viewer-zoom-select');
-    _zoomLevel = dim < 50 ? 3 : dim < 100 ? 2 : 1;
-    if (zoomSelect) {
-      for (var zi = 0; zi < zoomSelect.options.length; zi++) {
-        if (parseFloat(zoomSelect.options[zi].value) === _zoomLevel) { zoomSelect.selectedIndex = zi; break; }
-      }
-    }
-    if (frame) applyZoom(frame);
+      setZoomLevel(1);
 
     // Scroll to this specific bbox and flash it
-    var scale = meta.scale;
-    var targetY = Math.round(bbox.top * scale) - _calibrationOffsetY;
-    var targetX = Math.round(bbox.left * scale);
+      var scale = meta.scale;
+      var targetY = Math.round(bbox.top * scale) - _calibrationOffsetY;
+      var targetX = Math.round((bbox.left + bbox.width / 2) * scale);
+      var targetRectX = Math.round(bbox.left * scale);
     setTimeout(function() {
       var content = _overlay && _overlay.querySelector('.milg-viewer-content');
-      if (content) {
-        var frameEl = _overlay.querySelector('.milg-viewer-frame');
-        var imgEl = frameEl && frameEl.querySelector('.milg-viewer-img');
-        if (imgEl && imgEl.naturalWidth > 0) {
-          var displayScale = imgEl.offsetWidth / imgEl.naturalWidth;
-          content.scrollTop = Math.max(0, (targetY * displayScale) - content.clientHeight / 2);
-          content.scrollLeft = Math.max(0, (targetX * displayScale) - content.clientWidth / 2);
+        if (content) {
+          var frameEl = _overlay.querySelector('.milg-viewer-frame');
+          var imgEl = frameEl && frameEl.querySelector('.milg-viewer-img');
+          scrollContentToCanvasPoint(content, imgEl, targetX, targetY);
         }
-      }
-      // Flash the matching rects
-      var svg = _overlay && _overlay.querySelector('.milg-viewer-svg');
-      if (svg) {
-        svg.querySelectorAll('rect[data-finding]').forEach(function(rect) {
-          var rfi = parseInt(rect.getAttribute('data-finding'));
-          var ry = parseFloat(rect.getAttribute('y'));
-          var rx = parseFloat(rect.getAttribute('x'));
-          if (rfi === viewerIdx && Math.abs(ry - targetY) < 5 && Math.abs(rx - targetX) < 5) {
-            var origFill = rect.getAttribute('fill');
-            var origStroke = rect.getAttribute('stroke');
-            var flash = 0;
-            (function pulse() {
-              var on = flash % 2 === 0;
-              rect.setAttribute('fill', on ? 'rgba(245,158,11,0.5)' : origFill);
-              rect.setAttribute('stroke', on ? '#f59e0b' : origStroke);
-              rect.setAttribute('stroke-width', on ? '3' : '1.5');
-              flash++;
-              if (flash < 8) setTimeout(pulse, 200);
-              else { rect.setAttribute('fill', origFill); rect.setAttribute('stroke', origStroke); rect.setAttribute('stroke-width', '1.5'); }
-            })();
-          }
-        });
-      }
-    }, 500);
-  }
+        // Flash the matching rects
+        var svg = _overlay && _overlay.querySelector('.milg-viewer-svg');
+        if (svg) {
+          focusRectElements(svg, function(rect) {
+            var rfi = parseInt(rect.getAttribute('data-finding'));
+            var ry = parseFloat(rect.getAttribute('y'));
+            var rx = parseFloat(rect.getAttribute('x'));
+            return rfi === viewerIdx && Math.abs(ry - targetY) < 5 && Math.abs(rx - targetRectX) < 5;
+          });
+        }
+      }, 500);
+    }
 
   function injectVerifyFindings(results) {
     var toAdd = [];

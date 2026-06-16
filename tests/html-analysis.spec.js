@@ -51,6 +51,17 @@ test.describe('HTML Analysis', () => {
     expect(cards).toBeGreaterThan(0);
   });
 
+  test('analyzer header diagnostics button matches 44px control height', async ({ page }) => {
+    await page.goto(ANALYZER_URL);
+    const heights = await page.evaluate(() => {
+      const diag = document.querySelector('#diagBtn').getBoundingClientRect();
+      const dark = document.querySelector('#darkBtn').getBoundingClientRect();
+      return { diag: Math.round(diag.height), dark: Math.round(dark.height) };
+    });
+    expect(heights.diag).toBeGreaterThanOrEqual(44);
+    expect(Math.abs(heights.diag - heights.dark)).toBeLessThanOrEqual(2);
+  });
+
   test('form preset produces report with findings', async ({ page }) => {
     await analyzeHtml(page, 'form');
     const findings = await page.locator('.finding-header').count();
@@ -142,6 +153,25 @@ test.describe('HTML Analysis', () => {
 
     expect(pixels.placeholderLike).toBeGreaterThan(20);
     expect(pixels.whiteLike).toBeLessThan(20);
+
+    await page.locator('.finding-show-on-screenshot').first().click();
+    await page.waitForSelector('.milg-viewer-overlay.visible', { timeout: 10000 });
+    await page.waitForTimeout(800);
+    const focus = await page.evaluate(() => {
+      const zoom = document.querySelector('.milg-viewer-zoom-select');
+      const svg = document.querySelector('svg.milg-viewer-svg');
+      const rects = svg ? Array.from(svg.querySelectorAll('rect[data-finding]')) : [];
+      const focused = rects.filter(r => r.classList.contains('milg-viewer-focused-rect'));
+      return {
+        zoom: zoom && zoom.value,
+        rectCount: rects.length,
+        focusedCount: focused.length,
+        scrollTop: document.querySelector('.milg-viewer-content').scrollTop,
+      };
+    });
+    expect(focus.zoom).toBe('1');
+    expect(focus.rectCount).toBe(1);
+    expect(focus.focusedCount).toBe(1);
   });
 });
 
@@ -484,6 +514,38 @@ test.describe('Screenshot Pipeline', () => {
     expect(how.method).toBe('body-class');
     expect(how.darkness).toBeGreaterThanOrEqual(6);
     expect(how.bg && how.bg.value).toBe('rgb(30, 41, 59)');
+  });
+
+  test('analyzer hidden strong text is not marked variable background on solid panel', async ({ page }) => {
+    test.setTimeout(180000);
+    await page.goto(ANALYZER_URL);
+    await page.evaluate(() => localStorage.setItem('milg-dark', 'true'));
+    await page.reload();
+    await page.check('#pixelVerifyCheck');
+    await page.click('[data-tab="tabUrl"]');
+    await page.fill('#urlInput', `${BASE_URL}/analyzer.html`);
+    await page.click('#analyzeUrlBtn');
+    await page.waitForSelector('.report-container.visible', { timeout: 120000 });
+    await page.waitForFunction(() => {
+      const raw = window.__milgLastReport && window.__milgLastReport.raw;
+      return ((raw && raw.regionScreenshots) || []).some(r => (r.regionVerifyResults || []).length > 0);
+    }, { timeout: 120000 });
+
+    const strongVerify = await page.evaluate(() => {
+      const raw = window.__milgLastReport && window.__milgLastReport.raw;
+      const how = ((raw && raw.regionScreenshots) || []).find(r => r.label === 'How it works');
+      const match = how && (how.regionVerifyResults || []).find(vr => /off by default/.test(vr.text || ''));
+      return match ? {
+        text: match.text,
+        isVariableBg: !!match.isVariableBg,
+        isFgAaVariance: !!match.isFgAaVariance,
+        bgColorSpread: match.bgColorSpread,
+        fgColorSpread: match.fgColorSpread,
+      } : null;
+    });
+
+    expect(strongVerify).toBeTruthy();
+    expect(strongVerify.isVariableBg).toBe(false);
   });
 });
 

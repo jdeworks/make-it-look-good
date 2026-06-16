@@ -469,10 +469,14 @@ window.MilgCapture = (function() {
         var _amdSaved = _amdDef ? _amdDef.amd : null;
         if (_amdDef) { try { _amdDef.amd = undefined; } catch (e) {} }
         function _amdRestore() { if (_amdDef) { try { _amdDef.amd = _amdSaved; } catch (e) {} } }
-        s.onload = function() {
+        function _startWithScreenshotLibrary() {
           _amdRestore();
           var ms = window.modernScreenshot;
-          if (!ms || !ms.domToCanvas) { console.warn("[iframe-ss] screenshot library loaded but window.modernScreenshot is missing (AMD loader conflict?) — skipping screenshots"); _sendFn({ type: _msgType, screenshots: [], _iframeId: _mid }, true); return; }
+          if (!ms || !ms.domToCanvas) {
+            console.warn("[iframe-ss] screenshot library loaded but window.modernScreenshot is missing (AMD loader conflict?)");
+            _sendSynthetic("The screenshot library was unavailable after load, so the DOM rasterizer cannot run.");
+            return;
+          }
 
           // Preload images via proxy → data URI, then capture
           _preloadFn(_prog, _proxyUrl, function() {
@@ -579,6 +583,11 @@ window.MilgCapture = (function() {
                 ms.domToCanvas(document.documentElement, { scale: _sc, timeout: 45000, filter: _msFilter }).then(function(fc) {
                   console.log("[iframe-ss] Expanded screenshot: " + fc.width + "x" + fc.height);
                   var fullUri; try { fullUri = fc.toDataURL("image/webp", _q); } catch (e) { console.warn("[milg-warn] WebP conversion failed:", e.message); fullUri = ""; }
+                  if (!fullUri && _cleanUri) {
+                    console.warn("[iframe-ss] Expanded screenshot could not be encoded — using clean screenshot instead");
+                    fullUri = _cleanUri;
+                    fc = _cleanCanvas;
+                  }
                   var _cw = fc.width, _ch = fc.height;
                   // Restore clean-screenshot bbox coordinates so updatedData matches the displayed image
                   _savedBboxes.forEach(function(s2) { var nb = { left: s2.left, top: s2.top, width: s2.width, height: s2.height }; if (s2._rcid) nb._rcid = s2._rcid; s2.obj[s2.key] = nb; });
@@ -856,8 +865,13 @@ window.MilgCapture = (function() {
               _sendSynthetic("The DOM rasterizer failed on this page (usually the site's Content-Security-Policy — see the 'Refused to connect/load' errors above).");
             });
           }); // close _preloadFn callback
+        }
+        s.onload = _startWithScreenshotLibrary;
+        s.onerror = function() {
+          _amdRestore();
+          console.warn("[iframe-ss] failed to load screenshot library (" + _cdn + ")");
+          _sendSynthetic("The screenshot library could not be loaded on this page.");
         };
-        s.onerror = function() { _amdRestore(); console.warn("[iframe-ss] failed to load screenshot library (" + _cdn + ") — skipping screenshots"); _sendFn({ type: _msgType, screenshots: [], _iframeId: _mid }, true); };
         // If the library is already present (snippet "Embed screenshot library" prepends
         // it into the page realm), skip the CDN <script> entirely — it would be blocked by
         // a strict CSP and never fire onload. Otherwise load it from the CDN as before.
