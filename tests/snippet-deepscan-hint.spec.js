@@ -24,3 +24,19 @@ test('snippet code surfaces the multi-viewport / deep-scan hint', async ({ page 
   expect(code).toContain('snippet-library-promise-rejected');
   expect(code).not.toContain('the page render was likely tainted by a cross-origin image without CORS');
 });
+
+test('analyzer asset cache-busters match the visible analyzer version', async ({ page }) => {
+  await page.goto(ANALYZER_URL);
+  const versions = await page.evaluate(() => {
+    const label = document.querySelector('.input-hero h1 span')?.textContent?.trim() || '';
+    const expected = label.replace(/^v/, '');
+    const assets = Array.from(document.querySelectorAll('script[src*="?v="],link[href*="?v="]')).map((el) => {
+      const url = el.getAttribute('src') || el.getAttribute('href') || '';
+      return { url, version: new URL(url, location.href).searchParams.get('v') };
+    }).filter((a) => /^(analyzer|scoring\/)/.test(a.url));
+    return { label, expected, assets };
+  });
+  expect(versions.label).toBe('v3.11.66');
+  expect(versions.assets.length).toBeGreaterThan(10);
+  expect(versions.assets.every((a) => a.version === versions.expected)).toBe(true);
+});
