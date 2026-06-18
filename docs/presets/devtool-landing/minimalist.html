@@ -2,6 +2,55 @@
 <!-- Stack: HTML + Tailwind CSS | Dark mode: yes | Responsive: yes -->
 <style>
   html { scroll-behavior: smooth; }
+    .devtool-minimal {
+        background: #020617;
+        color: #e5edf7;
+    }
+    .devtool-minimal .devtool-minimal-nav,
+    .devtool-minimal .devtool-minimal-panel,
+    .devtool-minimal .code-block {
+        background: #020617 !important;
+        border-color: #334155 !important;
+    }
+    html:not(.dark) .devtool-minimal,
+    html:not(.dark) .devtool-minimal header,
+    html:not(.dark) .devtool-minimal nav.devtool-minimal-nav,
+    html:not(.dark) .devtool-minimal .devtool-minimal-panel,
+    html:not(.dark) .devtool-minimal .devtool-minimal-card,
+    html:not(.dark) .devtool-minimal .code-block {
+        background: #020617 !important;
+        color: #f1f5f9 !important;
+        border-color: #334155 !important;
+        -webkit-backdrop-filter: none !important;
+        backdrop-filter: none !important;
+        box-shadow: none !important;
+    }
+    .devtool-minimal .devtool-minimal-card {
+        background: #020617 !important;
+    }
+    .devtool-minimal .text-slate-400,
+    html:not(.dark) .devtool-minimal .text-slate-400,
+    .devtool-minimal .syntax-comment {
+        color: #cbd5e1 !important;
+    }
+    .devtool-minimal .text-slate-300 {
+        color: #e2e8f0 !important;
+    }
+    .devtool-minimal .text-slate-200 {
+        color: #f1f5f9 !important;
+    }
+    .devtool-minimal .text-blue-400,
+    html:not(.dark) .devtool-minimal .text-blue-400,
+    .devtool-minimal .syntax-keyword,
+    .devtool-minimal .syntax-func {
+        color: #7dd3fc !important;
+    }
+    .devtool-minimal .border-slate-800 {
+        border-color: #334155 !important;
+    }
+    .devtool-minimal .bg-slate-800 {
+        background: #334155 !important;
+    }
     .code-block { background: #0a0f1a; }
     .syntax-keyword { color: #93c5fd; }
     .syntax-string { color: #86efac; }
@@ -13,10 +62,10 @@
         * { transition: none !important; }
     }
 </style>
-<div class="min-h-screen bg-slate-950 text-slate-200" style="font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;">
+<div class="devtool-minimal min-h-screen bg-slate-950 text-slate-200" style="font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;">
     <!-- Navigation -->
     <header>
-    <nav class="fixed top-0 left-0 right-0 z-50 bg-slate-950/90 backdrop-blur-md border-b border-slate-800">
+    <nav class="devtool-minimal-nav sticky top-0 left-0 right-0 z-50 bg-slate-950 border-b border-slate-800">
         <div class="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
             <a href="#hero" class="text-base font-semibold tracking-tight focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none" style="font-family: ui-monospace, monospace;">flux<span class="text-blue-400">.</span></a>
             <div class="hidden md:flex items-center gap-8 text-sm text-slate-400">
@@ -26,11 +75,11 @@
                 <a href="#code" class="hover:text-slate-100 transition-colors min-h-[44px] flex items-center focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Changelog</a>
                 <a href="#" class="text-blue-400 hover:text-blue-300 font-medium transition-colors min-h-[44px] flex items-center focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Get Started &rarr;</a>
             </div>
-            <button onclick="document.getElementById('devMinMobile').classList.toggle('hidden')" class="md:hidden text-slate-400 hover:text-white min-h-[44px] flex items-center focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none" aria-label="Toggle menu">
+            <button onclick="const menu=document.getElementById('devMinMobile'); const open=menu.classList.toggle('hidden'); this.setAttribute('aria-expanded', String(!open));" class="md:hidden text-slate-400 hover:text-white min-h-[44px] min-w-[44px] inline-flex items-center justify-center focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none" aria-label="Toggle menu" aria-controls="devMinMobile" aria-expanded="false">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6h16M4 12h16M4 18h16"/></svg>
             </button>
         </div>
-        <div id="devMinMobile" class="hidden md:hidden border-t border-slate-800 bg-slate-950">
+        <div id="devMinMobile" class="devtool-minimal-panel hidden md:hidden border-t border-slate-800 bg-slate-950">
             <div class="px-6 py-4 flex flex-col gap-1 text-sm text-slate-400">
                 <a href="#features" class="hover:text-white transition-colors py-2 min-h-[44px] flex items-center focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Docs</a>
                 <a href="#pricing" class="hover:text-white transition-colors py-2 min-h-[44px] flex items-center focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Pricing</a>
@@ -54,15 +103,15 @@
                 Build, test, and deploy with zero configuration. Minimal footprint, maximum velocity.
             </p>
             <!-- Install command -->
-            <div class="inline-flex items-center border border-slate-800 rounded-lg px-4 py-3 mb-16" style="font-family: ui-monospace, monospace;">
+            <div class="devtool-minimal-panel inline-flex max-w-full items-center border border-slate-800 rounded-lg px-4 py-3 mb-16" style="font-family: ui-monospace, monospace;">
                 <span class="text-slate-400 mr-3 text-sm select-none">$</span>
-                <code class="text-sm text-slate-300 mr-4">npm install @acme/cli</code>
-                <button class="text-slate-400 hover:text-blue-400 transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none" title="Copy" aria-label="Copy install command">
+                <code class="text-sm text-slate-300 mr-4 whitespace-nowrap">npm install @acme/cli</code>
+                <button class="text-slate-400 hover:text-blue-400 transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none min-h-[44px] min-w-[44px] inline-flex items-center justify-center" title="Copy" aria-label="Copy install command">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
                 </button>
             </div>
             <!-- Terminal -->
-            <div class="max-w-2xl code-block rounded-lg border border-slate-800 overflow-hidden">
+            <div class="devtool-minimal-panel max-w-2xl code-block rounded-lg border border-slate-800 overflow-hidden">
                 <div class="flex items-center gap-2 px-4 py-2.5 border-b border-slate-800">
                     <span class="w-2.5 h-2.5 rounded-full bg-slate-700"></span>
                     <span class="w-2.5 h-2.5 rounded-full bg-slate-700"></span>
@@ -72,9 +121,9 @@
                 <div class="p-5 text-sm leading-relaxed" style="font-family: ui-monospace, monospace;">
                     <p><span class="text-slate-400">$</span> <span class="text-slate-300">flux init</span></p>
                     <p class="text-blue-400 mt-1">Created flux.config.ts</p>
-                    <p class="text-slate-400 mt-2">$</span> <span class="text-slate-300">flux dev</span></p>
+                    <p class="text-slate-400 mt-2"><span>$</span> <span class="text-slate-300">flux dev</span></p>
                     <p class="text-blue-400 mt-1">listening on :3000</p>
-                    <p class="text-slate-400 mt-2">$</span> <span class="text-slate-300">flux deploy</span></p>
+                    <p class="text-slate-400 mt-2"><span>$</span> <span class="text-slate-300">flux deploy</span></p>
                     <p class="text-blue-400 mt-1">deployed &mdash; https://app.flux.sh</p>
                 </div>
             </div>
@@ -86,32 +135,32 @@
         <div class="max-w-6xl mx-auto px-6">
             <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight mb-16">Features</h2>
             <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-px bg-slate-800 border border-slate-800 rounded-lg overflow-hidden">
-                <div class="bg-slate-950 p-8">
+                <div class="devtool-minimal-card bg-slate-950 p-8">
                     <p class="text-blue-400 text-sm mb-3" style="font-family: ui-monospace, monospace;">01</p>
                     <h3 class="font-medium mb-2">Fast Builds</h3>
                     <p class="text-slate-400 text-sm leading-relaxed">Incremental compilation with dependency-aware caching. Sub-100ms rebuilds.</p>
                 </div>
-                <div class="bg-slate-950 p-8">
+                <div class="devtool-minimal-card bg-slate-950 p-8">
                     <p class="text-blue-400 text-sm mb-3" style="font-family: ui-monospace, monospace;">02</p>
                     <h3 class="font-medium mb-2">Zero Config</h3>
                     <p class="text-slate-400 text-sm leading-relaxed">Sensible defaults for TypeScript, React, Vue, and Node. Override only what you need.</p>
                 </div>
-                <div class="bg-slate-950 p-8">
+                <div class="devtool-minimal-card bg-slate-950 p-8">
                     <p class="text-blue-400 text-sm mb-3" style="font-family: ui-monospace, monospace;">03</p>
                     <h3 class="font-medium mb-2">Edge Deploy</h3>
                     <p class="text-slate-400 text-sm leading-relaxed">Single-command deploys to global edge. TLS provisioned automatically.</p>
                 </div>
-                <div class="bg-slate-950 p-8">
+                <div class="devtool-minimal-card bg-slate-950 p-8">
                     <p class="text-blue-400 text-sm mb-3" style="font-family: ui-monospace, monospace;">04</p>
                     <h3 class="font-medium mb-2">Monitoring</h3>
                     <p class="text-slate-400 text-sm leading-relaxed">Built-in error tracking and request tracing with zero additional dependencies.</p>
                 </div>
-                <div class="bg-slate-950 p-8">
+                <div class="devtool-minimal-card bg-slate-950 p-8">
                     <p class="text-blue-400 text-sm mb-3" style="font-family: ui-monospace, monospace;">05</p>
                     <h3 class="font-medium mb-2">Auth</h3>
                     <p class="text-slate-400 text-sm leading-relaxed">OAuth, JWT, and sessions. Middleware included. No third-party service required.</p>
                 </div>
-                <div class="bg-slate-950 p-8">
+                <div class="devtool-minimal-card bg-slate-950 p-8">
                     <p class="text-blue-400 text-sm mb-3" style="font-family: ui-monospace, monospace;">06</p>
                     <h3 class="font-medium mb-2">Plugins</h3>
                     <p class="text-slate-400 text-sm leading-relaxed">Composable plugin API with TypeScript types. Hot-reload during development.</p>
@@ -133,7 +182,7 @@
                         <li class="flex items-center gap-3"><span class="text-blue-400">&bull;</span>Composable stages</li>
                     </ul>
                 </div>
-                <div class="code-block rounded-lg border border-slate-800 overflow-hidden">
+                <div class="devtool-minimal-panel code-block rounded-lg border border-slate-800 overflow-hidden">
                     <div class="flex items-center px-4 py-2.5 border-b border-slate-800">
                         <span class="text-xs text-slate-400" style="font-family: ui-monospace, monospace;">flux.config.ts</span>
                     </div>
@@ -161,19 +210,19 @@
     <section class="py-16 border-t border-slate-800">
         <div class="max-w-6xl mx-auto px-6">
             <div class="grid grid-cols-2 md:grid-cols-4 gap-px bg-slate-800 border border-slate-800 rounded-lg overflow-hidden">
-                <div class="bg-slate-950 p-8 text-center">
+                <div class="devtool-minimal-card bg-slate-950 p-8 text-center">
                     <p class="text-2xl sm:text-3xl font-semibold text-blue-400" style="font-family: ui-monospace, monospace;">12k+</p>
                     <p class="text-xs text-slate-400 mt-2 uppercase tracking-wider">GitHub Stars</p>
                 </div>
-                <div class="bg-slate-950 p-8 text-center">
+                <div class="devtool-minimal-card bg-slate-950 p-8 text-center">
                     <p class="text-2xl sm:text-3xl font-semibold text-slate-200" style="font-family: ui-monospace, monospace;">800k</p>
                     <p class="text-xs text-slate-400 mt-2 uppercase tracking-wider">Weekly Downloads</p>
                 </div>
-                <div class="bg-slate-950 p-8 text-center">
+                <div class="devtool-minimal-card bg-slate-950 p-8 text-center">
                     <p class="text-2xl sm:text-3xl font-semibold text-slate-200" style="font-family: ui-monospace, monospace;">99.9%</p>
                     <p class="text-xs text-slate-400 mt-2 uppercase tracking-wider">Uptime SLA</p>
                 </div>
-                <div class="bg-slate-950 p-8 text-center">
+                <div class="devtool-minimal-card bg-slate-950 p-8 text-center">
                     <p class="text-2xl sm:text-3xl font-semibold text-slate-200" style="font-family: ui-monospace, monospace;">&lt;50ms</p>
                     <p class="text-xs text-slate-400 mt-2 uppercase tracking-wider">Avg Build Time</p>
                 </div>
@@ -186,21 +235,21 @@
         <div class="max-w-6xl mx-auto px-6">
             <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight mb-16">What developers say</h2>
             <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-px bg-slate-800 border border-slate-800 rounded-lg overflow-hidden">
-                <div class="bg-slate-950 p-8">
+                <div class="devtool-minimal-card bg-slate-950 p-8">
                     <p class="text-slate-400 text-sm leading-relaxed mb-6">"Replaced three tools in our stack. Deploys went from 12 min to 20 sec."</p>
                     <div class="flex items-center gap-3">
                         <div class="w-7 h-7 rounded-full bg-blue-500/20 flex items-center justify-center text-xs text-blue-400 font-medium">J</div>
                         <div><p class="text-sm">Jess Park</p><p class="text-xs text-slate-400">@jesspark</p></div>
                     </div>
                 </div>
-                <div class="bg-slate-950 p-8">
+                <div class="devtool-minimal-card bg-slate-950 p-8">
                     <p class="text-slate-400 text-sm leading-relaxed mb-6">"The zero-config promise is real. Pointed it at our monorepo and it just worked."</p>
                     <div class="flex items-center gap-3">
                         <div class="w-7 h-7 rounded-full bg-blue-500/20 flex items-center justify-center text-xs text-blue-400 font-medium">D</div>
                         <div><p class="text-sm">Dan Kowalski</p><p class="text-xs text-slate-400">@dankov</p></div>
                     </div>
                 </div>
-                <div class="bg-slate-950 p-8">
+                <div class="devtool-minimal-card bg-slate-950 p-8">
                     <p class="text-slate-400 text-sm leading-relaxed mb-6">"Clean, fast, no magic. Exactly the kind of tool I want in my stack."</p>
                     <div class="flex items-center gap-3">
                         <div class="w-7 h-7 rounded-full bg-blue-500/20 flex items-center justify-center text-xs text-blue-400 font-medium">A</div>
@@ -230,7 +279,7 @@
         <div class="max-w-6xl mx-auto px-6">
             <div class="grid grid-cols-2 md:grid-cols-4 gap-8 mb-12">
                 <div>
-                    <h2 class="text-xs font-medium text-slate-400 uppercase tracking-wider mb-4">Product</h4>
+                    <h2 class="text-xs font-medium text-slate-400 uppercase tracking-wider mb-4">Product</h2>
                     <ul class="space-y-2 text-sm text-slate-400">
                         <li><a href="#" class="hover:text-slate-200 transition-colors min-h-[44px] flex items-center focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Features</a></li>
                         <li><a href="#" class="hover:text-slate-200 transition-colors min-h-[44px] flex items-center focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Pricing</a></li>
@@ -238,7 +287,7 @@
                     </ul>
                 </div>
                 <div>
-                    <h2 class="text-xs font-medium text-slate-400 uppercase tracking-wider mb-4">Resources</h4>
+                    <h2 class="text-xs font-medium text-slate-400 uppercase tracking-wider mb-4">Resources</h2>
                     <ul class="space-y-2 text-sm text-slate-400">
                         <li><a href="#" class="hover:text-slate-200 transition-colors min-h-[44px] flex items-center focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Docs</a></li>
                         <li><a href="#" class="hover:text-slate-200 transition-colors min-h-[44px] flex items-center focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">API</a></li>
@@ -246,7 +295,7 @@
                     </ul>
                 </div>
                 <div>
-                    <h2 class="text-xs font-medium text-slate-400 uppercase tracking-wider mb-4">Community</h4>
+                    <h2 class="text-xs font-medium text-slate-400 uppercase tracking-wider mb-4">Community</h2>
                     <ul class="space-y-2 text-sm text-slate-400">
                         <li><a href="#" class="hover:text-slate-200 transition-colors min-h-[44px] flex items-center focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">GitHub</a></li>
                         <li><a href="#" class="hover:text-slate-200 transition-colors min-h-[44px] flex items-center focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Discord</a></li>
@@ -254,7 +303,7 @@
                     </ul>
                 </div>
                 <div>
-                    <h2 class="text-xs font-medium text-slate-400 uppercase tracking-wider mb-4">Legal</h4>
+                    <h2 class="text-xs font-medium text-slate-400 uppercase tracking-wider mb-4">Legal</h2>
                     <ul class="space-y-2 text-sm text-slate-400">
                         <li><a href="#" class="hover:text-slate-200 transition-colors min-h-[44px] flex items-center focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Privacy</a></li>
                         <li><a href="#" class="hover:text-slate-200 transition-colors min-h-[44px] flex items-center focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Terms</a></li>
