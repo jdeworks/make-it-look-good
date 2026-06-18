@@ -1,6 +1,23 @@
 <!-- Project: Playful | Rounded-2xl nav, colorful shadows, large avatars, pill badges, rose primary -->
 <!-- Stack: HTML + Tailwind CSS | Dark mode: yes | Responsive: yes -->
 <style>
+  .play-bg { background: linear-gradient(135deg, #fff1f2 0%, #fff 48%, #faf5ff 100%); color: #0f172a; }
+  .dark .play-bg { background: linear-gradient(135deg, #020617 0%, #111827 48%, #020617 100%); color: #f8fafc; }
+  .play-surface { background-color: #ffffff; border-color: #ffe4e6; }
+  .dark .play-surface { background-color: #0f172a; border-color: #334155; }
+  .play-soft { background-color: #fff1f2; border-color: #fecdd3; }
+  .dark .play-soft { background-color: #1e293b; border-color: #475569; color: #f8fafc; }
+  .play-muted { color: #475569; }
+  .dark .play-muted { color: #cbd5e1; }
+  .play-accent { color: #be123c; }
+  .dark .play-accent { color: #fda4af; }
+  .play-active { background: linear-gradient(90deg, #e11d48, #db2777); color: #ffffff; }
+  .play-status-good { color: #047857; background-color: #d1fae5; }
+  .play-status-warn { color: #92400e; background-color: #fef3c7; }
+  .play-status-bad { color: #b91c1c; background-color: #fee2e2; }
+  .dark .play-status-good { color: #86efac; background-color: #064e3b; }
+  .dark .play-status-warn { color: #fde68a; background-color: #78350f; }
+  .dark .play-status-bad { color: #fca5a5; background-color: #7f1d1d; }
   .card-rev { box-shadow: 0 8px 28px rgba(244,63,94,0.18); }
   .card-usr { box-shadow: 0 8px 28px rgba(59,130,246,0.18); }
   .card-ord { box-shadow: 0 8px 28px rgba(168,85,247,0.18); }
@@ -9,24 +26,28 @@
   .dark .card-ord { box-shadow: 0 8px 28px rgba(168,85,247,0.25); }
   .bounce { transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1); }
   .bounce:hover { transform: translateY(-4px) scale(1.02); }
+  @media (prefers-reduced-motion: reduce) {
+    .bounce { transition: none; }
+    .bounce:hover { transform: none; }
+  }
 </style>
-<div class="min-h-screen bg-gradient-to-br from-rose-50 via-white to-purple-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 text-slate-900 dark:text-slate-100 flex">
+<div class="play-bg min-h-screen flex">
 
   <!-- Sidebar -->
-  <aside id="playProjSidebar" class="fixed inset-y-0 left-0 w-[220px] bg-white dark:bg-slate-900 border-r border-rose-100 dark:border-slate-800 flex flex-col z-30 transition-transform -translate-x-full lg:translate-x-0">
+  <aside id="playProjSidebar" class="play-surface hidden fixed inset-y-0 left-0 w-[220px] border-r flex-col z-30 lg:flex">
     <div class="h-14 flex items-center px-5 border-b border-rose-100 dark:border-slate-800">
-      <span class="text-base font-extrabold tracking-tight text-rose-600 dark:text-rose-400">MyApp</span>
+      <span class="text-base font-extrabold tracking-tight play-accent">MyApp</span>
     </div>
     <nav class="flex-1 py-4 px-3" aria-label="Main navigation">
-      <a href="#" onclick="switchProjectPage('dash'); return false" id="nav-dash" class="flex items-center gap-3 px-3 py-3 text-sm font-bold bg-gradient-to-r from-rose-500 to-pink-500 text-white rounded-2xl min-h-11 mb-1 shadow-[0_4px_12px_-2px_rgba(244,63,94,0.3)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500" aria-current="page">
+      <a href="#" onclick="switchProjectPage('dash'); return false" id="nav-dash" class="play-nav-active flex items-center gap-3 px-3 py-3 text-sm font-bold play-active rounded-2xl min-h-11 mb-1 shadow-[0_4px_12px_-2px_rgba(244,63,94,0.3)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500" aria-current="page">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0h4"/></svg>
         Dashboard
       </a>
-      <a href="#" onclick="switchProjectPage('team'); return false" id="nav-team" class="flex items-center gap-3 px-3 py-3 text-sm font-medium text-slate-500 dark:text-slate-400 hover:bg-rose-50 dark:hover:bg-slate-800 rounded-2xl transition-colors min-h-11 mb-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500">
+      <a href="#" onclick="switchProjectPage('team'); return false" id="nav-team" class="play-nav-inactive flex items-center gap-3 px-3 py-3 text-sm font-bold play-muted hover:bg-rose-50 dark:hover:bg-slate-800 rounded-2xl transition-colors min-h-11 mb-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
         Team
       </a>
-      <a href="#" onclick="switchProjectPage('settings'); return false" id="nav-settings" class="flex items-center gap-3 px-3 py-3 text-sm font-medium text-slate-500 dark:text-slate-400 hover:bg-rose-50 dark:hover:bg-slate-800 rounded-2xl transition-colors min-h-11 mb-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500">
+      <a href="#" onclick="switchProjectPage('settings'); return false" id="nav-settings" class="play-nav-inactive flex items-center gap-3 px-3 py-3 text-sm font-bold play-muted hover:bg-rose-50 dark:hover:bg-slate-800 rounded-2xl transition-colors min-h-11 mb-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
         Settings
       </a>
@@ -34,9 +55,9 @@
   </aside>
 
   <!-- Mobile header -->
-  <div class="lg:hidden fixed top-0 left-0 right-0 h-14 bg-white dark:bg-slate-900 border-b border-rose-100 dark:border-slate-800 flex items-center justify-between px-4 z-20">
-    <span class="text-base font-extrabold text-rose-600 dark:text-rose-400">MyApp</span>
-    <button onclick="document.getElementById('playProjSidebar').classList.toggle('-translate-x-full')" class="min-h-11 min-w-11 flex items-center justify-center rounded-xl text-slate-500 hover:bg-rose-100 dark:hover:bg-slate-800 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500" aria-label="Toggle menu">
+  <div class="play-surface lg:hidden fixed top-0 left-0 right-0 h-14 border-b flex items-center justify-between px-4 z-20">
+    <span class="text-base font-extrabold play-accent">MyApp</span>
+    <button onclick="document.getElementById('playProjSidebar').classList.toggle('hidden')" class="min-h-11 min-w-11 flex items-center justify-center rounded-xl play-muted hover:bg-rose-100 dark:hover:bg-slate-800 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500" aria-label="Toggle menu">
       <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
     </button>
   </div>
@@ -47,62 +68,62 @@
     <!-- Dashboard -->
     <div id="page-dash">
       <div class="max-w-4xl mx-auto px-4 sm:px-8 py-8 sm:py-12">
-        <h1 class="text-2xl sm:text-3xl font-extrabold mb-6">Dashboard</h1>
+        <h1 class="text-4xl sm:text-5xl font-extrabold mb-6">Dashboard</h1>
 
         <!-- Stat cards with colorful per-card accent shadows -->
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-          <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 card-rev bounce border border-rose-100 dark:border-transparent">
+          <div class="play-surface rounded-2xl p-5 card-rev bounce border">
             <div class="w-8 h-8 rounded-xl bg-rose-100 dark:bg-rose-900/40 flex items-center justify-center mb-3">
               <svg class="w-4 h-4 text-rose-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
             </div>
-            <div class="text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wide">Revenue</div>
+            <div class="text-sm font-bold play-muted mb-1 uppercase tracking-wide">Revenue</div>
             <div class="text-2xl font-extrabold tabular-nums">$12,340</div>
-            <div class="text-xs text-rose-600 dark:text-rose-400 font-bold mt-1">+12%</div>
+            <div class="text-sm play-accent font-bold mt-1">+12%</div>
           </div>
-          <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 card-usr bounce border border-blue-100 dark:border-transparent">
+          <div class="play-surface rounded-2xl p-5 card-usr bounce border">
             <div class="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center mb-3">
               <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
             </div>
-            <div class="text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wide">Users</div>
+            <div class="text-sm font-bold play-muted mb-1 uppercase tracking-wide">Users</div>
             <div class="text-2xl font-extrabold tabular-nums">847</div>
-            <div class="text-xs text-blue-600 dark:text-blue-400 font-bold mt-1">+8%</div>
+            <div class="text-sm text-blue-700 dark:text-blue-300 font-bold mt-1">+8%</div>
           </div>
-          <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 card-ord bounce border border-purple-100 dark:border-transparent">
+          <div class="play-surface rounded-2xl p-5 card-ord bounce border">
             <div class="w-8 h-8 rounded-xl bg-purple-100 dark:bg-purple-900/40 flex items-center justify-center mb-3">
               <svg class="w-4 h-4 text-purple-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 012-2h2a2 2 0 012 2M9 5a2 2 0 002 2h2a2 2 0 002-2"/></svg>
             </div>
-            <div class="text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wide">Orders</div>
+            <div class="text-sm font-bold play-muted mb-1 uppercase tracking-wide">Orders</div>
             <div class="text-2xl font-extrabold tabular-nums">156</div>
-            <div class="text-xs text-purple-600 dark:text-purple-400 font-bold mt-1">+5%</div>
+            <div class="text-sm text-purple-700 dark:text-purple-300 font-bold mt-1">+5%</div>
           </div>
         </div>
 
         <!-- Recent orders table -->
-        <section class="bg-white dark:bg-slate-900 rounded-2xl p-5 sm:p-6 border border-rose-100 dark:border-transparent shadow-[0_4px_20px_-6px_rgba(244,63,94,0.1)]">
-          <h2 class="text-base font-extrabold mb-4">Recent Orders</h2>
-          <div class="overflow-x-auto">
-            <table class="w-full text-sm sm:min-w-[400px]">
+        <section class="play-surface rounded-2xl p-5 sm:p-6 border shadow-[0_4px_20px_-6px_rgba(244,63,94,0.1)]">
+          <h2 class="text-2xl font-extrabold mb-4">Recent Orders</h2>
+          <div class="overflow-x-auto -mx-2 px-2">
+            <table class="w-full text-sm table-fixed min-w-0">
               <thead>
                 <tr>
-                  <th scope="col" class="text-left pb-3 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Name</th>
-                  <th scope="col" class="text-left pb-3 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Status</th>
-                  <th scope="col" class="text-right pb-3 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Amount</th>
+                  <th scope="col" class="w-[40%] text-left pb-3 text-sm font-bold play-muted uppercase tracking-wide">Name</th>
+                  <th scope="col" class="w-[32%] text-left pb-3 text-sm font-bold play-muted uppercase tracking-wide">Status</th>
+                  <th scope="col" class="w-[28%] text-right pb-3 text-sm font-bold play-muted uppercase tracking-wide">Amount</th>
                 </tr>
               </thead>
               <tbody>
                 <tr class="hover:bg-rose-50 dark:hover:bg-slate-800 rounded-lg transition-colors">
-                  <td class="px-2 py-3 rounded-l-lg font-bold">Order #1042</td>
-                  <td class="px-2 py-3"><span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">Paid</span></td>
+                  <td class="px-2 py-3 rounded-l-lg font-bold">#1042</td>
+                  <td class="px-2 py-3"><span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-bold play-status-good">Paid</span></td>
                   <td class="px-2 py-3 rounded-r-lg text-right tabular-nums font-bold">$250</td>
                 </tr>
                 <tr class="hover:bg-rose-50 dark:hover:bg-slate-800 rounded-lg transition-colors">
-                  <td class="px-2 py-3 rounded-l-lg font-bold">Order #1041</td>
-                  <td class="px-2 py-3"><span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400">Pending</span></td>
+                  <td class="px-2 py-3 rounded-l-lg font-bold">#1041</td>
+                  <td class="px-2 py-3"><span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-bold play-status-warn">Pending</span></td>
                   <td class="px-2 py-3 rounded-r-lg text-right tabular-nums font-bold">$180</td>
                 </tr>
                 <tr class="hover:bg-rose-50 dark:hover:bg-slate-800 rounded-lg transition-colors">
-                  <td class="px-2 py-3 rounded-l-lg font-bold">Order #1040</td>
-                  <td class="px-2 py-3"><span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">Failed</span></td>
+                  <td class="px-2 py-3 rounded-l-lg font-bold">#1040</td>
+                  <td class="px-2 py-3"><span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-bold play-status-bad">Failed</span></td>
                   <td class="px-2 py-3 rounded-r-lg text-right tabular-nums font-bold">$95</td>
                 </tr>
               </tbody>
@@ -115,25 +136,25 @@
     <!-- Team -->
     <div id="page-team" style="display:none">
       <div class="max-w-4xl mx-auto px-4 sm:px-8 py-8 sm:py-12">
-        <h1 class="text-2xl sm:text-3xl font-extrabold mb-6">Team Members</h1>
+        <h1 class="text-4xl sm:text-5xl font-extrabold mb-6">Team Members</h1>
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div class="bg-white dark:bg-slate-900 rounded-2xl p-6 text-center bounce card-rev border border-rose-100 dark:border-transparent">
+          <div class="play-surface rounded-2xl p-6 text-center bounce card-rev border">
             <div class="w-16 h-16 rounded-full bg-gradient-to-br from-rose-400 to-pink-500 mx-auto mb-3 flex items-center justify-center text-white font-extrabold text-lg shadow-[0_4px_12px_-2px_rgba(244,63,94,0.3)]">AJ</div>
-            <h3 class="font-extrabold">Alice Johnson</h3>
-            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-100 dark:bg-rose-900/40 text-rose-600 dark:text-rose-300 mt-2">Engineering Lead</span>
-            <div class="mt-3"><span class="text-xs text-green-600 dark:text-green-400 font-bold">Active</span></div>
+            <h2 class="text-xl font-extrabold">Alice Johnson</h2>
+            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-rose-100 dark:bg-rose-900/40 play-accent mt-2">Engineering Lead</span>
+            <div class="mt-3"><span class="text-sm play-status-good rounded-full px-2 py-1 font-bold">Active</span></div>
           </div>
-          <div class="bg-white dark:bg-slate-900 rounded-2xl p-6 text-center bounce card-usr border border-blue-100 dark:border-transparent">
+          <div class="play-surface rounded-2xl p-6 text-center bounce card-usr border">
             <div class="w-16 h-16 rounded-full bg-gradient-to-br from-blue-400 to-cyan-500 mx-auto mb-3 flex items-center justify-center text-white font-extrabold text-lg shadow-[0_4px_12px_-2px_rgba(59,130,246,0.3)]">BS</div>
-            <h3 class="font-extrabold">Bob Smith</h3>
+            <h2 class="text-xl font-extrabold">Bob Smith</h2>
             <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 mt-2">Designer</span>
-            <div class="mt-3"><span class="text-xs text-green-600 dark:text-green-400 font-bold">Active</span></div>
+            <div class="mt-3"><span class="text-sm play-status-good rounded-full px-2 py-1 font-bold">Active</span></div>
           </div>
-          <div class="bg-white dark:bg-slate-900 rounded-2xl p-6 text-center bounce card-ord border border-purple-100 dark:border-transparent">
+          <div class="play-surface rounded-2xl p-6 text-center bounce card-ord border">
             <div class="w-16 h-16 rounded-full bg-gradient-to-br from-violet-400 to-purple-500 mx-auto mb-3 flex items-center justify-center text-white font-extrabold text-lg shadow-[0_4px_12px_-2px_rgba(168,85,247,0.3)]">CD</div>
-            <h3 class="font-extrabold">Carol Davis</h3>
+            <h2 class="text-xl font-extrabold">Carol Davis</h2>
             <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-300 mt-2">Product Manager</span>
-            <div class="mt-3"><span class="text-xs text-slate-500 dark:text-slate-400 font-bold">Away</span></div>
+            <div class="mt-3"><span class="text-sm play-muted font-bold">Away</span></div>
           </div>
         </div>
       </div>
@@ -142,26 +163,26 @@
     <!-- Settings -->
     <div id="page-settings" style="display:none">
       <div class="max-w-2xl mx-auto px-4 sm:px-8 py-8 sm:py-12">
-        <h1 class="text-2xl sm:text-3xl font-extrabold mb-6">Settings</h1>
-        <form class="bg-white dark:bg-slate-900 rounded-2xl p-6 sm:p-8 space-y-6 border border-rose-100 dark:border-transparent shadow-[0_4px_20px_-6px_rgba(244,63,94,0.1)]">
+        <h1 class="text-4xl sm:text-5xl font-extrabold mb-6">Settings</h1>
+        <form class="play-surface rounded-2xl p-6 sm:p-8 space-y-6 border shadow-[0_4px_20px_-6px_rgba(244,63,94,0.1)]">
           <div>
             <label for="play-name" class="block text-sm font-bold mb-2">Display Name</label>
-            <input id="play-name" type="text" value="John Doe" autocomplete="name" class="w-full bg-rose-50/50 dark:bg-slate-800 border-2 border-rose-200 dark:border-slate-700 rounded-xl px-4 py-3 text-base focus:ring-2 focus:ring-rose-400 focus:border-rose-400 outline-none transition min-h-11">
+            <input id="play-name" type="text" value="John Doe" autocomplete="name" class="play-soft w-full border-2 rounded-xl px-4 py-3 text-base focus:ring-2 focus:ring-rose-400 focus:border-rose-400 outline-none transition min-h-11">
           </div>
           <div>
             <label for="play-email" class="block text-sm font-bold mb-2">Email</label>
-            <input id="play-email" type="email" value="john@example.com" autocomplete="email" class="w-full bg-rose-50/50 dark:bg-slate-800 border-2 border-rose-200 dark:border-slate-700 rounded-xl px-4 py-3 text-base focus:ring-2 focus:ring-rose-400 focus:border-rose-400 outline-none transition min-h-11">
+            <input id="play-email" type="email" value="john@example.com" autocomplete="email" class="play-soft w-full border-2 rounded-xl px-4 py-3 text-base focus:ring-2 focus:ring-rose-400 focus:border-rose-400 outline-none transition min-h-11">
           </div>
           <div>
             <label for="play-tz" class="block text-sm font-bold mb-2">Timezone</label>
-            <select id="play-tz" class="w-full bg-rose-50/50 dark:bg-slate-800 border-2 border-rose-200 dark:border-slate-700 rounded-xl px-4 py-3 text-base focus:ring-2 focus:ring-rose-400 focus:border-rose-400 outline-none transition min-h-11">
+            <select id="play-tz" class="play-soft w-full border-2 rounded-xl px-4 py-3 text-base focus:ring-2 focus:ring-rose-400 focus:border-rose-400 outline-none transition min-h-11">
               <option>UTC-8 Pacific</option>
               <option>UTC-5 Eastern</option>
             </select>
           </div>
           <label class="flex items-center gap-3 min-h-11 cursor-pointer">
             <input type="checkbox" checked class="w-5 h-5 accent-rose-500 rounded">
-            <span class="text-sm text-slate-600 dark:text-slate-400">Enable notifications</span>
+            <span class="text-sm play-muted">Enable notifications</span>
           </label>
           <button type="submit" class="w-full bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 active:scale-[0.98] text-white font-bold py-3.5 rounded-full transition-all min-h-11 shadow-[0_4px_16px_-4px_rgba(244,63,94,0.4)] hover:shadow-[0_6px_20px_-4px_rgba(244,63,94,0.5)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500">Save Changes</button>
         </form>
@@ -174,8 +195,8 @@ function switchProjectPage(page) {
   document.getElementById('page-dash').style.display = page === 'dash' ? '' : 'none';
   document.getElementById('page-team').style.display = page === 'team' ? '' : 'none';
   document.getElementById('page-settings').style.display = page === 'settings' ? '' : 'none';
-  var activeClass = 'flex items-center gap-3 px-3 py-3 text-sm font-bold bg-gradient-to-r from-rose-500 to-pink-500 text-white rounded-2xl min-h-11 mb-1 shadow-[0_4px_12px_-2px_rgba(244,63,94,0.3)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500';
-  var inactiveClass = 'flex items-center gap-3 px-3 py-3 text-sm font-medium text-slate-500 dark:text-slate-400 hover:bg-rose-50 dark:hover:bg-slate-800 rounded-2xl transition-colors min-h-11 mb-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500';
+  var activeClass = 'play-nav-active flex items-center gap-3 px-3 py-3 text-sm font-bold play-active rounded-2xl min-h-11 mb-1 shadow-[0_4px_12px_-2px_rgba(244,63,94,0.3)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500';
+  var inactiveClass = 'play-nav-inactive flex items-center gap-3 px-3 py-3 text-sm font-bold play-muted hover:bg-rose-50 dark:hover:bg-slate-800 rounded-2xl transition-colors min-h-11 mb-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500';
   ['dash','team','settings'].forEach(function(p) {
     var nav = document.getElementById('nav-' + p);
     if (p === page) {
