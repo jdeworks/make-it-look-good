@@ -3093,6 +3093,34 @@ For Tailwind v4, add `@import "tailwindcss"` to your main CSS file. No `tailwind
 }
 </file>
 
+<file path="docs/llms.txt">
+# make-it-look-good
+
+> Evidence-based design knowledge base for LLMs. Concrete UI/UX guidance with hard numbers.
+
+This repo helps AI assistants make better UI/UX decisions by providing specific design rules, copy-paste component snippets, and a structured consultation workflow.
+
+## Start Here
+
+- [CONSULT.md](https://github.com/jdeworks/make-it-look-good/blob/dev/CONSULT.md): Full design consultation playbook — intake, audit, code generation, design review
+- To enumerate ALL available templates, read [docs/presets/index.json](https://github.com/jdeworks/make-it-look-good/blob/dev/docs/presets/index.json) (machine-readable source of truth).
+- [docs/presets/_index.md](https://github.com/jdeworks/make-it-look-good/blob/dev/docs/presets/_index.md): HTML+Tailwind presets with personality variants and React/Vue/Svelte framework files
+- [workflows/quick-reference.md](https://github.com/jdeworks/make-it-look-good/blob/dev/workflows/quick-reference.md): Critical design numbers (contrast ratios, spacing, timing)
+
+## Knowledge Files
+
+- [Color: Contrast & Accessibility](https://github.com/jdeworks/make-it-look-good/blob/dev/color/contrast-and-accessibility.md): 4.5:1 text, 3:1 large text (WCAG AA)
+- [Layout: Spacing System](https://github.com/jdeworks/make-it-look-good/blob/dev/layout/spacing-system.md): 4px/8px base unit, consistent scale
+- [Typography: Type Scale](https://github.com/jdeworks/make-it-look-good/blob/dev/typography/type-scale.md): Modular scale 1.200-1.333, 16px body minimum
+- [Components: Buttons](https://github.com/jdeworks/make-it-look-good/blob/dev/components/buttons.md): 3 emphasis levels, 44x44px touch targets
+- [Components: Forms](https://github.com/jdeworks/make-it-look-good/blob/dev/components/forms.md): Single column, labels above, 5-7 fields per step
+- [Components: Navigation](https://github.com/jdeworks/make-it-look-good/blob/dev/components/navigation.md): 5-7 items max, bottom nav on mobile
+
+## Preview Tool
+
+- [Live Preview](https://jdeworks.github.io/make-it-look-good/): Paste HTML+Tailwind, see it rendered with mobile/tablet/desktop views
+</file>
+
 <file path="expressive/curated-examples.md">
 # What Makes Great Sites Great — Curated Examples
 
@@ -12634,6 +12662,96 @@ Each preset has clean, minimalist, and playful personality variants. React and V
 - [The Elements of Typographic Style (Bringhurst)](https://en.wikipedia.org/wiki/The_Elements_of_Typographic_Style)
 </file>
 
+<file path="AGENTS.md">
+# AGENTS.md — make-it-look-good
+
+This repo is a design knowledge base. You are here to help a user with UI/UX design decisions.
+
+## ⚡ If you are using this repo to improve a USER's UI/site (most common)
+A user wants you to improve THEIR project, using this repo as a design knowledge base. Do this:
+1. Read `CONSULT.md` and follow its steps in order (input classification → audit → knowledge files → preset → generate → Design Review Notes).
+2. Start from a preset. Enumerate available templates by reading `docs/presets/index.json` — the machine-readable source of truth. Customize a preset; do NOT generate components from scratch.
+3. Read the actual preset source from `docs/presets/<element>/<variant>.html` or the raw GitHub URL. `#preset:` preview URLs are for humans, not source retrieval.
+4. Always produce Design Review Notes (CONSULT.md Step 4) — the primary deliverable.
+5. Match the user's stack. Default to HTML + Tailwind only when the stack is unknown; for React/Vue/Svelte/Angular, convert from the preset or use a framework variant when present.
+6. Do NOT edit or "improve" THIS repo. Apply all changes to the USER's project.
+
+## 🔧 If you are MAINTAINING this repo
+See `MAINTAINING.md`.
+
+## How to Use
+
+1. **Design consultation** → Read `CONSULT.md` and follow the steps in order
+2. **Need a component** → Read `docs/presets/index.json` (machine-readable source of truth for all templates), then `docs/presets/_index.md` for composition recipes
+3. **Quick number lookup** → Read `workflows/quick-reference.md`
+4. **Specific topic** → Read only the relevant file from the list below (each is 200-400 lines, self-contained)
+
+## Critical Rules
+
+- **Match the user's tech stack** — detect React/Vue/Svelte/plain HTML and output in their format
+- **Read only what's needed** — don't load the entire repo, pick the 2-4 files relevant to the task
+- **Use presets as starting points** — enumerate available templates from `docs/presets/index.json` (the authoritative list); when a relevant preset exists, customize it rather than generating from scratch. The `#preset:` GitHub Pages preview URLs are human-preview-only — headless agents can't open them, so read the preset HTML files directly
+- **Always generate Design Review Notes** (Step 4 in CONSULT.md) — structured markdown with issues, decisions, tokens, and checklist
+- **Bundle users must fetch presets separately** — `bundle.xml` includes the playbook, knowledge files, and `docs/presets/index.json`, but not the preset HTML. Fetch needed files from `https://raw.githubusercontent.com/jdeworks/make-it-look-good/dev/docs/presets/<element>/<variant>.html`
+- **Preview mode matters** — hosted preview is for visual inspection, local preview/analyzer is for localhost/offline work, and headless validation runs through `node scripts/test-presets-headless.mjs` after installing a browser with `npx puppeteer browsers install chrome` or `npx playwright install chromium`
+
+## File Map
+
+- `CONSULT.md` — Full consultation playbook (start here for any design task)
+- `docs/presets/index.json` — Machine-readable source of truth: every available template + personality variants (enumerate from here)
+- `docs/presets/_index.md` — Human-readable preset catalog with composition recipes
+- `docs/presets/FRAMEWORKS.md` — React/Vue/Svelte/Angular conversion guide
+- `workflows/quick-reference.md` — Critical design numbers cheat sheet
+- `workflows/new-project-checklist.md` — New project setup guide
+- `workflows/design-review-checklist.md` — Design audit checklist
+- `foundations/` — Cognitive load, Gestalt, Hick's Law, Fitts's Law
+- `color/` — Contrast, color systems, color-blind safety
+- `typography/` — Type scale, readability, font pairing, web font loading
+- `layout/` — Spacing system, visual hierarchy, grids, whitespace
+- `interaction/` — Animation timing, touch targets, loading states
+- `responsive/` — Mobile-first, breakpoints, fluid typography, patterns
+- `systems/` — Design tokens, Material Design 3, Apple HIG
+- `heuristics/` — Nielsen's 10, UX frameworks (HEART, Honeycomb)
+- `components/` — Buttons, forms, cards, navigation, modals, tables, feedback
+</file>
+
+<file path="CLAUDE.md">
+# CLAUDE.md — make-it-look-good
+
+## ⚡ If you are using this repo to improve a USER's UI/site (most common)
+A user wants you to improve THEIR project, using this repo as a design knowledge base. Do this:
+1. Read `CONSULT.md` and follow its steps in order (input classification → audit → knowledge files → preset → generate → Design Review Notes).
+2. Start from a preset. Enumerate available templates by reading `docs/presets/index.json` — the machine-readable source of truth. Customize a preset; do NOT generate components from scratch.
+3. Always produce Design Review Notes (CONSULT.md Step 4) — the primary deliverable.
+4. Match the user's stack. Default to HTML + Tailwind only when the stack is unknown.
+5. Do NOT edit or "improve" THIS repo. Apply all changes to the USER's project.
+
+## 🔧 If you are MAINTAINING this repo
+See `MAINTAINING.md`.
+
+## Quick Start
+- **Design consultation** → Read `CONSULT.md` and follow the steps
+- **Need a component** → Read `docs/presets/index.json` (machine-readable source of truth for all available templates), then `docs/presets/_index.md` for composition recipes
+- **Quick number lookup** → Read `workflows/quick-reference.md`
+- **Read only what's needed** — each knowledge file is self-contained (~200-400 lines)
+
+## Purpose
+This repo is a **design knowledge base for LLMs**. When an LLM needs to make UI/UX decisions, it reads files from this repo to get concrete, evidence-based guidance with hard numbers.
+
+## CSS Framework
+All presets and examples use **[Tailwind CSS](https://tailwindcss.com)** as the default styling framework. When the user's stack is unknown, output Tailwind classes. For the preview tool, Tailwind v4 is loaded via CDN (`@tailwindcss/browser@4`). Match the user's stack if they use something else — see CONSULT.md Step 0.
+
+## Maintainer Reference
+See `MAINTAINING.md` for file-format conventions, directory structure, and maintenance rules.
+
+## Design Consultation Workflow
+- **`CONSULT.md`** is the LLM consultation playbook — read it to run an interactive design consultation
+- **Step 0 in CONSULT.md classifies the input** — existing code (any framework), screenshot, vague idea, or raw data — and routes to the right workflow
+- **Match the user's tech stack** — don't output Tailwind HTML to someone using React + styled-components. Detect the framework and output code in their format
+- **Always generate Design Review Notes** (Step 4 in CONSULT.md) — a structured markdown document with issues found, design decisions, tokens, and an implementation checklist. This is the primary deliverable
+- **Enumerate templates from `docs/presets/index.json`** — the machine-readable source of truth for every available preset and its personality variants. `docs/index.html` is a live preview tool (GitHub Pages); its `#preset:{element}/{personality}` URLs are for HUMAN preview only — headless agents can't open them, so read the preset HTML files directly instead.
+</file>
+
 <file path="docs/presets/_index.md">
 # Preset & Component Library
 
@@ -12840,124 +12958,6 @@ All presets are:
 - **Dark mode** via `dark:` classes
 - **WCAG AA** contrast, 44px touch targets, semantic HTML
 - **Realistic content** (not lorem ipsum)
-</file>
-
-<file path="docs/llms.txt">
-# make-it-look-good
-
-> Evidence-based design knowledge base for LLMs. Concrete UI/UX guidance with hard numbers.
-
-This repo helps AI assistants make better UI/UX decisions by providing specific design rules, copy-paste component snippets, and a structured consultation workflow.
-
-## Start Here
-
-- [CONSULT.md](https://github.com/jdeworks/make-it-look-good/blob/dev/CONSULT.md): Full design consultation playbook — intake, audit, code generation, design review
-- To enumerate ALL available templates, read [docs/presets/index.json](https://github.com/jdeworks/make-it-look-good/blob/dev/docs/presets/index.json) (machine-readable source of truth).
-- [docs/presets/_index.md](https://github.com/jdeworks/make-it-look-good/blob/dev/docs/presets/_index.md): HTML+Tailwind presets with personality variants and React/Vue/Svelte framework files
-- [workflows/quick-reference.md](https://github.com/jdeworks/make-it-look-good/blob/dev/workflows/quick-reference.md): Critical design numbers (contrast ratios, spacing, timing)
-
-## Knowledge Files
-
-- [Color: Contrast & Accessibility](https://github.com/jdeworks/make-it-look-good/blob/dev/color/contrast-and-accessibility.md): 4.5:1 text, 3:1 large text (WCAG AA)
-- [Layout: Spacing System](https://github.com/jdeworks/make-it-look-good/blob/dev/layout/spacing-system.md): 4px/8px base unit, consistent scale
-- [Typography: Type Scale](https://github.com/jdeworks/make-it-look-good/blob/dev/typography/type-scale.md): Modular scale 1.200-1.333, 16px body minimum
-- [Components: Buttons](https://github.com/jdeworks/make-it-look-good/blob/dev/components/buttons.md): 3 emphasis levels, 44x44px touch targets
-- [Components: Forms](https://github.com/jdeworks/make-it-look-good/blob/dev/components/forms.md): Single column, labels above, 5-7 fields per step
-- [Components: Navigation](https://github.com/jdeworks/make-it-look-good/blob/dev/components/navigation.md): 5-7 items max, bottom nav on mobile
-
-## Preview Tool
-
-- [Live Preview](https://jdeworks.github.io/make-it-look-good/): Paste HTML+Tailwind, see it rendered with mobile/tablet/desktop views
-</file>
-
-<file path="AGENTS.md">
-# AGENTS.md — make-it-look-good
-
-This repo is a design knowledge base. You are here to help a user with UI/UX design decisions.
-
-## ⚡ If you are using this repo to improve a USER's UI/site (most common)
-A user wants you to improve THEIR project, using this repo as a design knowledge base. Do this:
-1. Read `CONSULT.md` and follow its steps in order (input classification → audit → knowledge files → preset → generate → Design Review Notes).
-2. Start from a preset. Enumerate available templates by reading `docs/presets/index.json` — the machine-readable source of truth. Customize a preset; do NOT generate components from scratch.
-3. Read the actual preset source from `docs/presets/<element>/<variant>.html` or the raw GitHub URL. `#preset:` preview URLs are for humans, not source retrieval.
-4. Always produce Design Review Notes (CONSULT.md Step 4) — the primary deliverable.
-5. Match the user's stack. Default to HTML + Tailwind only when the stack is unknown; for React/Vue/Svelte/Angular, convert from the preset or use a framework variant when present.
-6. Do NOT edit or "improve" THIS repo. Apply all changes to the USER's project.
-
-## 🔧 If you are MAINTAINING this repo
-See `MAINTAINING.md`.
-
-## How to Use
-
-1. **Design consultation** → Read `CONSULT.md` and follow the steps in order
-2. **Need a component** → Read `docs/presets/index.json` (machine-readable source of truth for all templates), then `docs/presets/_index.md` for composition recipes
-3. **Quick number lookup** → Read `workflows/quick-reference.md`
-4. **Specific topic** → Read only the relevant file from the list below (each is 200-400 lines, self-contained)
-
-## Critical Rules
-
-- **Match the user's tech stack** — detect React/Vue/Svelte/plain HTML and output in their format
-- **Read only what's needed** — don't load the entire repo, pick the 2-4 files relevant to the task
-- **Use presets as starting points** — enumerate available templates from `docs/presets/index.json` (the authoritative list); when a relevant preset exists, customize it rather than generating from scratch. The `#preset:` GitHub Pages preview URLs are human-preview-only — headless agents can't open them, so read the preset HTML files directly
-- **Always generate Design Review Notes** (Step 4 in CONSULT.md) — structured markdown with issues, decisions, tokens, and checklist
-- **Bundle users must fetch presets separately** — `bundle.xml` includes the playbook, knowledge files, and `docs/presets/index.json`, but not the preset HTML. Fetch needed files from `https://raw.githubusercontent.com/jdeworks/make-it-look-good/dev/docs/presets/<element>/<variant>.html`
-- **Preview mode matters** — hosted preview is for visual inspection, local preview/analyzer is for localhost/offline work, and headless validation runs through `node scripts/test-presets-headless.mjs` after installing a browser with `npx puppeteer browsers install chrome` or `npx playwright install chromium`
-
-## File Map
-
-- `CONSULT.md` — Full consultation playbook (start here for any design task)
-- `docs/presets/index.json` — Machine-readable source of truth: every available template + personality variants (enumerate from here)
-- `docs/presets/_index.md` — Human-readable preset catalog with composition recipes
-- `docs/presets/FRAMEWORKS.md` — React/Vue/Svelte/Angular conversion guide
-- `workflows/quick-reference.md` — Critical design numbers cheat sheet
-- `workflows/new-project-checklist.md` — New project setup guide
-- `workflows/design-review-checklist.md` — Design audit checklist
-- `foundations/` — Cognitive load, Gestalt, Hick's Law, Fitts's Law
-- `color/` — Contrast, color systems, color-blind safety
-- `typography/` — Type scale, readability, font pairing, web font loading
-- `layout/` — Spacing system, visual hierarchy, grids, whitespace
-- `interaction/` — Animation timing, touch targets, loading states
-- `responsive/` — Mobile-first, breakpoints, fluid typography, patterns
-- `systems/` — Design tokens, Material Design 3, Apple HIG
-- `heuristics/` — Nielsen's 10, UX frameworks (HEART, Honeycomb)
-- `components/` — Buttons, forms, cards, navigation, modals, tables, feedback
-</file>
-
-<file path="CLAUDE.md">
-# CLAUDE.md — make-it-look-good
-
-## ⚡ If you are using this repo to improve a USER's UI/site (most common)
-A user wants you to improve THEIR project, using this repo as a design knowledge base. Do this:
-1. Read `CONSULT.md` and follow its steps in order (input classification → audit → knowledge files → preset → generate → Design Review Notes).
-2. Start from a preset. Enumerate available templates by reading `docs/presets/index.json` — the machine-readable source of truth. Customize a preset; do NOT generate components from scratch.
-3. Always produce Design Review Notes (CONSULT.md Step 4) — the primary deliverable.
-4. Match the user's stack. Default to HTML + Tailwind only when the stack is unknown.
-5. Do NOT edit or "improve" THIS repo. Apply all changes to the USER's project.
-
-## 🔧 If you are MAINTAINING this repo
-See `MAINTAINING.md`.
-
-## Quick Start
-- **Design consultation** → Read `CONSULT.md` and follow the steps
-- **Need a component** → Read `docs/presets/index.json` (machine-readable source of truth for all available templates), then `docs/presets/_index.md` for composition recipes
-- **Quick number lookup** → Read `workflows/quick-reference.md`
-- **Read only what's needed** — each knowledge file is self-contained (~200-400 lines)
-
-## Purpose
-This repo is a **design knowledge base for LLMs**. When an LLM needs to make UI/UX decisions, it reads files from this repo to get concrete, evidence-based guidance with hard numbers.
-
-## CSS Framework
-All presets and examples use **[Tailwind CSS](https://tailwindcss.com)** as the default styling framework. When the user's stack is unknown, output Tailwind classes. For the preview tool, Tailwind v4 is loaded via CDN (`@tailwindcss/browser@4`). Match the user's stack if they use something else — see CONSULT.md Step 0.
-
-## Maintainer Reference
-See `MAINTAINING.md` for file-format conventions, directory structure, and maintenance rules.
-
-## Design Consultation Workflow
-- **`CONSULT.md`** is the LLM consultation playbook — read it to run an interactive design consultation
-- **Step 0 in CONSULT.md classifies the input** — existing code (any framework), screenshot, vague idea, or raw data — and routes to the right workflow
-- **Match the user's tech stack** — don't output Tailwind HTML to someone using React + styled-components. Detect the framework and output code in their format
-- **Always generate Design Review Notes** (Step 4 in CONSULT.md) — a structured markdown document with issues found, design decisions, tokens, and an implementation checklist. This is the primary deliverable
-- **Enumerate templates from `docs/presets/index.json`** — the machine-readable source of truth for every available preset and its personality variants. `docs/index.html` is a live preview tool (GitHub Pages); its `#preset:{element}/{personality}` URLs are for HUMAN preview only — headless agents can't open them, so read the preset HTML files directly instead.
 </file>
 
 <file path="CONSULT.md">
