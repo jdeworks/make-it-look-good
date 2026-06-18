@@ -5,218 +5,310 @@
       --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
     }
   </style>
-<div class="dark min-h-screen bg-slate-900">
+<style>
+  .deploy-shell,
+  .deploy-header {
+    background: #101827 !important;
+    color: #e6edf7;
+  }
+  .deploy-header {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+  .deploy-surface {
+    background: #121b2d !important;
+    border-color: #26354a !important;
+  }
+  .deploy-subtle-surface {
+    background: #182338 !important;
+    border-color: #2e4058 !important;
+  }
+  .deploy-alert {
+    background: #382819 !important;
+    border-color: #8a5b20 !important;
+  }
+  .deploy-row-warn {
+    background: #241f18 !important;
+  }
+  .deploy-row-danger {
+    background: #2a1b22 !important;
+  }
+  .deploy-table td,
+  .deploy-table th,
+  .deploy-table p,
+  .deploy-table span,
+  .deploy-text,
+  .deploy-muted,
+  .deploy-dim,
+  .deploy-chip,
+  .deploy-status {
+    opacity: 1 !important;
+  }
+  .deploy-text {
+    color: #e6edf7 !important;
+  }
+  .deploy-muted {
+    color: #c8d2df !important;
+  }
+  .deploy-dim {
+    color: #aebacc !important;
+  }
+  .deploy-accent {
+    color: #7db3ff !important;
+  }
+  .deploy-success {
+    color: #62e0ad !important;
+  }
+  .deploy-warning {
+    color: #ffd166 !important;
+  }
+  .deploy-danger {
+    color: #ff8a8a !important;
+  }
+  .deploy-icon-accent {
+    background: #13233d !important;
+    border-color: #315f9d !important;
+    color: #7db3ff !important;
+  }
+  .deploy-chip {
+    background: #182338 !important;
+    border-color: #33465f !important;
+    color: #d7e1ee !important;
+  }
+  .deploy-chip-success {
+    background: #102b25 !important;
+    border-color: #24785e !important;
+    color: #8cf0c5 !important;
+  }
+  .deploy-chip-warning {
+    background: #3b2916 !important;
+    border-color: #9f6d22 !important;
+    color: #ffd98a !important;
+  }
+  .deploy-chip-danger {
+    background: #3a1d25 !important;
+    border-color: #9b3d4d !important;
+    color: #ffadad !important;
+  }
+  .deploy-meter {
+    background: #2e4058 !important;
+  }
+  .deploy-meter-fill {
+    background: #5e9eff !important;
+  }
+</style>
+<div class="dark deploy-shell min-h-screen">
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">
 
     <!-- Header -->
-    <header class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    <header class="deploy-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
       <div class="flex items-center gap-3">
-        <div class="flex items-center justify-center w-9 h-9 rounded-lg bg-blue-600/20 border border-blue-500/30">
-          <svg class="w-5 h-5 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        <div class="deploy-icon-accent flex items-center justify-center w-9 h-9 rounded-lg border">
+          <svg class="w-5 h-5 deploy-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
         </div>
-        <h1 class="text-xl sm:text-2xl font-bold text-white tracking-tight">Deploy Manager</h1>
-        <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-mono font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">production</span>
+        <h1 class="text-xl sm:text-2xl font-bold deploy-text tracking-tight">Deploy Manager</h1>
+        <span class="deploy-chip deploy-chip-success inline-flex items-center px-2.5 py-1 rounded-full text-xs font-mono font-medium border">production</span>
       </div>
-      <p class="text-sm text-slate-400">Static snapshot</p>
+      <p class="text-sm deploy-muted">Static snapshot</p>
     </header>
 <main>
 
     <!-- Alert Banner -->
-    <div role="alert" class="flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-900/40 border border-amber-500/30">
-      <svg class="w-5 h-5 text-amber-400 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    <div role="alert" class="deploy-alert flex items-start gap-3 px-4 py-3 rounded-xl border">
+      <svg class="w-5 h-5 deploy-warning mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
       <div>
-        <p class="text-sm font-semibold text-amber-100">Version Drift Detected</p>
-        <p class="text-sm text-amber-200/80 mt-0.5"><span class="font-mono">scheduler</span> is running <span class="font-mono font-medium text-amber-100">v2.13.0</span> &mdash; expected <span class="font-mono font-medium text-amber-100">v2.14.3</span>. Consider redeploying.</p>
+        <p class="text-sm font-semibold deploy-text">Version Drift Detected</p>
+        <p class="text-sm deploy-muted mt-0.5"><span class="font-mono">scheduler</span> is running <span class="font-mono font-medium deploy-text">v2.13.0</span> &mdash; expected <span class="font-mono font-medium deploy-text">v2.14.3</span>. Consider redeploying.</p>
       </div>
     </div>
 
     <!-- Stat Cards -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
       <!-- Total Services -->
-      <div class="bg-slate-900 rounded-xl border border-slate-800 p-5">
-        <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Total Services</p>
-        <p class="text-3xl font-bold text-white leading-tight">5</p>
-        <p class="text-sm text-slate-400 mt-1">across production</p>
+      <div class="deploy-surface rounded-xl border p-5">
+        <p class="text-xs font-semibold uppercase tracking-wider deploy-dim mb-1">Total Services</p>
+        <p class="text-3xl font-bold deploy-text leading-tight">5</p>
+        <p class="text-sm deploy-muted mt-1">across production</p>
       </div>
       <!-- Running -->
-      <div class="bg-slate-900 rounded-xl border border-slate-800 p-5">
-        <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Running</p>
+      <div class="deploy-surface rounded-xl border p-5">
+        <p class="text-xs font-semibold uppercase tracking-wider deploy-dim mb-1">Running</p>
         <div class="flex items-baseline gap-2">
-          <p class="text-3xl font-bold text-emerald-400 leading-tight">3</p>
-          <p class="text-sm text-slate-400">/ 5</p>
+          <p class="text-3xl font-bold deploy-success leading-tight">3</p>
+          <p class="text-sm deploy-muted">/ 5</p>
         </div>
-        <p class="text-sm text-slate-400 mt-1 flex items-center gap-1.5">
-          <span class="inline-block w-2 h-2 rounded-full bg-amber-500"></span>
+        <p class="text-sm deploy-muted mt-1 flex items-center gap-1.5">
+          <span class="inline-block w-2 h-2 rounded-full bg-[#ffd166]"></span>
           1 stale
-          <span class="mx-1 text-slate-700">&middot;</span>
-          <span class="inline-block w-2 h-2 rounded-full bg-red-500"></span>
+          <span class="mx-1 deploy-dim">&middot;</span>
+          <span class="inline-block w-2 h-2 rounded-full bg-[#ff8a8a]"></span>
           1 stopped
         </p>
       </div>
       <!-- Last Deploy -->
-      <div class="bg-slate-900 rounded-xl border border-slate-800 p-5">
-        <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Last Deploy</p>
-        <p class="text-lg font-semibold text-white leading-tight font-mono">09:42 UTC</p>
-        <p class="text-sm text-slate-400 mt-1">2026-03-17 by sarah@acme.com</p>
+      <div class="deploy-surface rounded-xl border p-5">
+        <p class="text-xs font-semibold uppercase tracking-wider deploy-dim mb-1">Last Deploy</p>
+        <p class="text-lg font-semibold deploy-text leading-tight font-mono">09:42 UTC</p>
+        <p class="text-sm deploy-muted mt-1">2026-03-17 by sarah@acme.com</p>
       </div>
       <!-- Next Scheduled -->
-      <div class="bg-slate-900 rounded-xl border border-slate-800 p-5">
-        <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Next Scheduled</p>
-        <p class="text-lg font-semibold text-white leading-tight font-mono">02:00 UTC</p>
-        <p class="text-sm text-slate-400 mt-1">2026-03-18 (maintenance window)</p>
+      <div class="deploy-surface rounded-xl border p-5">
+        <p class="text-xs font-semibold uppercase tracking-wider deploy-dim mb-1">Next Scheduled</p>
+        <p class="text-lg font-semibold deploy-text leading-tight font-mono">02:00 UTC</p>
+        <p class="text-sm deploy-muted mt-1">2026-03-18 (maintenance window)</p>
       </div>
     </div>
 
     <!-- Services Table -->
-    <div class="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden">
-      <div class="px-5 py-4 border-b border-slate-800">
-        <h2 class="text-base font-semibold text-white">Services</h2>
+    <div class="deploy-surface rounded-xl border overflow-hidden">
+      <div class="px-5 py-4 border-b border-[#26354a]">
+        <h2 class="text-base font-semibold deploy-text">Services</h2>
       </div>
       <div class="overflow-x-auto">
-        <table class="w-full text-sm">
+        <table class="deploy-table w-full text-sm">
           <thead>
-            <tr class="bg-slate-800/50 border-b border-slate-800">
-              <th scope="col" class="text-left text-xs font-semibold uppercase tracking-wider text-slate-400 px-5 h-11">Service</th>
-              <th scope="col" class="text-left text-xs font-semibold uppercase tracking-wider text-slate-400 px-5 h-11">Version</th>
-              <th scope="col" class="text-left text-xs font-semibold uppercase tracking-wider text-slate-400 px-5 h-11">Status</th>
-              <th scope="col" class="text-left text-xs font-semibold uppercase tracking-wider text-slate-400 px-5 h-11 min-w-[180px]">CPU</th>
-              <th scope="col" class="text-left text-xs font-semibold uppercase tracking-wider text-slate-400 px-5 h-11">Memory</th>
+            <tr class="deploy-subtle-surface border-b">
+              <th scope="col" class="text-left text-xs font-semibold uppercase tracking-wider deploy-dim px-5 h-11">Service</th>
+              <th scope="col" class="text-left text-xs font-semibold uppercase tracking-wider deploy-dim px-5 h-11">Version</th>
+              <th scope="col" class="text-left text-xs font-semibold uppercase tracking-wider deploy-dim px-5 h-11">Status</th>
+              <th scope="col" class="text-left text-xs font-semibold uppercase tracking-wider deploy-dim px-5 h-11 min-w-[180px]">CPU</th>
+              <th scope="col" class="text-left text-xs font-semibold uppercase tracking-wider deploy-dim px-5 h-11">Memory</th>
             </tr>
           </thead>
-          <tbody class="divide-y divide-slate-800/60">
+          <tbody class="divide-y divide-[#26354a]">
 
             <!-- web-frontend -->
-            <tr class="hover:bg-slate-800/30 transition-colors">
+            <tr class="hover:bg-[#182338] transition-colors">
               <td class="px-5 py-4 whitespace-nowrap">
-                <span class="font-mono font-medium text-slate-100">web-frontend</span>
+                <span class="font-mono font-medium deploy-text">web-frontend</span>
               </td>
               <td class="px-5 py-4 whitespace-nowrap">
-                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-mono bg-slate-800 text-slate-300 border border-slate-700">v2.14.3</span>
+                <span class="deploy-chip inline-flex items-center px-2 py-0.5 rounded-md text-xs font-mono border">v2.14.3</span>
               </td>
               <td class="px-5 py-4 whitespace-nowrap">
-                <span class="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
+                <span class="deploy-status deploy-success inline-flex items-center gap-1.5 text-xs font-semibold">
                   <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                   RUNNING
                 </span>
               </td>
               <td class="px-5 py-4 whitespace-nowrap">
                 <div class="flex items-center gap-3">
-                  <div class="w-24 h-2 bg-slate-700 rounded-full overflow-hidden" role="img" aria-label="CPU usage 23%">
-                    <div class="h-full bg-blue-500 rounded-full" style="width: 23%"></div>
+                  <div class="deploy-meter w-24 h-2 rounded-full overflow-hidden" role="img" aria-label="CPU usage 23%">
+                    <div class="deploy-meter-fill h-full rounded-full" style="width: 23%"></div>
                   </div>
-                  <span class="font-mono text-sm text-slate-300">23%</span>
+                  <span class="font-mono text-sm deploy-muted">23%</span>
                 </div>
               </td>
               <td class="px-5 py-4 whitespace-nowrap">
-                <span class="font-mono text-sm text-slate-300">412 MB</span>
+                <span class="font-mono text-sm deploy-muted">412 MB</span>
               </td>
             </tr>
 
             <!-- api-server -->
-            <tr class="hover:bg-slate-800/30 transition-colors">
+            <tr class="hover:bg-[#182338] transition-colors">
               <td class="px-5 py-4 whitespace-nowrap">
-                <span class="font-mono font-medium text-slate-100">api-server</span>
+                <span class="font-mono font-medium deploy-text">api-server</span>
               </td>
               <td class="px-5 py-4 whitespace-nowrap">
-                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-mono bg-slate-800 text-slate-300 border border-slate-700">v2.14.1</span>
+                <span class="deploy-chip inline-flex items-center px-2 py-0.5 rounded-md text-xs font-mono border">v2.14.1</span>
               </td>
               <td class="px-5 py-4 whitespace-nowrap">
-                <span class="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
+                <span class="deploy-status deploy-success inline-flex items-center gap-1.5 text-xs font-semibold">
                   <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                   RUNNING
                 </span>
               </td>
               <td class="px-5 py-4 whitespace-nowrap">
                 <div class="flex items-center gap-3">
-                  <div class="w-24 h-2 bg-slate-700 rounded-full overflow-hidden" role="img" aria-label="CPU usage 67%">
-                    <div class="h-full bg-blue-500 rounded-full" style="width: 67%"></div>
+                  <div class="deploy-meter w-24 h-2 rounded-full overflow-hidden" role="img" aria-label="CPU usage 67%">
+                    <div class="deploy-meter-fill h-full rounded-full" style="width: 67%"></div>
                   </div>
-                  <span class="font-mono text-sm text-slate-300">67%</span>
+                  <span class="font-mono text-sm deploy-muted">67%</span>
                 </div>
               </td>
               <td class="px-5 py-4 whitespace-nowrap">
-                <span class="font-mono text-sm text-slate-300">1.2 GB</span>
+                <span class="font-mono text-sm deploy-muted">1.2 GB</span>
               </td>
             </tr>
 
             <!-- worker -->
-            <tr class="hover:bg-slate-800/30 transition-colors">
+            <tr class="hover:bg-[#182338] transition-colors">
               <td class="px-5 py-4 whitespace-nowrap">
-                <span class="font-mono font-medium text-slate-100">worker</span>
+                <span class="font-mono font-medium deploy-text">worker</span>
               </td>
               <td class="px-5 py-4 whitespace-nowrap">
-                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-mono bg-slate-800 text-slate-300 border border-slate-700">v2.14.3</span>
+                <span class="deploy-chip inline-flex items-center px-2 py-0.5 rounded-md text-xs font-mono border">v2.14.3</span>
               </td>
               <td class="px-5 py-4 whitespace-nowrap">
-                <span class="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
+                <span class="deploy-status deploy-success inline-flex items-center gap-1.5 text-xs font-semibold">
                   <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                   RUNNING
                 </span>
               </td>
               <td class="px-5 py-4 whitespace-nowrap">
                 <div class="flex items-center gap-3">
-                  <div class="w-24 h-2 bg-slate-700 rounded-full overflow-hidden" role="img" aria-label="CPU usage 45%">
-                    <div class="h-full bg-blue-500 rounded-full" style="width: 45%"></div>
+                  <div class="deploy-meter w-24 h-2 rounded-full overflow-hidden" role="img" aria-label="CPU usage 45%">
+                    <div class="deploy-meter-fill h-full rounded-full" style="width: 45%"></div>
                   </div>
-                  <span class="font-mono text-sm text-slate-300">45%</span>
+                  <span class="font-mono text-sm deploy-muted">45%</span>
                 </div>
               </td>
               <td class="px-5 py-4 whitespace-nowrap">
-                <span class="font-mono text-sm text-slate-300">890 MB</span>
+                <span class="font-mono text-sm deploy-muted">890 MB</span>
               </td>
             </tr>
 
             <!-- scheduler (STALE) -->
-            <tr class="hover:bg-slate-800/30 transition-colors bg-amber-500/[0.03]">
+            <tr class="deploy-row-warn hover:bg-[#2f2619] transition-colors">
               <td class="px-5 py-4 whitespace-nowrap">
-                <span class="font-mono font-medium text-slate-100">scheduler</span>
+                <span class="font-mono font-medium deploy-text">scheduler</span>
               </td>
               <td class="px-5 py-4 whitespace-nowrap">
-                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-mono bg-amber-500/10 text-amber-300 border border-amber-500/20">v2.13.0</span>
+                <span class="deploy-chip deploy-chip-warning inline-flex items-center px-2 py-0.5 rounded-md text-xs font-mono border">v2.13.0</span>
               </td>
               <td class="px-5 py-4 whitespace-nowrap">
-                <span class="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-400">
+                <span class="deploy-status deploy-warning inline-flex items-center gap-1.5 text-xs font-semibold">
                   <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                   STALE
                 </span>
               </td>
               <td class="px-5 py-4 whitespace-nowrap">
                 <div class="flex items-center gap-3">
-                  <div class="w-24 h-2 bg-slate-700 rounded-full overflow-hidden" role="img" aria-label="CPU usage 12%">
-                    <div class="h-full bg-blue-500 rounded-full" style="width: 12%"></div>
+                  <div class="deploy-meter w-24 h-2 rounded-full overflow-hidden" role="img" aria-label="CPU usage 12%">
+                    <div class="deploy-meter-fill h-full rounded-full" style="width: 12%"></div>
                   </div>
-                  <span class="font-mono text-sm text-slate-300">12%</span>
+                  <span class="font-mono text-sm deploy-muted">12%</span>
                 </div>
               </td>
               <td class="px-5 py-4 whitespace-nowrap">
-                <span class="font-mono text-sm text-slate-300">256 MB</span>
+                <span class="font-mono text-sm deploy-muted">256 MB</span>
               </td>
             </tr>
 
             <!-- ml-pipeline (STOPPED) -->
-            <tr class="hover:bg-slate-800/30 transition-colors bg-red-500/[0.03]">
+            <tr class="deploy-row-danger hover:bg-[#351f29] transition-colors">
               <td class="px-5 py-4 whitespace-nowrap">
-                <span class="font-mono font-medium text-slate-100">ml-pipeline</span>
+                <span class="font-mono font-medium deploy-text">ml-pipeline</span>
               </td>
               <td class="px-5 py-4 whitespace-nowrap">
-                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-mono bg-red-500/10 text-red-300 border border-red-500/20">v1.8.2</span>
+                <span class="deploy-chip deploy-chip-danger inline-flex items-center px-2 py-0.5 rounded-md text-xs font-mono border">v1.8.2</span>
               </td>
               <td class="px-5 py-4 whitespace-nowrap">
-                <span class="inline-flex items-center gap-1.5 text-xs font-semibold text-red-400">
+                <span class="deploy-status deploy-danger inline-flex items-center gap-1.5 text-xs font-semibold">
                   <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
                   STOPPED
                 </span>
               </td>
               <td class="px-5 py-4 whitespace-nowrap">
                 <div class="flex items-center gap-3">
-                  <div class="w-24 h-2 bg-slate-700 rounded-full overflow-hidden" role="img" aria-label="CPU usage 0%">
-                    <div class="h-full bg-blue-500 rounded-full" style="width: 0%"></div>
+                  <div class="deploy-meter w-24 h-2 rounded-full overflow-hidden" role="img" aria-label="CPU usage 0%">
+                    <div class="deploy-meter-fill h-full rounded-full" style="width: 0%"></div>
                   </div>
-                  <span class="font-mono text-sm text-slate-400">0%</span>
+                  <span class="font-mono text-sm deploy-muted">0%</span>
                 </div>
               </td>
               <td class="px-5 py-4 whitespace-nowrap">
-                <span class="font-mono text-sm text-slate-400">0 MB</span>
+                <span class="font-mono text-sm deploy-muted">0 MB</span>
               </td>
             </tr>
 
@@ -227,12 +319,12 @@
 
     <!-- Metadata Footer -->
     </main>
-<footer class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2 pb-4 text-sm text-slate-400">
+<footer class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2 pb-4 text-sm deploy-muted">
       <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4">
-        <p>Last deploy: <span class="text-slate-300 font-mono">2026-03-17 09:42:13 UTC</span> by <span class="text-slate-300">sarah@acme.com</span></p>
+        <p>Last deploy: <span class="deploy-text font-mono">2026-03-17 09:42:13 UTC</span> by <span class="deploy-text">sarah@acme.com</span></p>
       </div>
       <div>
-        <p>Next scheduled: <span class="text-slate-300 font-mono">2026-03-18 02:00:00 UTC</span> <span class="text-slate-400">(maintenance window)</span></p>
+        <p>Next scheduled: <span class="deploy-text font-mono">2026-03-18 02:00:00 UTC</span> <span class="deploy-muted">(maintenance window)</span></p>
       </div>
     </footer>
 

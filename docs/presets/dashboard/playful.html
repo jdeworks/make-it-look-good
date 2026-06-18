@@ -11,26 +11,44 @@
   .dark .card-conv { box-shadow: 0 8px 24px rgba(20,184,166,0.25); }
   .bounce-card { transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease; }
   .bounce-card:hover { transform: translateY(-6px) scale(1.02); }
+  @media (prefers-reduced-motion: reduce) {
+    .bounce-card { transition: none; }
+    .bounce-card:hover { transform: none; }
+  }
+  @media (max-width: 639px) {
+    .orders-table thead { display: none; }
+    .orders-table,
+    .orders-table tbody,
+    .orders-table tr,
+    .orders-table td { display: block; width: 100%; }
+    .orders-table tr { padding: 12px; border-radius: 16px; }
+    .orders-table tr + tr { margin-top: 8px; }
+    .orders-table td { padding: 2px 4px; }
+    .orders-table td + td { margin-top: 8px; }
+    .orders-table td[data-label] { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .orders-table td[data-label]::before { content: attr(data-label); color: rgb(71, 85, 105); font-size: 0.75rem; font-weight: 400; }
+    .dark .orders-table td[data-label]::before { color: rgb(203, 213, 225); }
+  }
 </style>
 
 <div class="min-h-screen bg-rose-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
 
   <!-- Mobile header -->
-  <div class="lg:hidden flex items-center justify-between px-4 h-14 bg-white dark:bg-slate-900 border-b border-rose-100 dark:border-slate-800">
+  <div class="lg:hidden sticky top-0 z-20 flex items-center justify-between px-4 h-14 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shadow-sm">
     <span class="text-base font-bold tracking-tight">AppName</span>
-    <button onclick="document.getElementById('playSidebar').classList.toggle('-translate-x-full')" class="min-h-11 min-w-11 flex items-center justify-center rounded-xl text-slate-500 hover:bg-rose-100 dark:hover:bg-slate-800 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500" aria-label="Toggle menu">
+    <button onclick="document.getElementById('playSidebar').classList.toggle('hidden')" class="min-h-11 min-w-11 flex items-center justify-center rounded-xl text-slate-700 dark:text-slate-200 hover:bg-rose-100 dark:hover:bg-slate-800 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500" aria-label="Toggle menu">
       <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
     </button>
   </div>
 
   <div class="flex">
     <!-- Sidebar -->
-    <aside id="playSidebar" class="fixed inset-y-0 left-0 w-[220px] bg-white dark:bg-slate-900 border-r border-rose-100 dark:border-slate-800 flex flex-col z-30 transition-transform -translate-x-full lg:translate-x-0">
-      <div class="h-14 flex items-center px-5 border-b border-rose-100 dark:border-slate-800">
+    <aside id="playSidebar" class="hidden lg:flex fixed lg:sticky inset-y-0 lg:inset-auto lg:top-0 left-0 h-screen w-[220px] shrink-0 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex-col z-30">
+      <div class="h-14 flex items-center px-5 border-b border-slate-200 dark:border-slate-800">
         <span class="text-base font-bold tracking-tight">AppName</span>
       </div>
       <nav class="flex-1 py-4 px-3" aria-label="Main navigation">
-        <a href="#" class="flex items-center gap-3 px-3 py-3 text-sm font-semibold bg-rose-500 text-white rounded-xl min-h-11 mb-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500" aria-current="page">
+        <a href="#" class="flex items-center gap-3 px-3 py-3 text-sm font-semibold bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-950 rounded-xl min-h-11 mb-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500" aria-current="page">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0h4"/></svg>
           Dashboard
         </a>
@@ -59,87 +77,89 @@
     </aside>
 
     <!-- Main -->
-    <main class="flex-1 lg:ml-[220px] p-4 sm:p-6 lg:p-8 min-w-0">
-      <h1 class="text-2xl sm:text-3xl font-bold mb-6">Dashboard</h1>
+    <main class="flex-1 w-full max-w-[1500px] p-4 sm:p-6 lg:p-8 min-w-0">
+      <div class="max-w-7xl mx-auto">
+      <h1 class="text-3xl sm:text-4xl font-bold mb-6">Dashboard</h1>
 
       <!-- Stat cards with colorful shadows -->
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 card-revenue bounce-card">
-          <div class="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Revenue</div>
+          <div class="text-xs text-slate-600 dark:text-slate-300 mb-1">Revenue</div>
           <div class="text-2xl font-bold tabular-nums">$24,500</div>
-          <div class="text-xs text-rose-600 dark:text-rose-400 font-medium mt-1">+12% this month</div>
+          <div class="text-xs text-rose-700 dark:text-rose-300 font-semibold mt-1">+12% this month</div>
         </div>
         <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 card-users bounce-card">
-          <div class="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Users</div>
+          <div class="text-xs text-slate-600 dark:text-slate-300 mb-1">Users</div>
           <div class="text-2xl font-bold tabular-nums">1,240</div>
-          <div class="text-xs text-blue-600 dark:text-blue-400 font-medium mt-1">+8% this week</div>
+          <div class="text-xs text-blue-700 dark:text-blue-300 font-semibold mt-1">+8% this week</div>
         </div>
         <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 card-orders bounce-card">
-          <div class="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Orders</div>
+          <div class="text-xs text-slate-600 dark:text-slate-300 mb-1">Orders</div>
           <div class="text-2xl font-bold tabular-nums">356</div>
-          <div class="text-xs text-purple-700 dark:text-purple-400 font-medium mt-1">+5% today</div>
+          <div class="text-xs text-purple-700 dark:text-purple-300 font-semibold mt-1">+5% today</div>
         </div>
         <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 card-conv bounce-card">
-          <div class="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Conversion</div>
+          <div class="text-xs text-slate-600 dark:text-slate-300 mb-1">Conversion</div>
           <div class="text-2xl font-bold tabular-nums">3.2%</div>
-          <div class="text-xs text-teal-700 dark:text-teal-400 font-medium mt-1">+0.4% this week</div>
+          <div class="text-xs text-teal-700 dark:text-teal-300 font-semibold mt-1">+0.4% this week</div>
         </div>
       </div>
 
       <!-- Table with rounded hover rows -->
       <section class="bg-white dark:bg-slate-900 rounded-2xl p-5 sm:p-6">
         <h2 class="text-base font-bold mb-4">Recent Orders</h2>
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm sm:min-w-[500px]">
+        <div>
+          <table class="orders-table w-full text-sm">
             <thead>
               <tr>
-                <th scope="col" class="text-left pb-3 text-xs font-medium text-slate-600 dark:text-slate-400">Order</th>
-                <th scope="col" class="text-left pb-3 text-xs font-medium text-slate-600 dark:text-slate-400">Customer</th>
-                <th scope="col" class="text-right pb-3 text-xs font-medium text-slate-600 dark:text-slate-400">Amount</th>
-                <th scope="col" class="text-left pb-3 text-xs font-medium text-slate-600 dark:text-slate-400 pl-6">Status</th>
-                <th scope="col" class="text-left pb-3 text-xs font-medium text-slate-600 dark:text-slate-400">Date</th>
+                <th scope="col" class="text-left pb-3 text-xs text-slate-600 dark:text-slate-300">Order</th>
+                <th scope="col" class="text-left pb-3 text-xs text-slate-600 dark:text-slate-300">Customer</th>
+                <th scope="col" class="text-right pb-3 text-xs text-slate-600 dark:text-slate-300">Amount</th>
+                <th scope="col" class="text-left pb-3 text-xs text-slate-600 dark:text-slate-300 pl-6">Status</th>
+                <th scope="col" class="text-left pb-3 text-xs text-slate-600 dark:text-slate-300">Date</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody class="sm:divide-y sm:divide-slate-100 dark:sm:divide-slate-800">
               <tr class="hover:bg-rose-50 dark:hover:bg-slate-800 rounded-lg transition-colors">
-                <td class="px-2 py-3 rounded-l-lg font-medium">#1042</td>
-                <td class="px-2 py-3">Sarah Chen</td>
-                <td class="px-2 py-3 text-right tabular-nums font-medium">$240.00</td>
-                <td class="px-2 py-3 pl-6"><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">Completed</span></td>
-                <td class="px-2 py-3 rounded-r-lg text-slate-500 dark:text-slate-400">Mar 15</td>
+                <td data-label="Order" class="sm:px-3 sm:py-3 sm:rounded-l-lg font-semibold">#1042</td>
+                <td data-label="Customer" class="sm:px-3 sm:py-3">Sarah Chen</td>
+                <td data-label="Amount" class="sm:px-3 sm:py-3 sm:text-right tabular-nums font-semibold">$240.00</td>
+                <td data-label="Status" class="sm:px-3 sm:py-3 sm:pl-6"><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100">Completed</span></td>
+                <td data-label="Date" class="sm:px-3 sm:py-3 sm:rounded-r-lg text-slate-600 dark:text-slate-300">Mar 15</td>
               </tr>
               <tr class="hover:bg-rose-50 dark:hover:bg-slate-800 rounded-lg transition-colors">
-                <td class="px-2 py-3 rounded-l-lg font-medium">#1041</td>
-                <td class="px-2 py-3">James Wilson</td>
-                <td class="px-2 py-3 text-right tabular-nums font-medium">$125.50</td>
-                <td class="px-2 py-3 pl-6"><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400">Pending</span></td>
-                <td class="px-2 py-3 rounded-r-lg text-slate-500 dark:text-slate-400">Mar 15</td>
+                <td data-label="Order" class="sm:px-3 sm:py-3 sm:rounded-l-lg font-semibold">#1041</td>
+                <td data-label="Customer" class="sm:px-3 sm:py-3">James Wilson</td>
+                <td data-label="Amount" class="sm:px-3 sm:py-3 sm:text-right tabular-nums font-semibold">$125.50</td>
+                <td data-label="Status" class="sm:px-3 sm:py-3 sm:pl-6"><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100">Pending</span></td>
+                <td data-label="Date" class="sm:px-3 sm:py-3 sm:rounded-r-lg text-slate-600 dark:text-slate-300">Mar 15</td>
               </tr>
               <tr class="hover:bg-rose-50 dark:hover:bg-slate-800 rounded-lg transition-colors">
-                <td class="px-2 py-3 rounded-l-lg font-medium">#1040</td>
-                <td class="px-2 py-3">Maria Garcia</td>
-                <td class="px-2 py-3 text-right tabular-nums font-medium">$89.99</td>
-                <td class="px-2 py-3 pl-6"><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">Completed</span></td>
-                <td class="px-2 py-3 rounded-r-lg text-slate-500 dark:text-slate-400">Mar 14</td>
+                <td data-label="Order" class="sm:px-3 sm:py-3 sm:rounded-l-lg font-semibold">#1040</td>
+                <td data-label="Customer" class="sm:px-3 sm:py-3">Maria Garcia</td>
+                <td data-label="Amount" class="sm:px-3 sm:py-3 sm:text-right tabular-nums font-semibold">$89.99</td>
+                <td data-label="Status" class="sm:px-3 sm:py-3 sm:pl-6"><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100">Completed</span></td>
+                <td data-label="Date" class="sm:px-3 sm:py-3 sm:rounded-r-lg text-slate-600 dark:text-slate-300">Mar 14</td>
               </tr>
               <tr class="hover:bg-rose-50 dark:hover:bg-slate-800 rounded-lg transition-colors">
-                <td class="px-2 py-3 rounded-l-lg font-medium">#1039</td>
-                <td class="px-2 py-3">Alex Thompson</td>
-                <td class="px-2 py-3 text-right tabular-nums font-medium">$312.00</td>
-                <td class="px-2 py-3 pl-6"><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">Cancelled</span></td>
-                <td class="px-2 py-3 rounded-r-lg text-slate-500 dark:text-slate-400">Mar 14</td>
+                <td data-label="Order" class="sm:px-3 sm:py-3 sm:rounded-l-lg font-semibold">#1039</td>
+                <td data-label="Customer" class="sm:px-3 sm:py-3">Alex Thompson</td>
+                <td data-label="Amount" class="sm:px-3 sm:py-3 sm:text-right tabular-nums font-semibold">$312.00</td>
+                <td data-label="Status" class="sm:px-3 sm:py-3 sm:pl-6"><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100">Cancelled</span></td>
+                <td data-label="Date" class="sm:px-3 sm:py-3 sm:rounded-r-lg text-slate-600 dark:text-slate-300">Mar 14</td>
               </tr>
               <tr class="hover:bg-rose-50 dark:hover:bg-slate-800 rounded-lg transition-colors">
-                <td class="px-2 py-3 rounded-l-lg font-medium">#1038</td>
-                <td class="px-2 py-3">Priya Patel</td>
-                <td class="px-2 py-3 text-right tabular-nums font-medium">$67.25</td>
-                <td class="px-2 py-3 pl-6"><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">Completed</span></td>
-                <td class="px-2 py-3 rounded-r-lg text-slate-500 dark:text-slate-400">Mar 13</td>
+                <td data-label="Order" class="sm:px-3 sm:py-3 sm:rounded-l-lg font-semibold">#1038</td>
+                <td data-label="Customer" class="sm:px-3 sm:py-3">Priya Patel</td>
+                <td data-label="Amount" class="sm:px-3 sm:py-3 sm:text-right tabular-nums font-semibold">$67.25</td>
+                <td data-label="Status" class="sm:px-3 sm:py-3 sm:pl-6"><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100">Completed</span></td>
+                <td data-label="Date" class="sm:px-3 sm:py-3 sm:rounded-r-lg text-slate-600 dark:text-slate-300">Mar 13</td>
               </tr>
             </tbody>
           </table>
         </div>
       </section>
+      </div>
     </main>
   </div>
 </div>
