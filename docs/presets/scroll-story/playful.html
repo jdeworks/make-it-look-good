@@ -27,20 +27,21 @@
     animation: gradientShift 12s ease-in-out infinite;
   }
 
-  .blob {
-    position: absolute;
-    border-radius: 50%;
-    filter: blur(60px);
-    animation: blobFloat 8s ease-in-out infinite;
-    pointer-events: none;
-  }
+	  .blob {
+	    position: absolute;
+	    border-radius: 50%;
+	    filter: blur(60px);
+	    animation: blobFloat 8s ease-in-out infinite;
+	    pointer-events: none;
+	    display: none;
+	  }
 
   .scroll-reveal {
-    opacity: 0;
+    opacity: 0.12;
     transform: translateY(60px) scale(0.95);
     transition:
-      opacity 0.7s cubic-bezier(0.34, 1.56, 0.64, 1),
-      transform 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
+      opacity 480ms cubic-bezier(0.34, 1.56, 0.64, 1),
+      transform 480ms cubic-bezier(0.34, 1.56, 0.64, 1);
   }
   .scroll-reveal.revealed {
     opacity: 1;
@@ -50,12 +51,43 @@
   .scroll-reveal:nth-child(3) { transition-delay: 240ms; }
   .scroll-reveal:nth-child(4) { transition-delay: 360ms; }
 
-  .gradient-text {
-    color: #e11d48;
-    background: linear-gradient(135deg, #e11d48, #a855f7, #6366f1);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+	  .gradient-text {
+	    color: #111827 !important;
+	    background: none !important;
+	    -webkit-background-clip: initial;
+	    background-clip: initial;
+	  }
+	  .dark .gradient-text { color: #ffffff !important; }
+	  .scroll-story-ink { color: #111827 !important; }
+	  .scroll-story-muted { color: #334155 !important; }
+	  .scroll-story-primary {
+	    background: #881337 !important;
+	    color: #ffffff !important;
+	  }
+	  .scroll-story-primary:hover { background: #701a75 !important; }
+	  .scroll-story-page nav {
+	    background: #ffffff !important;
+	    -webkit-backdrop-filter: none !important;
+	    backdrop-filter: none !important;
+	    position: sticky !important;
+	  }
+	  .dark .scroll-story-ink { color: #ffffff !important; }
+	  .dark .scroll-story-muted { color: #e2e8f0 !important; }
+	  .dark .scroll-story-page nav { background: #020617 !important; }
+	  #scrollPlayMobile.hidden {
+	    display: none !important;
+	    height: 0 !important;
+	    overflow: hidden !important;
+	    width: 0 !important;
+	  }
+
+  .focus-ring:focus-visible {
+    outline: 2px solid #0f172a;
+    outline-offset: 4px;
+  }
+
+  .dark .focus-ring:focus-visible {
+    outline-color: #f8fafc;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -69,37 +101,37 @@
   }
 </style>
 
-<div class="min-h-screen bg-rose-50 dark:bg-slate-950 font-sora">
+	<div class="scroll-story-page min-h-screen overflow-x-hidden bg-rose-50 dark:bg-slate-950 font-sora">
 
   <!-- Fixed Nav -->
-  <nav class="fixed top-0 left-0 right-0 z-50 bg-white/70 dark:bg-slate-950/70 backdrop-blur-xl border-b border-rose-100 dark:border-slate-800">
+	  <nav class="sticky top-0 left-0 right-0 z-50 bg-white dark:bg-slate-950 border-b border-rose-100 dark:border-slate-800">
     <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-      <a href="#" class="text-lg font-extrabold gradient-text" focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none>folio.</a>
+      <a href="#" class="focus-ring inline-flex min-h-[44px] items-center text-lg font-extrabold gradient-text">folio.</a>
       <div class="hidden sm:flex items-center gap-6">
-        <a href="#projects" class="text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-rose-500 dark:hover:text-rose-400 transition-colors min-h-[44px] inline-flex items-center px-2" focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none>
+        <a href="#projects" class="focus-ring text-sm font-medium text-slate-700 dark:text-slate-200 hover:text-rose-700 dark:hover:text-rose-300 transition-colors min-h-[44px] inline-flex items-center px-2">
           Projects
         </a>
-        <a href="#about" class="text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-rose-500 dark:hover:text-rose-400 transition-colors min-h-[44px] inline-flex items-center px-2" focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none>
+        <a href="#about" class="focus-ring text-sm font-medium text-slate-700 dark:text-slate-200 hover:text-rose-700 dark:hover:text-rose-300 transition-colors min-h-[44px] inline-flex items-center px-2">
           About
         </a>
-        <a href="#contact" class="text-sm font-bold text-white bg-gradient-to-r from-rose-500 to-violet-500 hover:from-rose-600 hover:to-violet-600 px-5 py-2 rounded-full shadow-lg shadow-rose-500/25 transition-all hover:scale-105 min-h-[44px] inline-flex items-center" focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none>
+	        <a href="#contact" class="focus-ring text-sm font-bold px-5 py-3 rounded-full transition-all min-h-[44px] inline-flex items-center scroll-story-primary">
           Say Hello
         </a>
       </div>
-      <button onclick="document.getElementById('scrollPlayMobile').classList.toggle('hidden')" class="sm:hidden min-h-[44px] min-w-[44px] flex items-center justify-center text-slate-600 dark:text-slate-300 rounded-full hover:bg-rose-100 dark:hover:bg-slate-800" aria-label="Toggle menu" focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none>
+      <button onclick="document.getElementById('scrollPlayMobile').classList.toggle('hidden')" class="focus-ring sm:hidden min-h-[44px] min-w-[44px] flex items-center justify-center text-slate-700 dark:text-slate-200 rounded-full hover:bg-rose-100 dark:hover:bg-slate-800" aria-label="Toggle menu">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path d="M4 6h16M4 12h16M4 18h16"/>
         </svg>
       </button>
     </div>
-    <div id="scrollPlayMobile" class="hidden sm:hidden mx-4 mb-3 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-2xl border border-rose-100 dark:border-slate-700 p-3 space-y-1">
-      <a href="#projects" class="block text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-rose-500 dark:hover:text-rose-400 min-h-[44px] flex items-center px-4 rounded-xl hover:bg-rose-50 dark:hover:bg-slate-800" focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none>
+	    <div id="scrollPlayMobile" class="hidden sm:hidden mx-4 mb-3 bg-white dark:bg-slate-900 rounded-2xl border border-rose-100 dark:border-slate-700 p-3 space-y-1">
+      <a href="#projects" class="focus-ring block text-sm font-medium text-slate-700 dark:text-slate-200 hover:text-rose-700 dark:hover:text-rose-300 min-h-[44px] flex items-center px-4 rounded-xl hover:bg-rose-50 dark:hover:bg-slate-800">
         Projects
       </a>
-      <a href="#about" class="block text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-rose-500 dark:hover:text-rose-400 min-h-[44px] flex items-center px-4 rounded-xl hover:bg-rose-50 dark:hover:bg-slate-800" focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none>
+      <a href="#about" class="focus-ring block text-sm font-medium text-slate-700 dark:text-slate-200 hover:text-rose-700 dark:hover:text-rose-300 min-h-[44px] flex items-center px-4 rounded-xl hover:bg-rose-50 dark:hover:bg-slate-800">
         About
       </a>
-      <a href="#contact" class="block text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-rose-500 dark:hover:text-rose-400 min-h-[44px] flex items-center px-4 rounded-xl hover:bg-rose-50 dark:hover:bg-slate-800" focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none>
+      <a href="#contact" class="focus-ring block text-sm font-medium text-slate-700 dark:text-slate-200 hover:text-rose-700 dark:hover:text-rose-300 min-h-[44px] flex items-center px-4 rounded-xl hover:bg-rose-50 dark:hover:bg-slate-800">
         Contact
       </a>
     </div>
@@ -112,17 +144,17 @@
     <div class="blob w-96 h-96 bg-violet-300/30 dark:bg-violet-500/15 bottom-10 right-0" style="animation-delay: -3s;"></div>
     <div class="blob w-64 h-64 bg-pink-200/40 dark:bg-pink-500/15 top-1/2 left-1/3" style="animation-delay: -5s;"></div>
     <div class="text-center max-w-3xl relative z-10">
-      <p class="scroll-reveal text-sm font-bold tracking-widest uppercase text-rose-700 dark:text-rose-400 mb-4">
+      <p class="scroll-reveal text-sm font-bold tracking-widest uppercase text-slate-800 dark:text-rose-200 mb-4">
         Creative Portfolio
       </p>
       <h1 class="scroll-reveal text-4xl sm:text-5xl md:text-7xl font-extrabold text-slate-900 dark:text-white leading-tight">
         Ideas that <span class="gradient-text">pop</span>,<br>designs that <span class="gradient-text">stick</span>
       </h1>
-      <p class="scroll-reveal mt-6 text-lg sm:text-xl text-slate-600 dark:text-slate-400 max-w-xl mx-auto leading-relaxed">
+      <p class="scroll-reveal mt-6 text-lg sm:text-xl text-slate-700 dark:text-slate-200 max-w-xl mx-auto leading-relaxed">
         Playful yet purposeful design for brands that want to be remembered.
       </p>
       <div class="scroll-reveal mt-10">
-        <a href="#projects" class="inline-flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-rose-500 to-violet-500 hover:from-rose-600 hover:to-violet-600 text-white font-bold rounded-full shadow-xl shadow-rose-500/30 transition-all hover:scale-105 hover:-translate-y-0.5 min-h-[44px] text-sm" focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none>
+	        <a href="#projects" class="focus-ring inline-flex items-center gap-2 px-8 py-4 font-bold rounded-full transition-all min-h-[44px] text-sm scroll-story-primary">
           Explore Work
           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
             <path d="M19 14l-7 7m0 0l-7-7m7 7V3"/>
@@ -135,7 +167,7 @@
   <!-- Project 1 -->
   <section id="projects" class="min-h-screen flex items-center px-6 py-24 bg-white dark:bg-slate-900 relative overflow-hidden">
     <div class="blob w-80 h-80 bg-rose-200/30 dark:bg-rose-500/10 -top-20 -right-20"></div>
-    <div class="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-12 lg:gap-16 items-center relative z-10">
+    <div class="w-full max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-12 lg:gap-16 items-center relative z-10">
       <div class="scroll-reveal">
         <div class="rounded-3xl overflow-hidden shadow-2xl shadow-rose-200/50 dark:shadow-rose-500/10 rotate-1 hover:rotate-0 transition-transform duration-500">
           <img
@@ -147,23 +179,23 @@
         </div>
       </div>
       <div class="scroll-reveal">
-        <span class="inline-block px-3 py-1 text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-100 dark:bg-rose-500/10 rounded-full mb-4">
+        <span class="inline-block px-3 py-1 text-xs font-bold text-slate-800 dark:text-rose-200 bg-rose-100 dark:bg-rose-500/20 rounded-full mb-4">
           Branding
         </span>
         <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white leading-tight">
           Candy Pop
         </h2>
-        <p class="mt-4 text-slate-600 dark:text-slate-400 leading-relaxed">
-          A bubbly visual identity for a Gen-Z snack brand. Bold colors, rounded shapes, and a mascot that became an instant social media sensation.
+        <p class="mt-4 text-slate-700 dark:text-slate-200 leading-relaxed">
+	          A bubbly visual identity for a Gen-Z snack brand, with rounded shapes and a mascot built for social channels.
         </p>
         <div class="mt-4 flex flex-wrap gap-2">
-          <span class="text-xs font-medium text-rose-600 dark:text-rose-400">Logo</span>
-          <span class="text-xs text-slate-600 dark:text-slate-400">/</span>
-          <span class="text-xs font-medium text-rose-600 dark:text-rose-400">Packaging</span>
-          <span class="text-xs text-slate-600 dark:text-slate-400">/</span>
-          <span class="text-xs font-medium text-rose-600 dark:text-rose-400">Social</span>
+          <span class="text-xs font-medium text-slate-800 dark:text-rose-200">Logo</span>
+          <span class="text-xs text-slate-700 dark:text-slate-300">/</span>
+          <span class="text-xs font-medium text-slate-800 dark:text-rose-200">Packaging</span>
+          <span class="text-xs text-slate-700 dark:text-slate-300">/</span>
+          <span class="text-xs font-medium text-slate-800 dark:text-rose-200">Social</span>
         </div>
-        <a href="#" class="inline-flex items-center gap-2 mt-6 text-sm font-bold text-rose-600 dark:text-rose-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors min-h-[44px]" focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none>
+        <a href="#" class="focus-ring inline-flex items-center gap-2 mt-6 text-sm font-bold text-slate-800 dark:text-rose-200 hover:text-violet-700 dark:hover:text-violet-200 transition-colors min-h-[44px]">
           See the magic &rarr;
         </a>
       </div>
@@ -173,26 +205,26 @@
   <!-- Project 2 -->
   <section class="min-h-screen flex items-center px-6 py-24 bg-rose-50 dark:bg-slate-950 relative overflow-hidden">
     <div class="blob w-72 h-72 bg-violet-200/30 dark:bg-violet-500/10 bottom-0 left-10"></div>
-    <div class="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-12 lg:gap-16 items-center relative z-10">
+    <div class="w-full max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-12 lg:gap-16 items-center relative z-10">
       <div class="scroll-reveal order-2 md:order-1">
-        <span class="inline-block px-3 py-1 text-xs font-bold text-violet-600 dark:text-violet-400 bg-violet-100 dark:bg-violet-500/10 rounded-full mb-4">
+        <span class="inline-block px-3 py-1 text-xs font-bold text-slate-800 dark:text-violet-200 bg-violet-100 dark:bg-violet-500/20 rounded-full mb-4">
           Mobile App
         </span>
         <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white leading-tight">
           Bloom
         </h2>
-        <p class="mt-4 text-slate-600 dark:text-slate-400 leading-relaxed">
+        <p class="mt-4 text-slate-700 dark:text-slate-200 leading-relaxed">
           A plant care app that feels alive. Animated watering reminders, growth tracking with cheerful
           illustrations, and a community garden feature that connects plant lovers worldwide.
         </p>
         <div class="mt-4 flex flex-wrap gap-2">
-          <span class="text-xs font-medium text-violet-600 dark:text-violet-400">iOS</span>
-          <span class="text-xs text-slate-600 dark:text-slate-400">/</span>
-          <span class="text-xs font-medium text-violet-600 dark:text-violet-400">Android</span>
-          <span class="text-xs text-slate-600 dark:text-slate-400">/</span>
-          <span class="text-xs font-medium text-violet-600 dark:text-violet-400">Illustration</span>
+          <span class="text-xs font-medium text-slate-800 dark:text-violet-200">iOS</span>
+          <span class="text-xs text-slate-700 dark:text-slate-300">/</span>
+          <span class="text-xs font-medium text-slate-800 dark:text-violet-200">Android</span>
+          <span class="text-xs text-slate-700 dark:text-slate-300">/</span>
+          <span class="text-xs font-medium text-slate-800 dark:text-violet-200">Illustration</span>
         </div>
-        <a href="#" class="inline-flex items-center gap-2 mt-6 text-sm font-bold text-violet-600 dark:text-violet-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors min-h-[44px]" focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none>
+        <a href="#" class="focus-ring inline-flex items-center gap-2 mt-6 text-sm font-bold text-slate-800 dark:text-violet-200 hover:text-rose-700 dark:hover:text-rose-200 transition-colors min-h-[44px]">
           See the magic &rarr;
         </a>
       </div>
@@ -212,7 +244,7 @@
   <!-- Project 3 -->
   <section class="min-h-screen flex items-center px-6 py-24 bg-white dark:bg-slate-900 relative overflow-hidden">
     <div class="blob w-96 h-96 bg-pink-200/30 dark:bg-pink-500/10 top-10 -left-32"></div>
-    <div class="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-12 lg:gap-16 items-center relative z-10">
+    <div class="w-full max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-12 lg:gap-16 items-center relative z-10">
       <div class="scroll-reveal">
         <div class="rounded-3xl overflow-hidden shadow-2xl shadow-pink-200/50 dark:shadow-pink-500/10 rotate-2 hover:rotate-0 transition-transform duration-500">
           <img
@@ -224,24 +256,24 @@
         </div>
       </div>
       <div class="scroll-reveal">
-        <span class="inline-block px-3 py-1 text-xs font-bold text-pink-700 dark:text-pink-400 bg-pink-100 dark:bg-pink-500/10 rounded-full mb-4">
+        <span class="inline-block px-3 py-1 text-xs font-bold text-slate-800 dark:text-pink-200 bg-pink-100 dark:bg-pink-500/20 rounded-full mb-4">
           Event Design
         </span>
         <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white leading-tight">
           Fizz Festival
         </h2>
-        <p class="mt-4 text-slate-600 dark:text-slate-400 leading-relaxed">
+        <p class="mt-4 text-slate-700 dark:text-slate-200 leading-relaxed">
           Event branding for a summer music festival. Holographic posters, wristband design, stage
           graphics, and an interactive AR map that guided 40,000 attendees across four stages.
         </p>
         <div class="mt-4 flex flex-wrap gap-2">
-          <span class="text-xs font-medium text-pink-600 dark:text-pink-400">Print</span>
-          <span class="text-xs text-slate-600 dark:text-slate-400">/</span>
-          <span class="text-xs font-medium text-pink-600 dark:text-pink-400">AR</span>
-          <span class="text-xs text-slate-600 dark:text-slate-400">/</span>
-          <span class="text-xs font-medium text-pink-600 dark:text-pink-400">Environmental</span>
+          <span class="text-xs font-medium text-slate-800 dark:text-pink-200">Print</span>
+          <span class="text-xs text-slate-700 dark:text-slate-300">/</span>
+          <span class="text-xs font-medium text-slate-800 dark:text-pink-200">AR</span>
+          <span class="text-xs text-slate-700 dark:text-slate-300">/</span>
+          <span class="text-xs font-medium text-slate-800 dark:text-pink-200">Environmental</span>
         </div>
-        <a href="#" class="inline-flex items-center gap-2 mt-6 text-sm font-bold text-pink-600 dark:text-pink-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors min-h-[44px]" focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none>
+        <a href="#" class="focus-ring inline-flex items-center gap-2 mt-6 text-sm font-bold text-slate-800 dark:text-pink-200 hover:text-rose-700 dark:hover:text-rose-200 transition-colors min-h-[44px]">
           See the magic &rarr;
         </a>
       </div>
@@ -252,43 +284,43 @@
   <section id="about" class="min-h-[80vh] flex items-center px-6 py-24 bg-rose-50 dark:bg-slate-950 relative overflow-hidden">
     <div class="blob w-64 h-64 bg-rose-200/40 dark:bg-rose-500/15 top-20 right-10"></div>
     <div class="max-w-3xl mx-auto text-center relative z-10">
-      <p class="scroll-reveal text-sm font-bold tracking-widest uppercase text-rose-600 dark:text-rose-400 mb-4">
+      <p class="scroll-reveal text-sm font-bold tracking-widest uppercase text-slate-800 dark:text-rose-200 mb-4">
         About Me
       </p>
       <h2 class="scroll-reveal text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white leading-tight">
         Color maximalist.<br>Detail obsessive.
       </h2>
-      <p class="scroll-reveal mt-6 text-lg text-slate-600 dark:text-slate-400 leading-relaxed">
+      <p class="scroll-reveal mt-6 text-lg text-slate-700 dark:text-slate-200 leading-relaxed">
         I believe design should spark joy. With 7 years of experience across branding, product, and
         motion design, I help bold brands stand out in a sea of sameness. Based in Amsterdam, working
         with clients worldwide from startups to global agencies.
       </p>
       <div class="scroll-reveal mt-12 flex flex-wrap justify-center gap-3">
-        <span class="px-4 py-2 text-sm font-medium text-rose-600 dark:text-rose-400 bg-rose-100 dark:bg-rose-500/10 rounded-full">
+        <span class="px-4 py-2 text-sm font-medium text-slate-800 dark:text-rose-200 bg-rose-100 dark:bg-rose-500/20 rounded-full">
           Branding
         </span>
-        <span class="px-4 py-2 text-sm font-medium text-violet-600 dark:text-violet-400 bg-violet-100 dark:bg-violet-500/10 rounded-full">
+        <span class="px-4 py-2 text-sm font-medium text-slate-800 dark:text-violet-200 bg-violet-100 dark:bg-violet-500/20 rounded-full">
           UI/UX
         </span>
-        <span class="px-4 py-2 text-sm font-medium text-pink-600 dark:text-pink-400 bg-pink-100 dark:bg-pink-500/10 rounded-full">
+        <span class="px-4 py-2 text-sm font-medium text-slate-800 dark:text-pink-200 bg-pink-100 dark:bg-pink-500/20 rounded-full">
           Motion
         </span>
-        <span class="px-4 py-2 text-sm font-medium text-fuchsia-600 dark:text-fuchsia-400 bg-fuchsia-100 dark:bg-fuchsia-500/10 rounded-full">
+        <span class="px-4 py-2 text-sm font-medium text-slate-800 dark:text-fuchsia-200 bg-fuchsia-100 dark:bg-fuchsia-500/20 rounded-full">
           Illustration
         </span>
       </div>
       <div class="scroll-reveal mt-10 grid grid-cols-3 gap-6 max-w-md mx-auto">
         <div>
           <p class="text-2xl sm:text-3xl font-extrabold gradient-text">60+</p>
-          <p class="text-xs text-slate-600 dark:text-slate-400 mt-1">Projects</p>
+          <p class="text-xs text-slate-700 dark:text-slate-300 mt-1">Projects</p>
         </div>
         <div>
           <p class="text-2xl sm:text-3xl font-extrabold gradient-text">7</p>
-          <p class="text-xs text-slate-600 dark:text-slate-400 mt-1">Years</p>
+          <p class="text-xs text-slate-700 dark:text-slate-300 mt-1">Years</p>
         </div>
         <div>
           <p class="text-2xl sm:text-3xl font-extrabold gradient-text">14</p>
-          <p class="text-xs text-slate-600 dark:text-slate-400 mt-1">Countries</p>
+          <p class="text-xs text-slate-700 dark:text-slate-300 mt-1">Countries</p>
         </div>
       </div>
     </div>
@@ -302,17 +334,17 @@
       <h2 class="scroll-reveal text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white">
         Got a wild idea?
       </h2>
-      <p class="scroll-reveal mt-4 text-lg text-slate-600 dark:text-slate-400">
+      <p class="scroll-reveal mt-4 text-lg text-slate-700 dark:text-slate-200">
         I love projects that push boundaries. Let's make something unforgettable together.
       </p>
       <div class="scroll-reveal mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
-        <a href="mailto:hello@folio.design" class="inline-flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-rose-500 to-violet-500 hover:from-rose-600 hover:to-violet-600 text-white font-bold rounded-full shadow-xl shadow-rose-500/30 transition-all hover:scale-105 hover:-translate-y-0.5 min-h-[44px] text-sm" focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none>
+        <a href="mailto:hello@folio.design" class="focus-ring inline-flex items-center gap-2 px-8 py-3.5 bg-gradient-to-r from-rose-600 to-violet-600 hover:from-rose-700 hover:to-violet-700 text-white font-bold rounded-full shadow-xl shadow-rose-500/30 transition-all hover:scale-105 hover:-translate-y-0.5 min-h-[44px] text-sm">
           Start a Conversation
           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
             <path d="M5 12h14M12 5l7 7-7 7"/>
           </svg>
         </a>
-        <a href="#" class="inline-flex items-center gap-2 px-8 py-3 border-2 border-rose-300 dark:border-rose-500/30 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 font-bold rounded-full transition-all hover:scale-105 min-h-[44px] text-sm" focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none>
+        <a href="#" class="focus-ring inline-flex items-center gap-2 px-8 py-3.5 border-2 border-rose-300 dark:border-rose-500/40 text-slate-800 dark:text-rose-200 hover:bg-rose-50 dark:hover:bg-rose-500/10 font-bold rounded-full transition-all hover:scale-105 min-h-[44px] text-sm">
           View Instagram
         </a>
       </div>
@@ -323,15 +355,15 @@
   </main>
 <footer class="border-t border-rose-100 dark:border-slate-800 px-6 py-10 bg-rose-50 dark:bg-slate-950">
     <div class="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-      <p class="text-sm text-slate-600 dark:text-slate-400">&copy; 2026 folio. Made with love.</p>
+      <p class="text-sm text-slate-700 dark:text-slate-300">&copy; 2026 folio. Made with love.</p>
       <div class="flex items-center gap-6">
-        <a href="#" class="text-sm text-slate-600 dark:text-slate-400 hover:text-rose-500 dark:hover:text-rose-400 transition-colors min-h-[44px] inline-flex items-center" focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none>
+        <a href="#" class="focus-ring text-sm text-slate-700 dark:text-slate-300 hover:text-rose-700 dark:hover:text-rose-300 transition-colors min-h-[44px] inline-flex items-center">
           Instagram
         </a>
-        <a href="#" class="text-sm text-slate-600 dark:text-slate-400 hover:text-rose-500 dark:hover:text-rose-400 transition-colors min-h-[44px] inline-flex items-center" focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none>
+        <a href="#" class="focus-ring text-sm text-slate-700 dark:text-slate-300 hover:text-rose-700 dark:hover:text-rose-300 transition-colors min-h-[44px] inline-flex items-center">
           Dribbble
         </a>
-        <a href="#" class="text-sm text-slate-600 dark:text-slate-400 hover:text-rose-500 dark:hover:text-rose-400 transition-colors min-h-[44px] inline-flex items-center" focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none>
+        <a href="#" class="focus-ring text-sm text-slate-700 dark:text-slate-300 hover:text-rose-700 dark:hover:text-rose-300 transition-colors min-h-[44px] inline-flex items-center">
           Behance
         </a>
       </div>
