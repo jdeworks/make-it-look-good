@@ -1106,6 +1106,9 @@ window.MilgExtract = (function() {
       if (oel.scrollWidth > oel.clientWidth + 2 && oel.clientWidth > 0) {
         var tag = oel.tagName.toLowerCase();
         var oelStyle = getComputedStyle(oel);
+        // overflow:hidden clips content intentionally — it is not a scroll container.
+        // scrollWidth > clientWidth on a clip-only element is expected and harmless.
+        if (oelStyle.overflowX === 'hidden') return;
         var hasOverflowCSS = oelStyle.overflowX === 'auto' || oelStyle.overflowX === 'scroll' ||
           /overflow-x-(auto|scroll)/.test(oel.className || '');
         var isDataContent = !!_iframeDataContentTags[tag] || !!oel.closest('table,pre,code');
@@ -1262,6 +1265,8 @@ window.MilgExtract = (function() {
     // Note: overflow-hidden-only (carousels) is handled by region pipeline — skip those here.
     document.querySelectorAll('[class]').forEach(function(el) {
       if (_iframeHiddenPanels.indexOf(el) !== -1) return;
+      // Decorative elements (aria-hidden) are never interactive panels — skip them
+      if (el.getAttribute('aria-hidden') === 'true') return;
       var cls = typeof el.className === 'string' ? el.className : '';
       var isTwHidden = /\bhidden\b/.test(cls);
       var isTwCollapsed = /\bmax-h-0\b/.test(cls) && el.clientHeight === 0;
