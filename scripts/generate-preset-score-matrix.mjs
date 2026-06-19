@@ -412,7 +412,7 @@ async function scoreJob(page, manifest, extractFn, job) {
               errors: c.findings.filter(f => f.severity === 'error').length,
               warnings: c.findings.filter(f => f.severity === 'warning').length,
               infos: c.findings.filter(f => f.severity === 'info').length,
-              findings: c.findings.map(f => ({ severity: f.severity, title: f.title })),
+              findings: c.findings.map(f => ({ severity: f.severity, title: f.title, detail: f.detail || '' })),
             })),
           });
         } catch (err) {

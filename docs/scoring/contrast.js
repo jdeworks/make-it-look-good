@@ -317,8 +317,9 @@ function scoreContrast(data) {
     var bdSamples = backdropPairs.map(function(p) {
       return '"' + p.text + '" (bg alpha: ' + p.minBgAlpha + ')';
     });
+    var bdHasOtherIssues = Object.keys(failSeen).length > 0 || Object.keys(phSeen).length > 0;
     findings.push({
-      severity: 'warning',
+      severity: bdHasOtherIssues ? 'warning' : 'info',
       title: backdropPairs.length + ' text element(s) on translucent backdrop-filter surfaces',
       detail: 'These elements sit on semi-transparent backgrounds with backdrop-filter (frosted glass effect). The computed contrast ratio assumes the blended background color, but the actual perceived contrast depends on what is visible through the translucent surface, which varies across the page. Elements: ' + bdSamples.join('; '),
       fix: 'Increase background opacity to at least 0.75 for text containers, or add a solid fallback background. For frosted glass effects, use a minimum alpha of 0.7-0.8 to ensure text remains readable regardless of what shows through.',
