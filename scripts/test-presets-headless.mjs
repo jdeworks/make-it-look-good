@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 // Headless browser test runner for all presets
 // Usage: node scripts/test-presets-headless.mjs
-// Requires: puppeteer (already in package.json)
+// Requires: npm install, then either Puppeteer Chrome or Playwright Chromium:
+//   npx puppeteer browsers install chrome
+//   # or: npx playwright install chromium
 //
 // Serves docs/ locally, renders each preset in a real browser,
 // runs the full extraction + scoring, saves results to research/
@@ -14,6 +16,44 @@ import { join, extname } from 'path';
 const DOCS_DIR = join(import.meta.dirname, '..', 'docs');
 const RESEARCH_DIR = join(import.meta.dirname, '..', 'research');
 const PORT = 8765;
+
+async function launchBrowser() {
+  const launchOptions = { headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] };
+
+  try {
+    const browser = await puppeteer.launch(launchOptions);
+    return { browser, engine: 'Puppeteer Chrome' };
+  } catch (puppeteerError) {
+    console.warn('Puppeteer launch failed. Trying Playwright Chromium fallback...');
+    console.warn(`Puppeteer error: ${puppeteerError.message}`);
+  }
+
+  try {
+    const { chromium } = await import('playwright');
+    const browser = await chromium.launch(launchOptions);
+    return { browser, engine: 'Playwright Chromium' };
+  } catch (playwrightError) {
+    throw new Error(
+      [
+        'No headless Chromium browser could be launched.',
+        'Fresh clone setup:',
+        '  npm install',
+        '  npx puppeteer browsers install chrome',
+        'Fallback:',
+        '  npx playwright install chromium',
+        `Playwright error: ${playwrightError.message}`
+      ].join('\n')
+    );
+  }
+}
+
+async function setViewport(page, viewport) {
+  if (typeof page.setViewport === 'function') {
+    await page.setViewport(viewport);
+    return;
+  }
+  await page.setViewportSize(viewport);
+}
 
 // Simple static file server
 function startServer() {
@@ -55,7 +95,7 @@ async function runTest(page, element, personality) {
   await page.goto(`http://localhost:${PORT}/tests/test-presets-rendered.html`, { waitUntil: 'networkidle0', timeout: 15000 });
 
   // Use the page's scoring modules + extraction to analyze the preset
-  const result = await page.evaluate(async (html, element, personality) => {
+  const result = await page.evaluate(async ({ html, element, personality }) => {
     return new Promise((resolve) => {
       // Create iframe with the preset
       const iframe = document.createElement('iframe');
@@ -98,8 +138,8 @@ async function runTest(page, element, personality) {
       }
       window.addEventListener('message', onMsg);
 
-      // Load extraction function from the analyzer
-      fetch('/analyzer.js').then(r => r.text()).then(code => {
+      // Load extraction function from the analyzer extractor module.
+      fetch('/analyzer-extract.js').then(r => r.text()).then(code => {
         const match = code.match(/function extractFromDocument\(\)\s*\{/);
         if (!match) { resolve({ name: element + '/' + personality, error: 'No extractFromDocument' }); return; }
         const start = code.indexOf(match[0]);
@@ -130,7 +170,7 @@ async function runTest(page, element, personality) {
         resolve({ name: element + '/' + personality, error: 'Timeout' });
       }, 12000);
     });
-  }, html, element, personality);
+  }, { html, element, personality });
 
   return result;
 }
@@ -144,9 +184,10 @@ async function main() {
   const tests = buildTests(manifest);
   console.log(`Found ${tests.length} presets to test\n`);
 
-  const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+  const { browser, engine } = await launchBrowser();
+  console.log(`Using ${engine}\n`);
   const page = await browser.newPage();
-  await page.setViewport({ width: 1280, height: 900 });
+  await setViewport(page, { width: 1280, height: 900 });
 
   const results = [];
   const errors = [];

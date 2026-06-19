@@ -88,6 +88,78 @@ test.describe('HTML Analysis', () => {
     expect(raw.elements).toBeGreaterThan(0);
   });
 
+  test('analysis history escapes stored title and URL text', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('milg-analysis-history', JSON.stringify([{
+        url: 'https://example.com/" onmouseover="window.__milgHistoryXss=1',
+        title: '<img src=x onerror="window.__milgHistoryXss=1"> Stored title',
+        timestamp: new Date().toISOString(),
+        score: 72,
+        grade: 'C',
+        settings: 'deep|pxv',
+        elements: 3,
+        contrastPairs: 1,
+      }]));
+    });
+
+    await page.goto(ANALYZER_URL);
+    await expect(page.locator('.history-section')).toContainText('<img src=x');
+    await expect(page.locator('.history-section img')).toHaveCount(0);
+    const xssRan = await page.evaluate(() => window.__milgHistoryXss === 1);
+    expect(xssRan).toBe(false);
+  });
+
+  test('URL analysis preserves apex domains instead of rewriting to www', async ({ page }) => {
+    await page.goto(ANALYZER_URL);
+    await page.evaluate(() => {
+      window.MilgProxy.fetchViaProxy = (url, cb) => {
+        window.__milgFetchedUrl = url;
+        cb('', 'blocked by test');
+      };
+    });
+
+    await page.click('[data-tab="tabUrl"]');
+    await page.fill('#urlInput', 'example.com/path?q=1');
+    await page.click('#analyzeUrlBtn');
+
+    await expect.poll(() => page.evaluate(() => window.__milgFetchedUrl)).toBe('https://example.com/path?q=1');
+    await expect(page.locator('#urlInput')).toHaveValue('https://example.com/path?q=1');
+  });
+
+  test('New Analysis after preview flow restores functional input handlers', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('milg-preview-html', '<!doctype html><html><body><main><h1>Preview</h1><p>Preview analysis.</p></main></body></html>');
+    });
+
+    await page.goto(`${ANALYZER_URL}#analyze-html`);
+    await page.waitForSelector('.report-container.visible', { timeout: 30000 });
+    await page.click('#newAnalysisBtn');
+
+    await page.click('[data-tab="tabHtml"]');
+    await expect(page.locator('#tabHtml')).toHaveClass(/active/);
+    await page.uncheck('#screenshotCheck');
+    await page.evaluate(() => {
+      window.MilgIframe.analyzeHtml = (html) => {
+        window.__milgRestoredHtml = html;
+      };
+    });
+    await page.fill('#htmlInput', '<main><h1>Restored HTML</h1></main>');
+    await page.click('#analyzeHtmlBtn');
+    await expect.poll(() => page.evaluate(() => window.__milgRestoredHtml)).toContain('Restored HTML');
+
+    await page.click('[data-tab="tabUrl"]');
+    await expect(page.locator('#tabUrl')).toHaveClass(/active/);
+    await page.evaluate(() => {
+      window.MilgProxy.fetchViaProxy = (url, cb) => {
+        window.__milgRestoredUrl = url;
+        cb('', 'blocked by test');
+      };
+    });
+    await page.fill('#urlInput', 'example.org');
+    await page.press('#urlInput', 'Enter');
+    await expect.poll(() => page.evaluate(() => window.__milgRestoredUrl)).toBe('https://example.org');
+  });
+
   test('form preset produces report with findings', async ({ page }) => {
     await analyzeHtml(page, 'form');
     const findings = await page.locator('.finding-header').count();

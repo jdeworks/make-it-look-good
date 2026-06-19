@@ -10,6 +10,9 @@ let currentStyleIndex = 0;
 let originalPresetHtml = '';
 let inspectMode = false;
 let sourceMap = null;
+let activePresetFilter = 'all';
+let chooserState = null;
+let presetScores = null;
 // Editor content the last time a clean (un-edited) preset rendered — lets us detect an
 // edit being undone back to the original and auto-reattach to the preset.
 let lastCleanContent = '';
@@ -26,8 +29,66 @@ let suppressChangeEvent = false;
 // or continued typing). Cleared as soon as it's consumed or the content diverges.
 let pastePendingContent = null;
 
+function handleEditorContentChange() {
+  // Undo/typed all the way back to the clean preset -> silently reattach (button -> Share).
+  if (detachedFrom && editor.value === detachedFrom.cleanHtml) {
+    reattachPreset(detachedFrom);
+    debouncedUpdate();
+    return;
+  }
+  // First edit of a clean preset -> detach, but keep a breadcrumb + restore target.
+  if (currentElement) {
+    const info = manifestData && manifestData.elements[currentPresetName];
+    detachedFrom = {
+      element: currentElement,
+      personality: currentPersonality,
+      colorName: currentColorName,
+      styleIndex: currentStyleIndex,
+      label: (info && info.label) || currentPresetName,
+      originalHtml: originalPresetHtml,
+      cleanHtml: lastCleanContent,
+    };
+    currentElement = null;
+    currentPersonality = null;
+    currentPresetName = null;
+    originalPresetHtml = '';
+    userEdited = true;
+    document.getElementById('personalityButtons').style.display = 'none';
+    document.getElementById('themeSwatches').style.display = 'none';
+    document.getElementById('styleButtons').style.display = 'none';
+    updateTemplateName();
+    syncMobileToolbar();
+  }
+  debouncedUpdate();
+}
+
+function ensureFallbackEditor(reason) {
+  const container = document.getElementById('editorContainer');
+  if (!container || container.querySelector('.fallback-editor')) return;
+  const wrap = document.createElement('div');
+  wrap.className = 'fallback-editor-wrap';
+  wrap.innerHTML = '<div class="fallback-editor-notice">' +
+    '<strong>Code editor fallback</strong><span>' + (reason || 'The Monaco editor did not load. You can still edit HTML here.') + '</span>' +
+    '</div>';
+  const textarea = document.createElement('textarea');
+  textarea.className = 'fallback-editor';
+  textarea.setAttribute('spellcheck', 'false');
+  textarea.setAttribute('aria-label', 'HTML editor fallback');
+  textarea.value = _fallbackValue || '';
+  textarea.addEventListener('input', function() {
+    _fallbackValue = textarea.value;
+    handleEditorContentChange();
+  });
+  wrap.appendChild(textarea);
+  container.innerHTML = '';
+  container.appendChild(wrap);
+}
+
 function initMonaco() {
-  if (typeof monaco === 'undefined') return; // Monaco not loaded (mobile/slow)
+  if (typeof monaco === 'undefined') {
+    ensureFallbackEditor('Monaco could not load from the CDN. Editing still works in this fallback textarea.');
+    return;
+  }
   monacoEditor = monaco.editor.create(document.getElementById('editorContainer'), {
     value: '',
     language: 'html',
@@ -47,36 +108,7 @@ function initMonaco() {
 
   monacoEditor.onDidChangeModelContent(() => {
     if (suppressChangeEvent) return;
-    // Undo/typed all the way back to the clean preset → silently reattach (button → Share).
-    if (detachedFrom && editor.value === detachedFrom.cleanHtml) {
-      reattachPreset(detachedFrom);
-      debouncedUpdate();
-      return;
-    }
-    // First edit of a clean preset → detach, but keep a breadcrumb + restore target.
-    if (currentElement) {
-      const info = manifestData && manifestData.elements[currentPresetName];
-      detachedFrom = {
-        element: currentElement,
-        personality: currentPersonality,
-        colorName: currentColorName,
-        styleIndex: currentStyleIndex,
-        label: (info && info.label) || currentPresetName,
-        originalHtml: originalPresetHtml,
-        cleanHtml: lastCleanContent,
-      };
-      currentElement = null;
-      currentPersonality = null;
-      currentPresetName = null;
-      originalPresetHtml = '';
-      userEdited = true;
-      document.getElementById('personalityButtons').style.display = 'none';
-      document.getElementById('themeSwatches').style.display = 'none';
-      document.getElementById('styleButtons').style.display = 'none';
-      updateTemplateName();
-      syncMobileToolbar();
-    }
-    debouncedUpdate();
+    handleEditorContentChange();
   });
 
   // Guard against pasting untrusted HTML (e.g. someone else's "Copy code" output):
@@ -99,14 +131,29 @@ const editor = {
   get value() { return monacoEditor ? monacoEditor.getValue() : _fallbackValue; },
   set value(v) {
     _fallbackValue = v;
+    const fallback = document.querySelector('.fallback-editor');
+    if (fallback && fallback.value !== v) fallback.value = v;
     if (!monacoEditor) return;
     suppressChangeEvent = true;
     monacoEditor.setValue(v);
     suppressChangeEvent = false;
   },
-  focus() { if (monacoEditor) monacoEditor.focus(); },
+  focus() {
+    if (monacoEditor) monacoEditor.focus();
+    else {
+      const fallback = document.querySelector('.fallback-editor');
+      if (fallback) fallback.focus();
+    }
+  },
   setSelectionRange(start, end) {
-    if (!monacoEditor) return;
+    if (!monacoEditor) {
+      const fallback = document.querySelector('.fallback-editor');
+      if (fallback) {
+        fallback.focus();
+        fallback.setSelectionRange(start, end);
+      }
+      return;
+    }
     const model = monacoEditor.getModel();
     const startPos = model.getPositionAt(start);
     const endPos = model.getPositionAt(end);
@@ -298,38 +345,30 @@ function previewScrollbarCSS(dark) {
     + '::-webkit-scrollbar-corner{background:transparent}';
 }
 
-function updatePreview() {
-  const html = editor.value;
-  const darkClass = darkMode ? ' class="dark"' : '';
-
-  // Build source map for inspect mode
-  let bodyHtml;
-  if (inspectMode) {
-    const mapped = buildSourceMap(html);
-    bodyHtml = mapped.annotatedHtml;
-    sourceMap = mapped.sourceMap;
-  } else {
-    bodyHtml = html;
-    sourceMap = null;
-  }
-
-  // Inject dark variant override into any preset tailwindcss style blocks
-  const processedHtml = bodyHtml.replace(
+function buildPreviewSrcdoc(html, opts) {
+  opts = opts || {};
+  const dark = opts.dark !== undefined ? opts.dark : darkMode;
+  const effectCSS = opts.effectCSS !== undefined ? opts.effectCSS : (visualStyles[currentStyleIndex].css || '');
+  const includeInspector = opts.includeInspector ? inspectorAgentScript : '';
+  const darkClass = dark ? ' class="dark"' : '';
+  const processedHtml = html.replace(
     /<style type="text\/tailwindcss">/gi,
     '<style type="text/tailwindcss">\n    ' + darkVariantCSS
   );
-  // Build srcdoc by concatenation to avoid </script> inside a template literal
-  // breaking the HTML parser's script detection
-  const srcdoc = '<!DOCTYPE html>\n<html lang="en"' + darkClass + '>\n<head>\n' +
+
+  return '<!DOCTYPE html>\n<html lang="en"' + darkClass + '>\n<head>\n' +
     '  <meta charset="UTF-8">\n' +
     '  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n' +
-    '  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></' + 'script>\n' +
+    '  <script>function __milgTailwindFailed(){document.documentElement.classList.add("milg-tailwind-failed");try{parent.postMessage({type:"milg-tailwind-failed"},"*")}catch(e){}}</' + 'script>\n' +
+    '  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4" onerror="__milgTailwindFailed()"></' + 'script>\n' +
+    '  <script>setTimeout(function(){if(!window.tailwind&&!document.querySelector("style[data-tailwind],style[data-tw]"))__milgTailwindFailed()},3000)</' + 'script>\n' +
     '  <style type="text/tailwindcss">\n' + darkVariantCSS + '\n  </style>\n' +
-    '  <style>\nbody { margin: 0; }\n' + previewScrollbarCSS(darkMode) + '\n  </style>\n' +
-    (visualStyles[currentStyleIndex].css ? '  <style>' + visualStyles[currentStyleIndex].css + '</style>\n' : '') +
+    '  <style>\nbody { margin: 0; }\n' + previewScrollbarCSS(dark) + '\n' +
+    '.milg-tailwind-failed body:before{content:"Tailwind CDN failed to load. Preview may appear unstyled.";display:block;position:sticky;top:0;z-index:2147483647;padding:10px 14px;background:#7f1d1d;color:#fff;font:13px/1.4 system-ui,sans-serif;text-align:center}\n  </style>\n' +
+    (effectCSS ? '  <style>' + effectCSS + '</style>\n' : '') +
     '</head>\n<body>\n' +
     processedHtml + '\n' +
-    (inspectMode ? inspectorAgentScript : '') + '\n' +
+    includeInspector + '\n' +
     '<script>\n' +
     'document.addEventListener("click", function(e) {\n' +
     '  var a = e.target.closest("a");\n' +
@@ -359,7 +398,23 @@ function updatePreview() {
     '});\n' +
     '</' + 'script>\n' +
     '</body>\n</html>';
-  preview.srcdoc = srcdoc;
+}
+
+function updatePreview() {
+  const html = editor.value;
+
+  // Build source map for inspect mode
+  let bodyHtml;
+  if (inspectMode) {
+    const mapped = buildSourceMap(html);
+    bodyHtml = mapped.annotatedHtml;
+    sourceMap = mapped.sourceMap;
+  } else {
+    bodyHtml = html;
+    sourceMap = null;
+  }
+
+  preview.srcdoc = buildPreviewSrcdoc(bodyHtml, { includeInspector: inspectMode });
   // Remember the content of a clean preset so an edit-then-revert can reattach.
   if (currentElement && !userEdited) lastCleanContent = html;
 }
@@ -585,6 +640,9 @@ window.addEventListener('message', function(e) {
   if (e.data === 'milg-double-tap' && document.body.classList.contains('fullscreen-preview')) {
     toggleFullscreen();
   }
+  if (e.data && e.data.type === 'milg-tailwind-failed') {
+    showToast('Tailwind CDN failed to load; preview may appear unstyled.');
+  }
 });
 
 // --- Templates (loaded from presets/ directory) ---
@@ -620,6 +678,83 @@ async function loadManifest() {
   }
 }
 
+async function loadPresetScores() {
+  if (presetScores) return presetScores;
+  try {
+    const resp = await fetch('presets/scores.json');
+    if (!resp.ok) throw new Error('No scores artifact');
+    presetScores = await resp.json();
+  } catch(e) {
+    presetScores = { matrix: {} };
+  }
+  return presetScores;
+}
+
+function getPresetCategory(element) {
+  if (!manifestData || !manifestData.categories) return '';
+  for (const cat of manifestData.categories) {
+    if ((cat.elements || []).indexOf(element) !== -1) return cat.label;
+  }
+  return '';
+}
+
+function inferPresetKind(element, info) {
+  if (info && info.kind) return info.kind;
+  const category = getPresetCategory(element).toLowerCase();
+  const label = ((info && info.label) || element).toLowerCase();
+  if (category.indexOf('before') !== -1) return 'before-after';
+  if (category.indexOf('layout') !== -1 || element.indexOf('shell-') === 0) return 'app';
+  if (category.indexOf('full') !== -1 || /landing|portfolio|restaurant|pricing|product|event|docs|blog|site/.test(element)) return 'full-page';
+  if (/dashboard|table|status|deploy/.test(element + ' ' + label)) return 'dashboard';
+  if (/form|onboarding/.test(element + ' ' + label)) return 'form';
+  if (category.indexOf('expressive') !== -1) return 'expressive';
+  return 'component';
+}
+
+function getPresetTags(element, info) {
+  const tags = [element, getPresetCategory(element), inferPresetKind(element, info), (info && info.label) || ''];
+  if (info && info.tags) tags.push.apply(tags, info.tags);
+  if (/dev|docs|oss|deploy/.test(element)) tags.push('developers', 'technical');
+  if (/dashboard|table|status|shell/.test(element)) tags.push('business', 'app');
+  if (/landing|pricing|product|agency|restaurant|event/.test(element)) tags.push('marketing', 'public');
+  if (/form/.test(element)) tags.push('onboarding');
+  if (/portfolio|personal|blog|editorial/.test(element)) tags.push('portfolio', 'content');
+  return tags.filter(Boolean).map(String);
+}
+
+function getBestFor(element, info) {
+  if (info && info.bestFor && info.bestFor.length) return info.bestFor.join(', ');
+  const kind = inferPresetKind(element, info);
+  if (kind === 'dashboard') return 'Admin tools, metrics, operational screens';
+  if (kind === 'form') return 'Signup, onboarding, structured input flows';
+  if (kind === 'full-page') return 'Complete pages with a strong starting structure';
+  if (kind === 'expressive') return 'High-character marketing and editorial directions';
+  if (kind === 'app') return 'Application shells and repeat-use product UI';
+  if (kind === 'before-after') return 'Comparing weak and improved design decisions';
+  return 'Focused UI components and reusable sections';
+}
+
+function hasFrameworkFile(element, personality, framework) {
+  // The current gallery can only test committed framework variants if they are
+  // mirrored beside the HTML preset. This keeps badges truthful without network work.
+  return false;
+}
+
+function getPresetFrameworks(element, info) {
+  if (info && info.frameworks && info.frameworks.length) return info.frameworks;
+  return ['html'];
+}
+
+function getPresetScore(element, personality) {
+  const key = element + '/' + personality;
+  const row = presetScores && presetScores.matrix ? presetScores.matrix[key] : null;
+  if (!row) return null;
+  if (row.default && typeof row.default.score === 'number') return row.default.score;
+  if (typeof row.avg === 'number') return Math.round(row.avg);
+  if (typeof row.min === 'number') return row.min;
+  return null;
+}
+
 function getElementPrimary(element, personality) {
   personality = personality || currentPersonality || 'clean';
   if (manifestData && manifestData.elements[element]) {
@@ -635,8 +770,31 @@ async function buildPresetsMenu() {
   if (menuBuilt) return;
   const manifest = await loadManifest();
   if (!manifest) return;
+  await loadPresetScores();
   const list = document.getElementById('presetsList');
   list.innerHTML = '';
+
+  const filterWrap = document.createElement('div');
+  filterWrap.className = 'preset-filter-row';
+  const filters = [
+    ['all', 'All'],
+    ['landing', 'Landing'],
+    ['dashboard', 'Dashboard'],
+    ['form', 'Form'],
+    ['component', 'Component'],
+    ['full-page', 'Full Page'],
+    ['expressive', 'Expressive'],
+    ['before-after', 'Before/After']
+  ];
+  filters.forEach(([id, label]) => {
+    const chip = document.createElement('button');
+    chip.className = 'preset-filter-chip' + (id === activePresetFilter ? ' active' : '');
+    chip.textContent = label;
+    chip.dataset.filter = id;
+    chip.onclick = () => setPresetFilter(id);
+    filterWrap.appendChild(chip);
+  });
+  list.appendChild(filterWrap);
 
   manifest.categories.forEach((cat, catIdx) => {
     const group = document.createElement('div');
@@ -652,25 +810,63 @@ async function buildPresetsMenu() {
       const hasBefore = persNames.includes('before');
 
       if (hasBefore) {
-        const btnBefore = document.createElement('button');
-        btnBefore.textContent = el.label + ' \u2014 Before';
-        btnBefore.onclick = () => loadPreset(elName, 'before');
-        list.appendChild(btnBefore);
-
-        const btnAfter = document.createElement('button');
-        btnAfter.textContent = el.label + ' \u2014 After';
-        btnAfter.onclick = () => loadPreset(elName, 'clean');
-        list.appendChild(btnAfter);
+        list.appendChild(createPresetCard(elName, 'before'));
+        list.appendChild(createPresetCard(elName, 'clean', 'After'));
       } else {
-        const btn = document.createElement('button');
-        btn.textContent = el.label;
-        btn.onclick = () => loadPreset(elName, 'clean');
-        list.appendChild(btn);
+        const preferred = persNames.indexOf('clean') !== -1 ? 'clean' : persNames[0];
+        list.appendChild(createPresetCard(elName, preferred));
       }
     });
   });
 
   menuBuilt = true;
+}
+
+function createPresetCard(element, personality, suffix) {
+  const info = manifestData.elements[element];
+  const category = getPresetCategory(element);
+  const kind = inferPresetKind(element, info);
+  const persNames = Object.keys(info.personalities || {});
+  const bestFor = getBestFor(element, info);
+  const score = getPresetScore(element, personality);
+  const tags = getPresetTags(element, info).concat(persNames);
+  const frameworks = getPresetFrameworks(element, info).map(f => f.toUpperCase()).join(', ');
+  const card = document.createElement('button');
+  card.className = 'preset-card';
+  card.dataset.kind = kind;
+  card.dataset.search = tags.concat([bestFor, personality, suffix || '']).join(' ').toLowerCase();
+  card.onclick = () => loadPreset(element, personality);
+
+  const title = info.label + (suffix ? ' - ' + suffix : personality === 'before' ? ' - Before' : '');
+  const variants = persNames.filter(p => p !== 'before').map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(', ');
+  const scoreHtml = score === null
+    ? '<span class="preset-score pending">No score</span>'
+    : '<span class="preset-score ' + (score >= 90 ? 'good' : score >= 85 ? 'review' : 'fail') + '">' + score + '</span>';
+
+  card.innerHTML = ''
+    + '<span class="preset-thumb" aria-hidden="true"><span>' + escapeHtml((info.label || element).slice(0, 2).toUpperCase()) + '</span></span>'
+    + '<span class="preset-card-body">'
+    + '  <span class="preset-card-top"><span class="preset-card-title">' + escapeHtml(title) + '</span>' + scoreHtml + '</span>'
+    + '  <span class="preset-card-meta">' + escapeHtml(category || kind) + ' / ' + escapeHtml(kind.replace('-', ' ')) + '</span>'
+    + '  <span class="preset-card-best">' + escapeHtml(bestFor) + '</span>'
+    + '  <span class="preset-card-badges"><span>' + escapeHtml(variants || personality) + '</span><span>' + escapeHtml(frameworks) + '</span></span>'
+    + '</span>'
+    + '<span class="preset-card-action">Start</span>';
+  return card;
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, function(ch) {
+    return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
+  });
+}
+
+function setPresetFilter(filter) {
+  activePresetFilter = filter;
+  document.querySelectorAll('.preset-filter-chip').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.filter === filter);
+  });
+  filterPresets(document.getElementById('presetSearch').value || '');
 }
 
 async function togglePresets() {
@@ -1037,7 +1233,7 @@ presetSearch.addEventListener('keydown', (e) => {
   }
   if (e.key === 'Enter') {
     // Load first visible preset
-    const first = document.querySelector('#presetsList button:not([style*="display: none"])');
+    const first = document.querySelector('#presetsList .preset-card:not([style*="display: none"])');
     if (first) first.click();
   }
 });
@@ -1045,14 +1241,16 @@ presetSearch.addEventListener('keydown', (e) => {
 function filterPresets(query) {
   const q = query.toLowerCase().trim();
   const list = document.getElementById('presetsList');
-  const buttons = list.querySelectorAll('button');
+  const cards = list.querySelectorAll('.preset-card');
   const groups = list.querySelectorAll('.preset-group');
   let anyVisible = false;
 
-  buttons.forEach(btn => {
-    const text = btn.textContent.toLowerCase();
-    const match = !q || text.includes(q);
-    btn.style.display = match ? '' : 'none';
+  cards.forEach(card => {
+    const text = (card.textContent + ' ' + (card.dataset.search || '')).toLowerCase();
+    const queryMatch = !q || text.includes(q);
+    const filterMatch = activePresetFilter === 'all' || card.dataset.kind === activePresetFilter;
+    const match = queryMatch && filterMatch;
+    card.style.display = match ? '' : 'none';
     if (match) anyVisible = true;
   });
 
@@ -1061,7 +1259,7 @@ function filterPresets(query) {
     let next = group.nextElementSibling;
     let groupHasVisible = false;
     while (next && !next.classList.contains('preset-group')) {
-      if (next.tagName === 'BUTTON' && next.style.display !== 'none') {
+      if (next.classList && next.classList.contains('preset-card') && next.style.display !== 'none') {
         groupHasVisible = true;
       }
       next = next.nextElementSibling;
@@ -1124,6 +1322,327 @@ function shareDesign() {
   }
 }
 
+function openTemplateChooser() {
+  loadManifest().then(function() {
+    renderTemplateChooser();
+  });
+}
+
+function closeTemplateChooser() {
+  localStorage.setItem('milg-template-chooser-dismissed', 'true');
+  const overlay = document.getElementById('templateChooserOverlay');
+  if (overlay) overlay.remove();
+}
+
+function renderTemplateChooser() {
+  closeTemplateChooser();
+  chooserState = chooserState || { what: 'landing', audience: 'developers', personality: 'clean', framework: 'html' };
+  const overlay = document.createElement('div');
+  overlay.id = 'templateChooserOverlay';
+  overlay.className = 'chooser-overlay';
+  overlay.innerHTML = ''
+    + '<div class="chooser-panel" role="dialog" aria-modal="true" aria-label="Find my template">'
+    + '  <div class="chooser-head">'
+    + '    <div><h2>Find my template</h2><p>Rank presets by use case, audience, tone, and stack.</p></div>'
+    + '    <button class="btn btn-icon" onclick="closeTemplateChooser()" aria-label="Close"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>'
+    + '  </div>'
+    + '  <div class="chooser-grid">'
+    + chooserQuestion('what', 'What are you building?', [['landing','Landing page'], ['app','App / dashboard'], ['form','Form / onboarding'], ['content','Docs / content'], ['portfolio','Portfolio'], ['product','Product page'], ['component','Component']])
+    + chooserQuestion('audience', 'Who is it for?', [['developers','Developers'], ['business','Business users'], ['public','General public'], ['mobile','Mobile-first consumers']])
+    + chooserQuestion('personality', 'Personality?', [['clean','Clean'], ['minimalist','Minimalist'], ['playful','Playful'], ['editorial','Editorial'], ['dark','Dark technical']])
+    + chooserQuestion('framework', 'Need framework code?', [['html','HTML'], ['react','React'], ['vue','Vue'], ['svelte','Svelte']])
+    + '  </div>'
+    + '  <div class="chooser-results" id="chooserResults"></div>'
+    + '</div>';
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', function(e) { if (e.target === overlay) closeTemplateChooser(); });
+  updateChooserResults();
+}
+
+function chooserQuestion(key, label, options) {
+  let html = '<div class="chooser-question"><div class="chooser-label">' + escapeHtml(label) + '</div><div class="chooser-options">';
+  options.forEach(function(opt) {
+    const active = chooserState[key] === opt[0] ? ' active' : '';
+    html += '<button class="chooser-chip' + active + '" onclick="setChooserAnswer(\'' + opt[0] + '\',\'' + key + '\')">' + escapeHtml(opt[1]) + '</button>';
+  });
+  return html + '</div></div>';
+}
+
+function setChooserAnswer(value, key) {
+  chooserState[key] = value;
+  renderTemplateChooser();
+  const hash = 'recommend:' + [chooserState.what, chooserState.audience, chooserState.personality, chooserState.framework].join(',');
+  history.replaceState(null, '', '#' + hash);
+}
+
+function scorePresetRecommendation(element, info) {
+  const tags = getPresetTags(element, info).join(' ').toLowerCase();
+  const kind = inferPresetKind(element, info);
+  const label = ((info && info.label) || element).toLowerCase();
+  let score = 0;
+  const what = chooserState.what;
+  if (what === 'landing' && (/landing|marketing|agency/.test(element + ' ' + tags))) score += 5;
+  if (what === 'app' && (/dashboard|shell|table|status|deploy|app/.test(element + ' ' + tags))) score += 5;
+  if (what === 'form' && (/form|onboarding/.test(element + ' ' + tags))) score += 5;
+  if (what === 'content' && (/docs|blog|editorial|content/.test(element + ' ' + tags))) score += 5;
+  if (what === 'portfolio' && (/portfolio|personal|agency/.test(element + ' ' + tags))) score += 5;
+  if (what === 'product' && (/product|pricing|showcase|launch/.test(element + ' ' + tags))) score += 5;
+  if (what === 'component' && kind === 'component') score += 5;
+  if (chooserState.audience === 'developers' && /dev|docs|oss|deploy|technical/.test(element + ' ' + tags)) score += 3;
+  if (chooserState.audience === 'business' && /dashboard|table|pricing|status|business|app/.test(element + ' ' + tags)) score += 3;
+  if (chooserState.audience === 'public' && /landing|restaurant|event|portfolio|product/.test(element + ' ' + tags + ' ' + label)) score += 3;
+  if (chooserState.audience === 'mobile' && /form|landing|product|event/.test(element + ' ' + tags)) score += 2;
+  if (info.personalities && info.personalities[chooserState.personality]) score += 2;
+  if (chooserState.personality === 'dark' && /dev|docs|status|dashboard|oss/.test(element + ' ' + tags)) score += 2;
+  if (chooserState.framework && chooserState.framework !== 'html') {
+    const frameworks = getPresetFrameworks(element, info);
+    if (frameworks.indexOf(chooserState.framework) !== -1) score += 3;
+    else score -= 1;
+  }
+  return score;
+}
+
+function updateChooserResults() {
+  const results = document.getElementById('chooserResults');
+  if (!results || !manifestData) return;
+  const ranked = Object.entries(manifestData.elements).map(function(entry) {
+    return { element: entry[0], info: entry[1], score: scorePresetRecommendation(entry[0], entry[1]) };
+  }).sort(function(a, b) { return b.score - a.score; }).slice(0, 3);
+
+  results.innerHTML = '<div class="chooser-results-title">Recommended presets</div>' + ranked.map(function(item) {
+    const personalities = Object.keys(item.info.personalities || {});
+    let personality = personalities.indexOf(chooserState.personality) !== -1 ? chooserState.personality : (personalities.indexOf('clean') !== -1 ? 'clean' : personalities[0]);
+    if (personality === 'before' && personalities.length > 1) personality = personalities.find(p => p !== 'before');
+    const reason = getBestFor(item.element, item.info);
+    return '<div class="chooser-result">'
+      + '<div><strong>' + escapeHtml(item.info.label || item.element) + '</strong><span>' + escapeHtml(reason) + '</span></div>'
+      + '<button class="btn btn-primary" onclick="chooseRecommendedPreset(\'' + item.element + '\',\'' + personality + '\')">Load</button>'
+      + '</div>';
+  }).join('');
+}
+
+function chooseRecommendedPreset(element, personality) {
+  localStorage.setItem('milg-template-chooser-dismissed', 'true');
+  closeTemplateChooser();
+  loadPreset(element, personality || 'clean');
+}
+
+function openAgentPackMenu() {
+  closeAgentPackMenu();
+  const btn = document.getElementById('agentPackBtn');
+  const rect = btn.getBoundingClientRect();
+  const menu = document.createElement('div');
+  menu.id = 'agentPackMenu';
+  menu.className = 'agent-pack-menu';
+  menu.style.top = (rect.bottom + 6) + 'px';
+  menu.style.right = Math.max(12, window.innerWidth - rect.right) + 'px';
+  menu.innerHTML = ''
+    + '<button onclick="copyAgentPack(\'prompt\')">Copy Agent Prompt</button>'
+    + '<button onclick="copyAgentPack(\'markdown\')">Copy Markdown</button>'
+    + '<button onclick="copyCurrentHtml()">Copy HTML</button>'
+    + '<button onclick="downloadCurrentHtml()">Download .html</button>'
+    + '<button onclick="copyFrameworkPrompt()">Copy Framework Prompt</button>';
+  document.body.appendChild(menu);
+  setTimeout(function() {
+    document.addEventListener('click', closeAgentPackMenu, { once: true });
+  }, 0);
+}
+
+function closeAgentPackMenu(e) {
+  const menu = document.getElementById('agentPackMenu');
+  if (!menu) return;
+  if (e && (menu.contains(e.target) || e.target === document.getElementById('agentPackBtn'))) return;
+  menu.remove();
+}
+
+function copyAgentPack(format) {
+  const pack = buildAgentPack(format || 'prompt');
+  navigator.clipboard.writeText(pack)
+    .then(() => showToast((format === 'markdown' ? 'Markdown' : 'Agent prompt') + ' copied'))
+    .catch(() => prompt('Copy this Agent Pack:', pack));
+  closeAgentPackMenu();
+}
+
+function copyCurrentHtml() {
+  const html = editor.value || '';
+  navigator.clipboard.writeText(html)
+    .then(() => showToast('HTML copied'))
+    .catch(() => prompt('Copy this HTML:', html));
+  closeAgentPackMenu();
+}
+
+function downloadCurrentHtml() {
+  const element = currentElement || 'custom';
+  const personality = currentPersonality || 'html';
+  const blob = new Blob([editor.value || ''], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = element + '-' + personality + '.html';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  showToast('HTML download started');
+  closeAgentPackMenu();
+}
+
+function copyFrameworkPrompt() {
+  const target = chooserState && chooserState.framework && chooserState.framework !== 'html' ? chooserState.framework : 'React';
+  const promptText = buildAgentPack('prompt') + '\n\n## Framework conversion\nConvert the preset to ' + target + '. Preserve the rendered structure, responsive behavior, accessible semantics, spacing rhythm, contrast, and visual hierarchy. Keep content editable through ordinary component props or local data objects.';
+  navigator.clipboard.writeText(promptText)
+    .then(() => showToast('Framework prompt copied'))
+    .catch(() => prompt('Copy this framework prompt:', promptText));
+  closeAgentPackMenu();
+}
+
+function buildAgentPack(format) {
+  const element = currentElement || (detachedFrom && detachedFrom.element) || 'custom';
+  const personality = currentPersonality || (detachedFrom && detachedFrom.personality) || 'custom';
+  const info = manifestData && manifestData.elements[element] ? manifestData.elements[element] : null;
+  const variants = info ? Object.keys(info.personalities || {}).join(', ') : 'custom';
+  const sourcePath = element !== 'custom' ? 'docs/presets/' + element + '/' + personality + '.html' : 'custom editor HTML';
+  const rawUrl = element !== 'custom' ? 'https://raw.githubusercontent.com/jdeworks/make-it-look-good/dev/' + sourcePath : 'n/a';
+  const componentFile = inferKnowledgeFile(element);
+  const title = format === 'markdown' ? '# Preset Handoff' : '# make-it-look-good Agent Pack';
+  const knowledge = [
+    'layout/visual-hierarchy.md',
+    'layout/spacing-system.md',
+    'typography/type-scale.md',
+    'color/contrast-and-accessibility.md',
+    'interaction/touch-targets.md',
+    'responsive/mobile-first.md'
+  ];
+  if (componentFile) knowledge.push(componentFile);
+  return [
+    title,
+    '',
+    '- Preset id: `' + element + '/' + personality + '`',
+    '- Source path: `' + sourcePath + '`',
+    '- Raw GitHub URL: ' + rawUrl,
+    '- Available variants: ' + variants,
+    '- Selected accent color: ' + (currentColorName || 'default'),
+    '- Selected effect: ' + ((visualStyles[currentStyleIndex] && visualStyles[currentStyleIndex].name) || 'None'),
+    '- Dark mode: ' + (darkMode ? 'on' : 'off'),
+    '- Intended use: ' + (chooserState ? [chooserState.what, chooserState.audience, chooserState.personality, chooserState.framework].join(', ') : 'not specified'),
+    '',
+    '## Recommended knowledge files',
+    knowledge.map(function(k) { return '- `' + k + '`'; }).join('\n'),
+    '',
+    '## Instructions',
+    '- Use this preset as the starting point.',
+    '- Customize content and brand.',
+    '- Preserve spacing, contrast, hierarchy, responsive behavior, and accessible structure.',
+    '- Match the target project stack.',
+    '- Generate Design Review Notes.'
+  ].join('\n');
+}
+
+function inferKnowledgeFile(element) {
+  if (/form/.test(element)) return 'components/forms.md';
+  if (/button/.test(element)) return 'components/buttons.md';
+  if (/card|pricing/.test(element)) return 'components/cards.md';
+  if (/table/.test(element)) return 'components/tables.md';
+  if (/dropdown|tabs|accordion|pagination/.test(element)) return 'components/navigation.md';
+  return null;
+}
+
+async function openComparisonMode() {
+  await loadManifest();
+  if (!currentElement || !manifestData || !manifestData.elements[currentElement]) {
+    showToast('Load a preset before comparing variants');
+    return;
+  }
+  closeComparisonMode();
+  const info = manifestData.elements[currentElement];
+  const personalities = Object.keys(info.personalities || {});
+  const comparable = personalities.filter(p => p !== 'before');
+  const rightPersonality = currentPersonality !== 'before' ? currentPersonality : (comparable[0] || 'clean');
+  const overlay = document.createElement('div');
+  overlay.id = 'comparisonOverlay';
+  overlay.className = 'comparison-overlay';
+  overlay.innerHTML = ''
+    + '<div class="comparison-panel" role="dialog" aria-modal="true" aria-label="Compare template variants">'
+    + '  <div class="comparison-head">'
+    + '    <div><h2>' + escapeHtml(info.label || currentElement) + '</h2><p>' + escapeHtml(getBestFor(currentElement, info)) + '</p></div>'
+    + '    <button class="btn btn-icon" onclick="closeComparisonMode()" aria-label="Close comparison"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>'
+    + '  </div>'
+    + '  <div class="comparison-tabs" id="comparisonTabs"></div>'
+    + '  <div class="comparison-grid">'
+    + '    <div class="comparison-pane"><div class="comparison-pane-label" id="comparisonLeftLabel"></div><iframe id="comparisonLeft" sandbox="allow-scripts" title="Comparison left"></iframe></div>'
+    + '    <div class="comparison-pane"><div class="comparison-pane-label" id="comparisonRightLabel"></div><iframe id="comparisonRight" sandbox="allow-scripts" title="Comparison right"></iframe></div>'
+    + '  </div>'
+    + '  <div class="comparison-notes" id="comparisonNotes"></div>'
+    + '</div>';
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', function(e) { if (e.target === overlay) closeComparisonMode(); });
+  renderComparisonTabs(rightPersonality);
+  await renderComparison(rightPersonality);
+}
+
+function closeComparisonMode() {
+  const overlay = document.getElementById('comparisonOverlay');
+  if (overlay) overlay.remove();
+}
+
+function renderComparisonTabs(activePersonality) {
+  const info = manifestData.elements[currentElement];
+  const personalities = Object.keys(info.personalities || {}).filter(p => p !== 'before');
+  const tabs = document.getElementById('comparisonTabs');
+  if (!tabs) return;
+  tabs.innerHTML = personalities.map(function(p) {
+    const active = p === activePersonality ? ' active' : '';
+    return '<button class="comparison-tab' + active + '" onclick="renderComparison(\'' + p + '\')">' + escapeHtml(p.charAt(0).toUpperCase() + p.slice(1)) + '</button>';
+  }).join('');
+}
+
+async function renderComparison(rightPersonality) {
+  if (!currentElement) return;
+  const info = manifestData.elements[currentElement];
+  const hasBefore = !!(info.personalities && info.personalities.before);
+  const leftPersonality = hasBefore ? 'before' : (currentPersonality && currentPersonality !== rightPersonality ? currentPersonality : Object.keys(info.personalities || {}).filter(p => p !== 'before' && p !== rightPersonality)[0] || rightPersonality);
+  renderComparisonTabs(rightPersonality);
+  const leftHtml = await fetchPreset(currentElement, leftPersonality);
+  const rightHtml = await fetchPreset(currentElement, rightPersonality);
+  const left = document.getElementById('comparisonLeft');
+  const right = document.getElementById('comparisonRight');
+  const effectCSS = visualStyles[currentStyleIndex] ? visualStyles[currentStyleIndex].css : '';
+  if (left) left.srcdoc = buildPreviewSrcdoc(transformPresetForCurrentContext(leftHtml, currentElement, leftPersonality), { dark: darkMode, effectCSS: effectCSS });
+  if (right) right.srcdoc = buildPreviewSrcdoc(transformPresetForCurrentContext(rightHtml, currentElement, rightPersonality), { dark: darkMode, effectCSS: effectCSS });
+  const leftLabel = document.getElementById('comparisonLeftLabel');
+  const rightLabel = document.getElementById('comparisonRightLabel');
+  if (leftLabel) leftLabel.textContent = hasBefore ? 'Before' : leftPersonality;
+  if (rightLabel) rightLabel.textContent = hasBefore ? 'After - ' + rightPersonality : rightPersonality;
+  const notes = document.getElementById('comparisonNotes');
+  if (notes) notes.innerHTML = buildComparisonNotes(info, rightPersonality);
+}
+
+function transformPresetForCurrentContext(html, element, personality) {
+  if (!html || personality === 'before') return html || '';
+  const fromPrimary = getElementPrimary(element, personality);
+  const fromNeutral = presetNeutralMap[element] || 'slate';
+  const targetColor = currentColorName || fromPrimary;
+  const theme = colorToTheme(targetColor);
+  return applyColorTheme(html, fromPrimary, theme.primary, fromNeutral, theme.neutral, theme);
+}
+
+function buildComparisonNotes(info, personality) {
+  const notes = getDesignDecisionNotes(currentElement, personality);
+  return '<div><strong>Design decisions</strong><span>' + escapeHtml(notes.join(' / ')) + '</span></div>'
+    + '<div><strong>Variants</strong><span>' + escapeHtml(Object.keys(info.personalities || {}).filter(p => p !== 'before').join(', ')) + '</span></div>'
+    + '<div><strong>Context</strong><span>' + escapeHtml((darkMode ? 'Dark' : 'Light') + ', ' + currentColorName + ', ' + ((visualStyles[currentStyleIndex] && visualStyles[currentStyleIndex].name) || 'None')) + '</span></div>';
+}
+
+function getDesignDecisionNotes(element, personality) {
+  const kind = inferPresetKind(element, manifestData && manifestData.elements[element]);
+  const notes = [];
+  notes.push(kind === 'dashboard' || kind === 'app' ? 'higher density' : kind === 'expressive' ? 'more expressive pacing' : 'moderate density');
+  notes.push(personality === 'minimalist' ? 'low ornament' : personality === 'playful' ? 'larger radius and stronger motion' : personality === 'editorial' ? 'type-led hierarchy' : 'balanced hierarchy');
+  notes.push(currentStyleIndex === 3 ? 'glass surface treatment' : currentStyleIndex === 4 ? 'serif typography treatment' : 'native preset styling');
+  notes.push(darkMode ? 'dark surface contrast' : 'light surface contrast');
+  return notes;
+}
+
 // --- Toast ---
 function showToast(msg) {
   toast.textContent = msg;
@@ -1135,6 +1654,18 @@ function showToast(msg) {
 async function loadFromHash() {
   const hash = window.location.hash.slice(1);
   if (!hash) return;
+
+  if (hash.startsWith('recommend:')) {
+    const parts = hash.slice(10).split(',');
+    chooserState = {
+      what: parts[0] || 'landing',
+      audience: parts[1] || 'developers',
+      personality: parts[2] || 'clean',
+      framework: parts[3] || 'html'
+    };
+    setTimeout(openTemplateChooser, 50);
+    return;
+  }
 
   // Preset link — trusted, load directly
   // Format: preset:element/personality[/color][/style]
@@ -1807,6 +2338,11 @@ function startApp() {
   loadFromHash().then(function() {
     // Check after a short delay to ensure Monaco has settled
     setTimeout(function() { autoLoadTemplate(); }, 300);
+    setTimeout(function() {
+      if (!window.location.hash && localStorage.getItem('milg-template-chooser-dismissed') !== 'true') {
+        openTemplateChooser();
+      }
+    }, 650);
   });
 }
 
@@ -1838,12 +2374,7 @@ async function autoLoadTemplate() {
     // Fetch the HTML directly as a fallback that always works
     var html = await fetchPreset(pick, personality);
     if (html && html.length > 10) {
-      _fallbackValue = html; // Always set fallback
-      if (monacoEditor) {
-        suppressChangeEvent = true;
-        monacoEditor.setValue(html);
-        suppressChangeEvent = false;
-      }
+      editor.value = html;
       currentElement = pick;
       currentPersonality = personality;
       currentPresetName = pick;
@@ -1878,10 +2409,11 @@ if (window._monacoReady) {
 } else {
   window.addEventListener('monaco-ready', safeStartApp);
   // Fallback: start without Monaco after 5s (mobile/slow connections)
-  setTimeout(function() {
-    if (!_appStarted) {
-      console.warn('Monaco editor did not load — starting without code editor');
-      safeStartApp();
-    }
-  }, 5000);
+	  setTimeout(function() {
+	    if (!_appStarted) {
+	      console.warn('Monaco editor did not load — starting without code editor');
+	      ensureFallbackEditor('Monaco is unavailable, likely because cdnjs was blocked or slow. Editing still works here.');
+	      safeStartApp();
+	    }
+	  }, 5000);
 }

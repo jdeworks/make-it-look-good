@@ -1,8 +1,8 @@
 # make-it-look-good
 
-> **Make your website, app, or UI actually look good.** Give your AI assistant this repo and it will help you design, redesign, or fix the visual design of any web project — with real design principles, not guesswork.
+> **Make your website, app, or UI actually look good.** Give your AI assistant this repo and it will help you design, redesign, or fix web UI with real design principles, not guesswork.
 
-Your AI asks what you're building, what personality you want (clean, minimalist, playful, editorial), your colors, and your audience — then produces production-ready HTML/CSS with proper spacing, contrast, typography, and responsive behavior. It works on landing pages, dashboards, forms, portfolios, e-commerce, or any UI.
+Your AI asks what you're building, what personality you want (clean, minimalist, playful, editorial), your colors, and your audience — then starts from the preset library and produces HTML + Tailwind or converts that design into React, Vue, Svelte, or another stack you specify. It works best for common web UI patterns such as landing pages, dashboards, forms, portfolios, e-commerce pages, and internal tools.
 
 **This is not a library you install.** It's a design knowledge base (45 topics on color, typography, spacing, layout, interaction, accessibility) plus a consultation playbook that guides your AI through the right questions and decisions.
 
@@ -14,9 +14,10 @@ The user wants you to **help them make their website or UI look good**. This rep
 
 **Start here:**
 1. Read [`CONSULT.md`](CONSULT.md) — the full design consultation playbook. Follow it step by step.
-2. Read [`docs/presets/_index.md`](docs/presets/_index.md) — template catalog with preview links.
-3. Read [`workflows/quick-reference.md`](workflows/quick-reference.md) — critical design numbers.
-4. Read ONLY the knowledge files relevant to the user's question (see Step 2 in CONSULT.md).
+2. Read [`docs/presets/index.json`](docs/presets/index.json) — the machine-readable source of truth for available templates and personality variants.
+3. Fetch or read the specific preset HTML files you need from `docs/presets/<element>/<variant>.html`; do not rely on `#preset:` preview URLs as source code.
+4. Read [`workflows/quick-reference.md`](workflows/quick-reference.md) — critical design numbers.
+5. Read ONLY the knowledge files relevant to the user's question (see Step 2 in CONSULT.md).
 
 **Your job:** Ask the user what they're building (or what they want to improve), walk them through personality/colors/audience questions, then generate or fix their UI code using the design principles in this repo. Do NOT improve this repo itself — focus on the user's project.
 
@@ -24,7 +25,7 @@ CONSULT.md includes:
 - A consultation depth selector (quick start / guided / thorough) — ask the user how deep to go
 - Required intake questions about personality, colors, inspiration, and dark mode — don't skip these
 - Website analysis workflow (Step 1E) for when users share reference URLs
-- Template catalog with preview links at `https://jdeworks.github.io/make-it-look-good/#preset:{element}/{personality}`
+- Preset selection rules based on `docs/presets/index.json`, with preview links only for human inspection
 
 ---
 
@@ -32,7 +33,7 @@ CONSULT.md includes:
 
 ### What is this?
 
-You have a website or UI that needs to look better. Give this repo to your AI assistant and it becomes a **design consultant** — asking the right questions, applying real design principles, and producing code that actually looks professional. Not generic blue SaaS. Your brand, your personality, your colors.
+You have a website or UI that needs to look better. Give this repo to your AI assistant and it becomes a **design consultant** — asking the right questions, applying real design principles, and producing Tailwind/HTML-first UI code or framework conversions that fit your stack. Not generic blue SaaS. Your brand, your personality, your colors.
 
 ### How to use it
 
@@ -51,6 +52,12 @@ repo. Start by asking what I'm building and how detailed I want the consultation
 ```
 
 The bundle (~164k tokens) includes the full consultation playbook, all 45 knowledge files, and the template catalog (`docs/presets/index.json`). To keep it pasteable it does **not** embed the template HTML — fetch a specific preset on demand from `https://raw.githubusercontent.com/jdeworks/make-it-look-good/dev/docs/presets/<element>/<variant>.html` (variants per `index.json`), or browse them in the [live preview tool](https://jdeworks.github.io/make-it-look-good/) and tell your AI which ones you like.
+
+**Important for LLM agents:** `docs/presets/index.json` is authoritative. The hosted `#preset:element/variant` URLs are for visual preview; fetch the raw preset HTML before generating code:
+
+```text
+https://raw.githubusercontent.com/jdeworks/make-it-look-good/dev/docs/presets/<element>/<variant>.html
+```
 
 **Option B — Local AI agent** (Claude Code, Cursor, Windsurf, Codex, etc.)
 
@@ -91,7 +98,17 @@ Look at docs/presets/_index.md and give me a hero + pricing cards layout.
 
 ### Preview Tool
 
-Paste any HTML+Tailwind into the [live preview tool](https://jdeworks.github.io/make-it-look-good/) to see it rendered instantly. Toggle mobile/tablet/desktop views, dark mode, and share via URL. Includes 125 prebuilt template files across 41 elements with multiple design personalities.
+Paste HTML + Tailwind into the [hosted live preview tool](https://jdeworks.github.io/make-it-look-good/) to see it rendered instantly. Toggle mobile/tablet/desktop views, dark mode, and share via URL. Includes 125 prebuilt template files across 41 elements with multiple design personalities.
+
+Preview modes:
+
+| Mode | Use for | Instructions |
+|------|---------|--------------|
+| **Hosted preview** | Human visual review and shareable preset links | Open `https://jdeworks.github.io/make-it-look-good/` or a `#preset:<element>/<variant>` URL |
+| **Local preview/analyzer** | Localhost targets, offline work, and development checks | Run `./start.sh`, then open `http://localhost:8765/` or `http://localhost:8765/analyzer.html` |
+| **Headless preset validation** | Automated preset scoring in a fresh clone or CI-like shell | Run `npm install`, install a browser with `npx puppeteer browsers install chrome` or `npx playwright install chromium`, then run `node scripts/test-presets-headless.mjs` |
+
+LLM agents should treat preview links as human-preview-only. For code generation, enumerate variants from `docs/presets/index.json` and read the actual preset files from `docs/presets/`.
 
 ### Design Analyzer
 
@@ -109,7 +126,22 @@ Scoring modules: Color & Contrast (WCAG + APCA), Typography, Spacing & Layout, T
 
 Features: 8 audience profiles (General, WCAG AAA, Elderly, Low Vision, Motor Impairment, Color Blind, Children, Cognitive), page context detection, gradient/background-image/CSS-filter contrast resolution, decorative element filtering, context-aware touch targets (nav/footer/inline exemptions per WCAG 2.5.8), CVD palette simulation (Machado et al. 2009), post-analysis exclusion suggestions, extraction caching, dark mode report, viewport size selection, deep scan (multi-viewport + dark mode), page screenshots, analysis history, N/A category detection, progress bar, JSON export/import, markdown/PDF export. Self-hostable CORS proxy (Cloudflare Worker, free tier 100K req/day) — see [`proxy/README.md`](proxy/README.md).
 
-Validated against 125 preset templates via headless browser testing (Puppeteer) — average score 88, min 69, max 100, with a 7-point gap between "before" (81 avg) and "clean" (88 avg) variants.
+Validated against 125 preset templates via headless browser testing with Puppeteer Chrome or Playwright Chromium fallback — average score 96, min 85, max 100, with all 125 presets completing successfully.
+
+Fresh-clone validation:
+
+```bash
+npm install
+npx puppeteer browsers install chrome
+node scripts/test-presets-headless.mjs
+```
+
+If Puppeteer Chrome cannot download in your environment, install the Playwright fallback directly:
+
+```bash
+npx playwright install chromium
+node scripts/test-presets-headless.mjs
+```
 
 ### Run the analyzer locally / offline
 

@@ -94,7 +94,7 @@ Run through this checklist against their code. Note every issue you find.
 **Dark Mode**
 - [ ] Does the design support dark mode? (Check for `dark:` variants or a dark color scheme)
 - [ ] If yes: are all backgrounds, text, borders, and form elements covered?
-- [ ] If no: should it? (Ask the user — see intake question 5)
+- [ ] If no: should it? (Ask the user — see intake question 7)
 
 **Semantic HTML & Accessibility**
 - [ ] Are semantic elements used? (`<nav>`, `<main>`, `<header>`, `<footer>`, `<article>`, `<section>`)
@@ -211,7 +211,7 @@ Before diving into design questions, gauge how much guidance the user wants. **A
 6. **Any sites or pages you like the look of?** (Inspiration is the fastest shortcut to a good result.)
    - Share a link — even a single page that "feels right." I'll identify what makes it work (layout rhythm, color temperature, typography choices, image treatment, whitespace) and apply those principles to your project.
    - Describe what caught your eye — "I like how Stripe shows code examples inline" or "the way Aesop's site lets the product photos breathe" is enough.
-   - Reference one of our presets — if you've seen the [preview tool](https://jdeworks.github.io/make-it-look-good/), tell me which template or personality resonated and what you'd change.
+   - Reference one of our presets — if you've seen the [hosted preview tool](https://jdeworks.github.io/make-it-look-good/), tell me which template or personality resonated and what you'd change.
    - No inspiration — that's fine, I'll work from the personality and project type.
 
    *Why this matters:* A perfume brand, a photo portfolio, and a SaaS dashboard all need completely different visual treatment — even if they're all "minimalist." Inspiration links tell me about image treatment (full-bleed hero vs. contained grid), content rhythm (editorial scroll vs. dense grid), whitespace ratios, and typography tone in a way that personality labels alone can't capture. One good reference link saves 3 rounds of "not quite what I meant."
@@ -395,19 +395,19 @@ Based on what you learned in Step 1, read the relevant files. **Read the minimum
 
 ---
 
-## Step 2.5: Select Starting Snippets & Personality
+## Step 2.5: Select Starting Presets & Personality
 
-Before generating code from scratch, check the **live preview tool** for starting points. The preview tool at `docs/index.html` has templates organized by element and personality.
+Before generating code, check `docs/presets/index.json` for starting points. It is the authoritative machine-readable list of available elements and personality variants. Read the actual preset files from `docs/presets/{element}/{personality}.html`; the hosted `#preset:` URLs are for human visual preview, not source retrieval.
 
 ### Show the User Examples
 
 If the user is unsure about their design vibe (intake question 3), point them to the preview tool:
 
-> *"Take a look at the [live preview tool](docs/index.html) — try loading the same template in different personalities (Clean, Minimalist, Playful) to see which direction feels right for your project. You can also try the Effect buttons (Hushed, Bouncy, Frosted, Serif) for CSS overlays on any personality. Tell me which one resonates and we'll build from there."*
+> *"Take a look at the hosted preview tool — try loading the same template in different personalities (Clean, Minimalist, Playful) to see which direction feels right for your project. You can also try the Effect buttons (Hushed, Bouncy, Frosted, Serif) for CSS overlays on any personality. Tell me which one resonates and we'll build from the matching preset source."*
 
 ### Personality → Template Mapping
 
-Templates live in `docs/presets/{element}/{personality}.html`. Each element can have multiple personality variants with genuinely different HTML structures (not just CSS changes):
+Templates live in `docs/presets/{element}/{personality}.html`. If you are using the bundled `bundle.xml`, fetch needed preset HTML separately from `https://raw.githubusercontent.com/jdeworks/make-it-look-good/dev/docs/presets/<element>/<variant>.html`. Each element can have multiple personality variants with genuinely different HTML structures (not just CSS changes):
 
 | Personality | Visual Character | Best For | Availability |
 |------------|-----------------|----------|-------------|
@@ -421,7 +421,7 @@ Templates live in `docs/presets/{element}/{personality}.html`. Each element can 
 ### Using Personality Templates
 
 1. Based on intake question 3 (design vibe), select the matching personality
-2. Load the template from `docs/presets/{element}/{personality}.html`
+2. Load the template from `docs/presets/{element}/{personality}.html` after verifying it exists in `docs/presets/index.json`
 3. Use it as the HTML starting point — customize content, colors, and branding
 4. The color theme switcher in the preview tool lets users explore color variations on any personality
 
@@ -489,7 +489,7 @@ Adapt your output format to match the user's tech stack and situation.
 
 Always provide design tokens first — they apply regardless of framework. Present them in whichever format matches the user's stack.
 
-**Adapt tokens to the chosen personality and brand.** The blue-600 defaults below are a fallback. If the user provided brand colors (intake question 8) or chose a personality, replace the primary color. If using a personality template, extract the primary color from the template's HTML. Personality also affects non-color tokens:
+**Adapt tokens to the chosen personality and brand.** The blue-600 defaults below are a fallback. If the user provided brand colors (intake question 5) or chose a personality, replace the primary color. If using a personality template, extract the primary color from the template's HTML. Personality also affects non-color tokens:
 
 | Token | Clean | Minimalist | Playful | Editorial |
 |-------|-------|-----------|---------|-----------|
@@ -563,7 +563,7 @@ export const tokens = {
 Generate code in the user's framework/language:
 
 **Plain HTML + Tailwind** (default for unknown stack):
-- This knowledge base primarily uses [Tailwind CSS](https://tailwindcss.com) for all snippets and examples — it's the default output format when the user's stack is unknown or when they're starting from scratch
+- This knowledge base primarily uses [Tailwind CSS](https://tailwindcss.com) for snippets, examples, and preset HTML — it's the default output format when the user's stack is unknown or when they're starting from scratch
 - Include Tailwind v4 CDN: `<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>`
 - Self-contained, single file
 - Semantic HTML (`<header>`, `<main>`, `<nav>`, `<section>`)
@@ -591,7 +591,7 @@ Generate code in the user's framework/language:
 - Responsive: works at 320px, 768px, 1024px+
 - Accessible: 4.5:1 contrast, 44px targets, visible focus states, semantic elements
 - Consistent: spacing from a scale, type from a scale, colors from a palette
-- Dark mode: `dark:` variants on all elements if user requested it (intake question 6)
+- Dark mode: `dark:` variants on all elements if user requested it (intake question 7)
 - Performance: `loading="lazy"` on below-fold images, `<link rel="preconnect">` for font CDNs, `font-display: swap` for web fonts. See `typography/web-font-loading.md`
 
 **For multi-page apps:** use a shared shell snippet (shell-sidebar or shell-marketing) as the consistent frame. Only the content area changes between pages. Reference the `project` preset in `docs/presets/` for a multi-page example with Dashboard, Team, and Settings views.
@@ -600,7 +600,9 @@ Generate code in the user's framework/language:
 
 After generating code, help the user see it:
 
-- **Plain HTML / Tailwind** → suggest the make-it-look-good preview tool or pasting into a browser
+- **Hosted preview** → for human visual inspection and shareable `#preset:` links; do not use preview URLs as source code
+- **Local preview/analyzer** → run `./start.sh`, then open `http://localhost:8765/` or `http://localhost:8765/analyzer.html`; use this for localhost targets or offline mode
+- **Plain HTML / Tailwind** → suggest the hosted or local make-it-look-good preview tool, or opening the generated HTML directly when it has no server dependencies
 - **React** → suggest running their dev server, or extracting the JSX into a standalone HTML file for preview
 - **Any framework** → if they want a quick visual check, offer to generate a standalone HTML + Tailwind version of the same design for the preview tool, clearly labeled as "preview-only — use the [framework] code in your project"
 

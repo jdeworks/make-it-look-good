@@ -346,6 +346,15 @@ console.log('[milg] analyzer.js v3.11.66 loaded');
     try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch(e) { return []; }
   }
 
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   function renderHistoryList() {
     var history = getHistory();
     if (history.length === 0) return '';
@@ -364,10 +373,11 @@ console.log('[milg] analyzer.js v3.11.66 loaded');
           else if (p === 'pxv') settingsBadges += '<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:#7c3aed;color:#fff;margin-left:3px">verify</span>';
         });
       }
-      html += '<div class="history-item" title="' + (entry.url || '').replace(/"/g, '&quot;') + (entry.elements ? '\n' + entry.elements + ' elements, ' + (entry.contrastPairs || 0) + ' contrast pairs' : '') + (entry.settings ? '\nSettings: ' + entry.settings : '') + '">';
-      html += '<span class="history-score" style="color:' + (entry.score >= 80 ? '#15803d' : entry.score >= 60 ? '#a16207' : '#dc2626') + '">' + entry.score + '</span>';
-      html += '<span class="history-url">' + label + settingsBadges + '</span>';
-      html += '<span class="history-date">' + dateStr + '</span>';
+      var title = (entry.url || '') + (entry.elements ? '\n' + entry.elements + ' elements, ' + (entry.contrastPairs || 0) + ' contrast pairs' : '') + (entry.settings ? '\nSettings: ' + entry.settings : '');
+      html += '<div class="history-item" title="' + escapeHtml(title) + '">';
+      html += '<span class="history-score" style="color:' + (entry.score >= 80 ? '#15803d' : entry.score >= 60 ? '#a16207' : '#dc2626') + '">' + escapeHtml(entry.score) + '</span>';
+      html += '<span class="history-url">' + escapeHtml(label) + settingsBadges + '</span>';
+      html += '<span class="history-date">' + escapeHtml(dateStr) + '</span>';
       html += '<button class="history-delete" onclick="event.stopPropagation();window.__milgDeleteHistory(' + idx + ')" title="Remove from history">&times;</button>';
       html += '</div>';
     });
@@ -1187,6 +1197,11 @@ console.log('[milg] analyzer.js v3.11.66 loaded');
     }
 
     function reloadSnippet() {
+      snippetCode = document.getElementById('snippetCode');
+      sharedScreenshotCheck = document.getElementById('screenshotCheck');
+      snippetCrawlCheck = document.getElementById('snippetCrawlCheck');
+      snippetCrawlMaxPages = document.getElementById('snippetCrawlMaxPages');
+      embedScreenshotLibCheck = document.getElementById('embedScreenshotLibCheck');
       var crawlOn = snippetCrawlCheck && snippetCrawlCheck.checked;
       var withScreenshots = sharedScreenshotCheck && sharedScreenshotCheck.checked;
       var wantInlineVerify = document.getElementById('pixelVerifyCheck') && document.getElementById('pixelVerifyCheck').checked;
@@ -1218,6 +1233,10 @@ console.log('[milg] analyzer.js v3.11.66 loaded');
     // Pixel verify requires screenshots — disable when screenshots unchecked
     var pixelVerifyCheck = document.getElementById('pixelVerifyCheck');
     function syncPixelVerify() {
+      sharedScreenshotCheck = document.getElementById('screenshotCheck');
+      pixelVerifyCheck = document.getElementById('pixelVerifyCheck');
+      embedScreenshotLibCheck = document.getElementById('embedScreenshotLibCheck');
+      embedScreenshotLibNote = document.getElementById('embedScreenshotLibNote');
       var on = sharedScreenshotCheck && sharedScreenshotCheck.checked;
       if (pixelVerifyCheck && sharedScreenshotCheck) {
         if (!on) {
@@ -1272,12 +1291,14 @@ console.log('[milg] analyzer.js v3.11.66 loaded');
     }
 
     // Copy snippet
-    copySnippetBtn.addEventListener('click', function() {
+    function handleCopySnippet() {
+      snippetCode = document.getElementById('snippetCode');
       var text = snippetCode.textContent;
       navigator.clipboard.writeText(text).then(function() {
         showToast('Snippet copied to clipboard!');
       });
-    });
+    }
+    copySnippetBtn.addEventListener('click', handleCopySnippet);
 
     // Decompress gzipped clipboard data (MILG_GZ: header)
     function decompressPaste(text, callback) {
@@ -1305,7 +1326,9 @@ console.log('[milg] analyzer.js v3.11.66 loaded');
     }
 
     // Analyze JSON (supports both raw JSON and MILG_GZ: compressed format)
-    analyzeBtn.addEventListener('click', function() {
+    function handleAnalyzeJson() {
+      pasteInput = document.getElementById('pasteInput');
+      analyzeBtn = document.getElementById('analyzeBtn');
       var raw = pasteInput.value.trim();
       if (!raw) { showToast('Paste the extracted JSON data first'); return; }
       analyzeBtn.disabled = true;
@@ -1327,54 +1350,55 @@ console.log('[milg] analyzer.js v3.11.66 loaded');
           showToast('Invalid JSON: ' + e.message);
         }
       });
-    });
+    }
+    analyzeBtn.addEventListener('click', handleAnalyzeJson);
 
     // Analyze pasted HTML fallback
-    if (analyzeHtmlBtn && htmlInput) {
-      analyzeHtmlBtn.addEventListener('click', function() {
-        var html = (htmlInput.value || '').trim();
-        if (!html) { showToast('Paste HTML markup first'); return; }
-        var screenshotCheck = document.getElementById('screenshotCheck');
-        var wantShots = screenshotCheck ? screenshotCheck.checked : false;
-        var exclude = window.__milgCombinedExclude || (document.getElementById('excludeSelector') && document.getElementById('excludeSelector').value) || '';
-        analyzeHtmlBtn.disabled = true;
-        analyzeHtmlBtn.textContent = 'Analyzing...';
-        if (htmlStatus) {
-          htmlStatus.style.display = 'block';
-          htmlStatus.textContent = wantShots ? 'Rendering pasted HTML and trying screenshot capture...' : 'Rendering pasted HTML...';
-        }
-        if (wantShots) { showFocusModal(); updateFocusModal('Rendering pasted HTML fallback'); }
-        showProgress(wantShots ? 35 : 45, 'Analyzing pasted HTML...');
-        MilgIframe.analyzeHtml(html, {
-          screenshots: wantShots,
-          exclude: exclude
-        }, function(data) {
-          analyzeHtmlBtn.disabled = false;
-          analyzeHtmlBtn.textContent = 'Analyze HTML';
-          hideFocusModal();
-          hideProgress();
-          if (htmlStatus) htmlStatus.style.display = 'none';
-          if (!data.meta) data.meta = {};
-          data.meta._inputMethod = 'html-paste';
-          data.meta._partialAnalysis = true;
-          data.meta.url = 'Pasted HTML';
-          runAnalysis(data);
-        });
+    function handleAnalyzeHtml() {
+      htmlInput = document.getElementById('htmlInput');
+      analyzeHtmlBtn = document.getElementById('analyzeHtmlBtn');
+      htmlStatus = document.getElementById('htmlStatus');
+      var html = (htmlInput && htmlInput.value || '').trim();
+      if (!html) { showToast('Paste HTML markup first'); return; }
+      var screenshotCheck = document.getElementById('screenshotCheck');
+      var wantShots = screenshotCheck ? screenshotCheck.checked : false;
+      var exclude = window.__milgCombinedExclude || (document.getElementById('excludeSelector') && document.getElementById('excludeSelector').value) || '';
+      analyzeHtmlBtn.disabled = true;
+      analyzeHtmlBtn.textContent = 'Analyzing...';
+      if (htmlStatus) {
+        htmlStatus.style.display = 'block';
+        htmlStatus.textContent = wantShots ? 'Rendering pasted HTML and trying screenshot capture...' : 'Rendering pasted HTML...';
+      }
+      if (wantShots) { showFocusModal(); updateFocusModal('Rendering pasted HTML fallback'); }
+      showProgress(wantShots ? 35 : 45, 'Analyzing pasted HTML...');
+      MilgIframe.analyzeHtml(html, {
+        screenshots: wantShots,
+        exclude: exclude
+      }, function(data) {
+        analyzeHtmlBtn.disabled = false;
+        analyzeHtmlBtn.textContent = 'Analyze HTML';
+        hideFocusModal();
+        hideProgress();
+        if (htmlStatus) htmlStatus.style.display = 'none';
+        if (!data.meta) data.meta = {};
+        data.meta._inputMethod = 'html-paste';
+        data.meta._partialAnalysis = true;
+        data.meta.url = 'Pasted HTML';
+        runAnalysis(data);
       });
+    }
+    if (analyzeHtmlBtn && htmlInput) {
+      analyzeHtmlBtn.addEventListener('click', handleAnalyzeHtml);
     }
 
     // Analyze URL
-    analyzeUrlBtn.addEventListener('click', function() {
+    function handleAnalyzeUrl() {
+      analyzeUrlBtn = document.getElementById('analyzeUrlBtn');
+      urlInput = document.getElementById('urlInput');
+      urlStatus = document.getElementById('urlStatus');
       var url = (urlInput.value || '').trim();
       if (!url) { showToast('Enter a URL first'); return; }
       if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
-      // Normalize: add www. if bare domain
-      try {
-        var parsed = new URL(url);
-        if (!parsed.hostname.startsWith('www.') && parsed.hostname.split('.').length === 2 && !parsed.hostname.includes('localhost')) {
-          url = parsed.protocol + '//www.' + parsed.hostname + parsed.pathname + parsed.search + parsed.hash;
-        }
-      } catch(e) {}
       urlInput.value = url;
 
       // Crawl mode intercept
@@ -1509,7 +1533,8 @@ console.log('[milg] analyzer.js v3.11.66 loaded');
           _launchSingleAnalysis();
         }
       });
-    });
+    }
+    analyzeUrlBtn.addEventListener('click', handleAnalyzeUrl);
 
     // Allow Enter key in URL input
     urlInput.addEventListener('keydown', function(e) {
@@ -1521,10 +1546,15 @@ console.log('[milg] analyzer.js v3.11.66 loaded');
     var jsEnabledOptions = document.getElementById('jsEnabledOptions');
     var jsRiskAck = document.getElementById('jsRiskAck');
     function syncJsGate() {
+      analyzeUrlBtn = document.getElementById('analyzeUrlBtn');
+      jsEnabledCheck = document.getElementById('jsEnabledCheck');
+      jsRiskAck = document.getElementById('jsRiskAck');
       if (!jsEnabledCheck) return;
       var needsAck = jsEnabledCheck.checked && (!jsRiskAck || !jsRiskAck.checked);
-      analyzeUrlBtn.disabled = needsAck;
-      analyzeUrlBtn.title = needsAck ? 'Check "I understand the risk" to enable' : '';
+      if (analyzeUrlBtn) {
+        analyzeUrlBtn.disabled = needsAck;
+        analyzeUrlBtn.title = needsAck ? 'Check "I understand the risk" to enable' : '';
+      }
     }
     if (jsEnabledCheck && jsEnabledOptions) {
       jsEnabledCheck.addEventListener('change', function() {
@@ -1586,6 +1616,135 @@ console.log('[milg] analyzer.js v3.11.66 loaded');
 
     document.getElementById('excludeSelector').addEventListener('input', syncExcludeSelector);
 
+    function bindRestoredInputUi() {
+      function bindOnce(el, eventName, handler) {
+        if (!el) return;
+        var key = 'milgBound' + eventName;
+        if (el.dataset && el.dataset[key]) return;
+        el.addEventListener(eventName, handler);
+        if (el.dataset) el.dataset[key] = 'true';
+      }
+
+      inputSection = document.getElementById('inputSection');
+      inputSection.querySelectorAll('.tab-btn').forEach(function(btn) {
+        bindOnce(btn, 'click', function() {
+          inputSection.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+          inputSection.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
+          btn.classList.add('active');
+          var target = document.getElementById(btn.dataset.tab);
+          if (target) target.classList.add('active');
+          var ao = document.getElementById('analysisOptions');
+          if (ao) ao.style.display = (btn.dataset.tab === 'tabImport') ? 'none' : 'flex';
+        });
+      });
+
+      bindOnce(document.getElementById('copySnippetBtn'), 'click', handleCopySnippet);
+      bindOnce(document.getElementById('analyzeBtn'), 'click', handleAnalyzeJson);
+      bindOnce(document.getElementById('analyzeHtmlBtn'), 'click', handleAnalyzeHtml);
+      bindOnce(document.getElementById('analyzeUrlBtn'), 'click', handleAnalyzeUrl);
+      bindOnce(document.getElementById('urlInput'), 'keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); document.getElementById('analyzeUrlBtn').click(); }
+      });
+
+      bindOnce(document.getElementById('screenshotCheck'), 'change', function() {
+        syncPixelVerify();
+        reloadSnippet();
+      });
+      bindOnce(document.getElementById('pixelVerifyCheck'), 'change', reloadSnippet);
+      bindOnce(document.getElementById('embedScreenshotLibCheck'), 'change', function() {
+        var note = document.getElementById('embedScreenshotLibNote');
+        var check = document.getElementById('embedScreenshotLibCheck');
+        if (note) note.style.display = check && check.checked ? '' : 'none';
+        reloadSnippet();
+      });
+      bindOnce(document.getElementById('snippetCrawlCheck'), 'change', function() {
+        var check = document.getElementById('snippetCrawlCheck');
+        var maxPages = document.getElementById('snippetCrawlMaxPages');
+        if (maxPages) maxPages.style.display = check && check.checked ? '' : 'none';
+        reloadSnippet();
+      });
+      bindOnce(document.getElementById('snippetCrawlMaxPages'), 'change', reloadSnippet);
+
+      var restoredJsEnabledCheck = document.getElementById('jsEnabledCheck');
+      var restoredJsEnabledOptions = document.getElementById('jsEnabledOptions');
+      bindOnce(restoredJsEnabledCheck, 'change', function() {
+        var ack = document.getElementById('jsRiskAck');
+        if (restoredJsEnabledOptions) restoredJsEnabledOptions.style.display = restoredJsEnabledCheck.checked ? '' : 'none';
+        if (!restoredJsEnabledCheck.checked && ack) ack.checked = false;
+        syncJsGate();
+      });
+      var restoredJsRiskAck = document.getElementById('jsRiskAck');
+      if (restoredJsRiskAck && sessionStorage.getItem('milg-js-risk-ack') === 'true') restoredJsRiskAck.checked = true;
+      bindOnce(restoredJsRiskAck, 'change', function() {
+        try { sessionStorage.setItem('milg-js-risk-ack', restoredJsRiskAck.checked ? 'true' : 'false'); } catch(e) {}
+        syncJsGate();
+      });
+      bindOnce(document.getElementById('jsSnippetBtn'), 'click', function() {
+        var jsCheck = document.getElementById('jsEnabledCheck');
+        var jsOptions = document.getElementById('jsEnabledOptions');
+        if (jsCheck) jsCheck.checked = false;
+        if (jsOptions) jsOptions.style.display = 'none';
+        var snippetTab = document.querySelector('[data-tab="tabSnippet"]');
+        if (snippetTab) snippetTab.click();
+      });
+
+      bindOnce(document.getElementById('deepScanCheck'), 'change', function() {
+        var check = document.getElementById('deepScanCheck');
+        var row = document.getElementById('viewportRow');
+        if (check && row) row.classList.toggle('hidden', check.checked);
+      });
+
+      inputSection.querySelectorAll('.exclude-tag').forEach(function(tag) {
+        bindOnce(tag, 'click', function() {
+          tag.classList.toggle('active');
+          syncExcludeSelector();
+        });
+      });
+      bindOnce(document.getElementById('excludeSelector'), 'input', syncExcludeSelector);
+
+      var dropzone = document.getElementById('importDropzone');
+      var dropFileInput = document.getElementById('importDropFile');
+      if (dropzone && dropFileInput) {
+        bindOnce(dropzone, 'click', function() { dropFileInput.click(); });
+        bindOnce(dropFileInput, 'change', function() { handleImportFile(dropFileInput.files[0]); dropFileInput.value = ''; });
+        bindOnce(dropzone, 'dragover', function(e) { e.preventDefault(); dropzone.classList.add('dragover'); });
+        bindOnce(dropzone, 'dragleave', function() { dropzone.classList.remove('dragover'); });
+        bindOnce(dropzone, 'drop', function(e) { e.preventDefault(); dropzone.classList.remove('dragover'); if (e.dataTransfer.files.length > 0) handleImportFile(e.dataTransfer.files[0]); });
+      }
+      bindOnce(document.getElementById('importJsonBtn'), 'click', function() {
+        var fileInput = document.getElementById('importJsonFile');
+        if (fileInput) fileInput.click();
+      });
+      bindOnce(document.getElementById('importJsonFile'), 'change', function() {
+        var fileInput = document.getElementById('importJsonFile');
+        handleImportFile(fileInput.files[0]);
+        fileInput.value = '';
+      });
+      bindOnce(document.getElementById('importSnippetFileBtn'), 'click', function() {
+        var fileInput = document.getElementById('importSnippetFile');
+        if (fileInput) fileInput.click();
+      });
+      bindOnce(document.getElementById('importSnippetFile'), 'change', function() {
+        var fileInput = document.getElementById('importSnippetFile');
+        handleImportFile(fileInput.files[0]);
+        fileInput.value = '';
+      });
+
+      syncPixelVerify();
+      reloadSnippet();
+      syncJsGate();
+      MilgCrawlUI.setup({
+        showToast: showToast,
+        runAnalysis: runAnalysis,
+        restoreCachedAnalysis: restoreCachedAnalysis,
+        analyzeUrlBtn: document.getElementById('analyzeUrlBtn'),
+        runDeepScanLoop: runDeepScanLoop,
+        showFocusModal: showFocusModal,
+        updateFocusModal: updateFocusModal,
+        hideFocusModal: hideFocusModal
+      });
+    }
+
     // Profile selector — re-score when changed
     document.getElementById('profileSelect').addEventListener('change', function() {
       // Re-score crawl pages when profile changes
@@ -1616,18 +1775,7 @@ console.log('[milg] analyzer.js v3.11.66 loaded');
       // Restore original input form if it was replaced (e.g. by editor preview analysis)
       if (!inputSection.querySelector('.tab-btn')) {
         inputSection.innerHTML = _originalInputSectionHTML;
-        // Re-bind tab switching after DOM restoration
-        inputSection.querySelectorAll('.tab-btn').forEach(function(btn) {
-          btn.addEventListener('click', function() {
-            inputSection.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
-            inputSection.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
-            btn.classList.add('active');
-            var target = document.getElementById(btn.dataset.tab);
-            if (target) target.classList.add('active');
-            var ao = document.getElementById('analysisOptions');
-            if (ao) ao.style.display = (btn.dataset.tab === 'tabImport') ? 'none' : 'flex';
-          });
-        });
+        bindRestoredInputUi();
       }
       document.getElementById('reportActions').style.display = 'none'; document.getElementById('profileExplanation').style.display = 'none';
       var pi = document.getElementById('pasteInput'); if (pi) pi.value = '';

@@ -6,9 +6,10 @@ This repo is a design knowledge base. You are here to help a user with UI/UX des
 A user wants you to improve THEIR project, using this repo as a design knowledge base. Do this:
 1. Read `CONSULT.md` and follow its steps in order (input classification → audit → knowledge files → preset → generate → Design Review Notes).
 2. Start from a preset. Enumerate available templates by reading `docs/presets/index.json` — the machine-readable source of truth. Customize a preset; do NOT generate components from scratch.
-3. Always produce Design Review Notes (CONSULT.md Step 4) — the primary deliverable.
-4. Match the user's stack. Default to HTML + Tailwind only when the stack is unknown.
-5. Do NOT edit or "improve" THIS repo. Apply all changes to the USER's project.
+3. Read the actual preset source from `docs/presets/<element>/<variant>.html` or the raw GitHub URL. `#preset:` preview URLs are for humans, not source retrieval.
+4. Always produce Design Review Notes (CONSULT.md Step 4) — the primary deliverable.
+5. Match the user's stack. Default to HTML + Tailwind only when the stack is unknown; for React/Vue/Svelte/Angular, convert from the preset or use a framework variant when present.
+6. Do NOT edit or "improve" THIS repo. Apply all changes to the USER's project.
 
 ## 🔧 If you are MAINTAINING this repo
 See `MAINTAINING.md`.
@@ -26,6 +27,8 @@ See `MAINTAINING.md`.
 - **Read only what's needed** — don't load the entire repo, pick the 2-4 files relevant to the task
 - **Use presets as starting points** — enumerate available templates from `docs/presets/index.json` (the authoritative list); when a relevant preset exists, customize it rather than generating from scratch. The `#preset:` GitHub Pages preview URLs are human-preview-only — headless agents can't open them, so read the preset HTML files directly
 - **Always generate Design Review Notes** (Step 4 in CONSULT.md) — structured markdown with issues, decisions, tokens, and checklist
+- **Bundle users must fetch presets separately** — `bundle.xml` includes the playbook, knowledge files, and `docs/presets/index.json`, but not the preset HTML. Fetch needed files from `https://raw.githubusercontent.com/jdeworks/make-it-look-good/dev/docs/presets/<element>/<variant>.html`
+- **Preview mode matters** — hosted preview is for visual inspection, local preview/analyzer is for localhost/offline work, and headless validation runs through `node scripts/test-presets-headless.mjs` after installing a browser with `npx puppeteer browsers install chrome` or `npx playwright install chromium`
 
 ## File Map
 
