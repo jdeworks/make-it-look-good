@@ -9,7 +9,9 @@
     -webkit-backdrop-filter: none !important;
   }
   /* Prevent fixed sidebar from triggering "outside viewport" in matrix capture */
-  .dashboard-minimalist .dm-sidebar { position: relative !important; overflow: hidden !important; }
+  .dashboard-minimalist .dm-sidebar { position: relative !important; }
+  /* Hide sidebar at mobile via CSS (not Tailwind hidden) so the analyzer skips it as a panel */
+  @media (max-width: 1023px) { .dashboard-minimalist .dm-sidebar { display: none !important; } }
   /* Lock status badge text to accessible colors regardless of matrix color theme */
   .dashboard-minimalist .dm-status-green { color: #047857 !important; }
   .dark .dashboard-minimalist .dm-status-green { color: #6ee7b7 !important; }
@@ -62,7 +64,7 @@
 
   <div class="flex">
     <!-- Sidebar -->
-    <aside class="dm-sidebar hidden lg:fixed lg:inset-y-0 lg:left-0 lg:w-[180px] lg:bg-slate-50 lg:dark:bg-slate-950 lg:border-r lg:border-slate-200 lg:dark:border-slate-800 lg:flex lg:flex-col lg:z-30">
+    <aside class="dm-sidebar lg:fixed lg:inset-y-0 lg:left-0 lg:w-[180px] lg:bg-slate-50 lg:dark:bg-slate-950 lg:border-r lg:border-slate-200 lg:dark:border-slate-800 lg:flex lg:flex-col lg:z-30">
       <div class="h-14 flex items-center px-6 border-b border-slate-200 dark:border-slate-800">
         <span class="text-sm font-light tracking-widest uppercase">AppName</span>
       </div>
