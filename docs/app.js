@@ -703,10 +703,10 @@ function inferPresetKind(element, info) {
   const label = ((info && info.label) || element).toLowerCase();
   if (category.indexOf('before') !== -1) return 'before-after';
   if (category.indexOf('layout') !== -1 || element.indexOf('shell-') === 0) return 'app';
+  if (category.indexOf('expressive') !== -1) return 'expressive';
   if (category.indexOf('full') !== -1 || /landing|portfolio|restaurant|pricing|product|event|docs|blog|site/.test(element)) return 'full-page';
   if (/dashboard|table|status|deploy/.test(element + ' ' + label)) return 'dashboard';
   if (/form|onboarding/.test(element + ' ' + label)) return 'form';
-  if (category.indexOf('expressive') !== -1) return 'expressive';
   return 'component';
 }
 
@@ -777,12 +777,11 @@ async function buildPresetsMenu() {
   filterWrap.className = 'preset-filter-row';
   const filters = [
     ['all', 'All'],
-    ['landing', 'Landing'],
-    ['dashboard', 'Dashboard'],
-    ['form', 'Form'],
-    ['component', 'Component'],
-    ['full-page', 'Full Page'],
+    ['full-page', 'Pages'],
     ['expressive', 'Expressive'],
+    ['app', 'App'],
+    ['dashboard', 'Dashboard'],
+    ['component', 'Components'],
     ['before-after', 'Before/After']
   ];
   filters.forEach(([id, label]) => {
