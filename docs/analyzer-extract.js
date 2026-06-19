@@ -998,6 +998,11 @@ window.MilgExtract = (function() {
       document.querySelectorAll('header,nav,[class*="fixed"]').forEach(function(el) {
         var s = getComputedStyle(el);
         if (s.position !== 'fixed') return;
+        // If the element has a solid (non-transparent) background, its children
+        // are always on a consistent backdrop — no scroll-contrast risk
+        var bgAlphaMatch = s.backgroundColor.match(/rgba\([\d.,\s]+,\s*([\d.]+)\)/);
+        var bgAlpha = bgAlphaMatch ? parseFloat(bgAlphaMatch[1]) : 1;
+        if (bgAlpha >= 0.85) return;
         var lightCount = 0, darkCount = 0, firstLight = null, firstDark = null;
         var coloredChildren = el.querySelectorAll('a,button,span,svg,h1,h2,h3,p');
         coloredChildren.forEach(function(child) {
