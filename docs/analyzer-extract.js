@@ -960,7 +960,9 @@ window.MilgExtract = (function() {
           if (hPad < 8 && r.width > 0) cramped++;
           // Check for wrapped content (cell height > 1.8x line height = multi-line)
           var lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.4;
-          if (r.height > lh * 1.8 && cell.textContent.trim().length > 0) wrappedCells++;
+          // Skip flex/grid cells — they use intentional min-height for touch targets, not text wrapping
+          var isFlex = cs.display === 'flex' || cs.display === 'inline-flex' || cs.display === 'grid';
+          if (!isFlex && r.height > lh * 1.8 && cell.textContent.trim().length > 0) wrappedCells++;
         });
         if (cramped > 2 || wrappedCells > 2) {
           data.layout.tableCellIssues.push({
