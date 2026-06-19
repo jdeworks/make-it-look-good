@@ -335,6 +335,7 @@ window.MilgExtract = (function() {
         var bf = aStyle.backdropFilter || aStyle.webkitBackdropFilter || '';
         if (bf && bf !== 'none') hasBackdropFilter = true;
         var aBg = parseColor(aStyle.backgroundColor);
+        if (aBg && aBg.a >= 0.95) break; // opaque bg — frosted layers above cannot bleed through
         if (aBg && aBg.a > 0 && aBg.a < 1 && aBg.a < minBgAlpha) minBgAlpha = aBg.a;
         filterAncestor = filterAncestor.parentElement;
       }
