@@ -361,8 +361,7 @@ function buildPreviewSrcdoc(html, opts) {
     '  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n' +
     '  <script>function __milgTailwindFailed(){document.documentElement.classList.add("milg-tailwind-failed");try{parent.postMessage({type:"milg-tailwind-failed"},"*")}catch(e){}}</' + 'script>\n' +
     '  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4" onerror="__milgTailwindFailed()"></' + 'script>\n' +
-    '  <script>setTimeout(function(){if(!window.tailwind&&!document.querySelector("style[data-tailwind],style[data-tw]"))__milgTailwindFailed()},3000)</' + 'script>\n' +
-    '  <style type="text/tailwindcss">\n' + darkVariantCSS + '\n  </style>\n' +
+      '  <style type="text/tailwindcss">\n' + darkVariantCSS + '\n  </style>\n' +
     '  <style>\nbody { margin: 0; }\n' + previewScrollbarCSS(dark) + '\n' +
     '.milg-tailwind-failed body:before{content:"Tailwind CDN failed to load. Preview may appear unstyled.";display:block;position:sticky;top:0;z-index:2147483647;padding:10px 14px;background:#7f1d1d;color:#fff;font:13px/1.4 system-ui,sans-serif;text-align:center}\n  </style>\n' +
     (effectCSS ? '  <style>' + effectCSS + '</style>\n' : '') +
@@ -1500,11 +1499,17 @@ function buildAgentPack(format) {
   const element = currentElement || (detachedFrom && detachedFrom.element) || 'custom';
   const personality = currentPersonality || (detachedFrom && detachedFrom.personality) || 'custom';
   const info = manifestData && manifestData.elements[element] ? manifestData.elements[element] : null;
-  const variants = info ? Object.keys(info.personalities || {}).join(', ') : 'custom';
+  const variants = info ? Object.keys(info.personalities || {}).filter(p => p !== 'before').map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(', ') : 'custom';
   const sourcePath = element !== 'custom' ? 'docs/presets/' + element + '/' + personality + '.html' : 'custom editor HTML';
-  const rawUrl = element !== 'custom' ? 'https://raw.githubusercontent.com/jdeworks/make-it-look-good/dev/' + sourcePath : 'n/a';
+  const repoBase = 'https://raw.githubusercontent.com/jdeworks/make-it-look-good/dev/';
+  const rawUrl = element !== 'custom' ? repoBase + sourcePath : 'n/a';
   const componentFile = inferKnowledgeFile(element);
   const title = format === 'markdown' ? '# Preset Handoff' : '# make-it-look-good Agent Pack';
+  const effectName = (visualStyles[currentStyleIndex] && visualStyles[currentStyleIndex].name) || 'None';
+  const colorName = currentColorName || getElementPrimary(element, personality) || 'blue';
+  const useDescription = chooserState && chooserState.what !== undefined
+    ? 'Use case: ' + chooserState.what + ', audience: ' + chooserState.audience + ', personality: ' + chooserState.personality + (chooserState.framework !== 'html' ? ', convert to: ' + chooserState.framework : '')
+    : '';
   const knowledge = [
     'layout/visual-hierarchy.md',
     'layout/spacing-system.md',
@@ -1514,28 +1519,34 @@ function buildAgentPack(format) {
     'responsive/mobile-first.md'
   ];
   if (componentFile) knowledge.push(componentFile);
-  return [
+  const knowledgeUrls = knowledge.map(function(k) { return '- ' + repoBase + 'knowledge/' + k; });
+  const currentHtml = editor.value || '';
+  const lines = [
     title,
     '',
-    '- Preset id: `' + element + '/' + personality + '`',
-    '- Source path: `' + sourcePath + '`',
-    '- Raw GitHub URL: ' + rawUrl,
+    '## Preset',
+    '- Template: **' + (info && info.label ? info.label : element) + '** — ' + personality,
     '- Available variants: ' + variants,
-    '- Selected accent color: ' + (currentColorName || 'default'),
-    '- Selected effect: ' + ((visualStyles[currentStyleIndex] && visualStyles[currentStyleIndex].name) || 'None'),
-    '- Dark mode: ' + (darkMode ? 'on' : 'off'),
-    '- Intended use: ' + (chooserState ? [chooserState.what, chooserState.audience, chooserState.personality, chooserState.framework].join(', ') : 'not specified'),
+    '- Accent color: ' + colorName + (effectName !== 'None' ? ' + ' + effectName + ' effect' : '') + (darkMode ? ' (dark mode)' : ''),
+    useDescription,
     '',
-    '## Recommended knowledge files',
-    knowledge.map(function(k) { return '- `' + k + '`'; }).join('\n'),
+    '## Design knowledge',
+    'Read these files from the make-it-look-good repo for design guidance:',
+  ].concat(knowledgeUrls).concat([
     '',
     '## Instructions',
-    '- Use this preset as the starting point.',
-    '- Customize content and brand.',
-    '- Preserve spacing, contrast, hierarchy, responsive behavior, and accessible structure.',
-    '- Match the target project stack.',
-    '- Generate Design Review Notes.'
-  ].join('\n');
+    '1. Use the HTML below as your starting point — it has the current color and edits applied.',
+    '2. Replace placeholder content with real brand content.',
+    '3. Preserve the spacing rhythm, contrast ratios, touch targets, and responsive structure.',
+    '4. Match the target project stack (convert classes/structure as needed).',
+    '5. Generate Design Review Notes listing issues found and decisions made.',
+    '',
+    '## Current HTML',
+    '```html',
+    currentHtml,
+    '```'
+  ]);
+  return lines.join('\n');
 }
 
 function inferKnowledgeFile(element) {
@@ -1547,37 +1558,60 @@ function inferKnowledgeFile(element) {
   return null;
 }
 
+let comparisonPaneState = {
+  left:  { colorName: null, dark: false, effectIndex: 0 },
+  right: { colorName: null, dark: false, effectIndex: 0 }
+};
+
 async function openComparisonMode() {
   await loadManifest();
   if (!currentElement || !manifestData || !manifestData.elements[currentElement]) {
-    showToast('Load a preset before comparing variants');
+    showToast('Load a preset before comparing');
     return;
   }
   closeComparisonMode();
   const info = manifestData.elements[currentElement];
-  const personalities = Object.keys(info.personalities || {});
-  const comparable = personalities.filter(p => p !== 'before');
-  const rightPersonality = currentPersonality !== 'before' ? currentPersonality : (comparable[0] || 'clean');
+  const personality = currentPersonality && currentPersonality !== 'before'
+    ? currentPersonality
+    : Object.keys(info.personalities || {}).filter(p => p !== 'before')[0] || 'clean';
+  const defaultColor = getElementPrimary(currentElement, personality);
+  comparisonPaneState = {
+    left:  { colorName: defaultColor,     dark: false,    effectIndex: 0               },
+    right: { colorName: currentColorName, dark: darkMode, effectIndex: currentStyleIndex }
+  };
   const overlay = document.createElement('div');
   overlay.id = 'comparisonOverlay';
   overlay.className = 'comparison-overlay';
   overlay.innerHTML = ''
-    + '<div class="comparison-panel" role="dialog" aria-modal="true" aria-label="Compare template variants">'
+    + '<div class="comparison-panel" role="dialog" aria-modal="true" aria-label="Compare customizations">'
     + '  <div class="comparison-head">'
-    + '    <div><h2>' + escapeHtml(info.label || currentElement) + '</h2><p>' + escapeHtml(getBestFor(currentElement, info)) + '</p></div>'
+    + '    <div><h2>' + escapeHtml(info.label || currentElement) + ' — ' + escapeHtml(personality) + '</h2>'
+    + '      <p>Customize each side independently to compare styles</p></div>'
     + '    <button class="btn btn-icon" onclick="closeComparisonMode()" aria-label="Close comparison"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>'
     + '  </div>'
-    + '  <div class="comparison-tabs" id="comparisonTabs"></div>'
     + '  <div class="comparison-grid">'
-    + '    <div class="comparison-pane"><div class="comparison-pane-label" id="comparisonLeftLabel"></div><iframe id="comparisonLeft" sandbox="allow-scripts" title="Comparison left"></iframe></div>'
-    + '    <div class="comparison-pane"><div class="comparison-pane-label" id="comparisonRightLabel"></div><iframe id="comparisonRight" sandbox="allow-scripts" title="Comparison right"></iframe></div>'
+    + '    <div class="comparison-pane">'
+    + '      <div class="comparison-pane-header">'
+    + '        <span class="comparison-pane-label">Default</span>'
+    + '        <div class="comparison-pane-controls" id="comparisonLeftControls"></div>'
+    + '      </div>'
+    + '      <iframe id="comparisonLeft" sandbox="allow-scripts" title="Comparison left"></iframe>'
+    + '    </div>'
+    + '    <div class="comparison-pane">'
+    + '      <div class="comparison-pane-header">'
+    + '        <span class="comparison-pane-label">Your style</span>'
+    + '        <div class="comparison-pane-controls" id="comparisonRightControls"></div>'
+    + '      </div>'
+    + '      <iframe id="comparisonRight" sandbox="allow-scripts" title="Comparison right"></iframe>'
+    + '    </div>'
     + '  </div>'
-    + '  <div class="comparison-notes" id="comparisonNotes"></div>'
     + '</div>';
   document.body.appendChild(overlay);
   overlay.addEventListener('click', function(e) { if (e.target === overlay) closeComparisonMode(); });
-  renderComparisonTabs(rightPersonality);
-  await renderComparison(rightPersonality);
+  renderComparisonPaneControls('left');
+  renderComparisonPaneControls('right');
+  await renderComparisonPane('left', personality);
+  await renderComparisonPane('right', personality);
 }
 
 function closeComparisonMode() {
@@ -1585,36 +1619,60 @@ function closeComparisonMode() {
   if (overlay) overlay.remove();
 }
 
-function renderComparisonTabs(activePersonality) {
-  const info = manifestData.elements[currentElement];
-  const personalities = Object.keys(info.personalities || {}).filter(p => p !== 'before');
-  const tabs = document.getElementById('comparisonTabs');
-  if (!tabs) return;
-  tabs.innerHTML = personalities.map(function(p) {
-    const active = p === activePersonality ? ' active' : '';
-    return '<button class="comparison-tab' + active + '" onclick="renderComparison(\'' + p + '\')">' + escapeHtml(p.charAt(0).toUpperCase() + p.slice(1)) + '</button>';
+function renderComparisonPaneControls(side) {
+  const id = side === 'left' ? 'comparisonLeftControls' : 'comparisonRightControls';
+  const container = document.getElementById(id);
+  if (!container) return;
+  const state = comparisonPaneState[side];
+  const colors = accentColorNames();
+  const swatches = colors.map(function(c) {
+    const sw = (tailwindColors[c] || {}).swatch || '#888';
+    const active = c === state.colorName ? ' class="comparison-swatch active"' : ' class="comparison-swatch"';
+    return '<button' + active + ' style="background:' + sw + '" title="' + c + '" onclick="setComparisonColor(\'' + side + '\',\'' + c + '\')"></button>';
   }).join('');
+  const darkActive = state.dark ? ' active' : '';
+  const darkBtn = '<button class="comparison-ctrl-btn' + darkActive + '" onclick="toggleComparisonDark(\'' + side + '\')" title="' + (state.dark ? 'Switch to light' : 'Switch to dark') + '">'
+    + (state.dark ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41m11.32-11.32 1.41-1.41"/></svg>'
+    + '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>')
+    + '</button>';
+  const effectOpts = visualStyles.map(function(vs, i) {
+    return '<option value="' + i + '"' + (i === state.effectIndex ? ' selected' : '') + '>' + vs.name + '</option>';
+  }).join('');
+  const effectSel = '<select class="comparison-effect-sel" onchange="setComparisonEffect(\'' + side + '\',this.value)">' + effectOpts + '</select>';
+  container.innerHTML = '<div class="comparison-swatches">' + swatches + '</div>' + darkBtn + effectSel;
 }
 
-async function renderComparison(rightPersonality) {
-  if (!currentElement) return;
-  const info = manifestData.elements[currentElement];
-  const hasBefore = !!(info.personalities && info.personalities.before);
-  const leftPersonality = hasBefore ? 'before' : (currentPersonality && currentPersonality !== rightPersonality ? currentPersonality : Object.keys(info.personalities || {}).filter(p => p !== 'before' && p !== rightPersonality)[0] || rightPersonality);
-  renderComparisonTabs(rightPersonality);
-  const leftHtml = await fetchPreset(currentElement, leftPersonality);
-  const rightHtml = await fetchPreset(currentElement, rightPersonality);
-  const left = document.getElementById('comparisonLeft');
-  const right = document.getElementById('comparisonRight');
-  const effectCSS = visualStyles[currentStyleIndex] ? visualStyles[currentStyleIndex].css : '';
-  if (left) left.srcdoc = buildPreviewSrcdoc(transformPresetForCurrentContext(leftHtml, currentElement, leftPersonality), { dark: darkMode, effectCSS: effectCSS });
-  if (right) right.srcdoc = buildPreviewSrcdoc(transformPresetForCurrentContext(rightHtml, currentElement, rightPersonality), { dark: darkMode, effectCSS: effectCSS });
-  const leftLabel = document.getElementById('comparisonLeftLabel');
-  const rightLabel = document.getElementById('comparisonRightLabel');
-  if (leftLabel) leftLabel.textContent = hasBefore ? 'Before' : leftPersonality;
-  if (rightLabel) rightLabel.textContent = hasBefore ? 'After - ' + rightPersonality : rightPersonality;
-  const notes = document.getElementById('comparisonNotes');
-  if (notes) notes.innerHTML = buildComparisonNotes(info, rightPersonality);
+async function renderComparisonPane(side, personality) {
+  const iframe = document.getElementById(side === 'left' ? 'comparisonLeft' : 'comparisonRight');
+  if (!iframe || !currentElement) return;
+  const p = personality || currentPersonality || 'clean';
+  const state = comparisonPaneState[side];
+  let html = await fetchPreset(currentElement, p);
+  if (p !== 'before' && html) {
+    const fromPrimary = getElementPrimary(currentElement, p);
+    const fromNeutral = presetNeutralMap[currentElement] || 'slate';
+    const theme = colorToTheme(state.colorName || fromPrimary);
+    html = applyColorTheme(html, fromPrimary, theme.primary, fromNeutral, theme.neutral, theme);
+  }
+  const effectCSS = (visualStyles[state.effectIndex] || {}).css || '';
+  iframe.srcdoc = buildPreviewSrcdoc(html || '', { dark: state.dark, effectCSS: effectCSS });
+}
+
+function setComparisonColor(side, colorName) {
+  comparisonPaneState[side].colorName = colorName;
+  renderComparisonPaneControls(side);
+  renderComparisonPane(side);
+}
+
+function toggleComparisonDark(side) {
+  comparisonPaneState[side].dark = !comparisonPaneState[side].dark;
+  renderComparisonPaneControls(side);
+  renderComparisonPane(side);
+}
+
+function setComparisonEffect(side, value) {
+  comparisonPaneState[side].effectIndex = parseInt(value, 10) || 0;
+  renderComparisonPane(side);
 }
 
 function transformPresetForCurrentContext(html, element, personality) {
@@ -1624,23 +1682,6 @@ function transformPresetForCurrentContext(html, element, personality) {
   const targetColor = currentColorName || fromPrimary;
   const theme = colorToTheme(targetColor);
   return applyColorTheme(html, fromPrimary, theme.primary, fromNeutral, theme.neutral, theme);
-}
-
-function buildComparisonNotes(info, personality) {
-  const notes = getDesignDecisionNotes(currentElement, personality);
-  return '<div><strong>Design decisions</strong><span>' + escapeHtml(notes.join(' / ')) + '</span></div>'
-    + '<div><strong>Variants</strong><span>' + escapeHtml(Object.keys(info.personalities || {}).filter(p => p !== 'before').join(', ')) + '</span></div>'
-    + '<div><strong>Context</strong><span>' + escapeHtml((darkMode ? 'Dark' : 'Light') + ', ' + currentColorName + ', ' + ((visualStyles[currentStyleIndex] && visualStyles[currentStyleIndex].name) || 'None')) + '</span></div>';
-}
-
-function getDesignDecisionNotes(element, personality) {
-  const kind = inferPresetKind(element, manifestData && manifestData.elements[element]);
-  const notes = [];
-  notes.push(kind === 'dashboard' || kind === 'app' ? 'higher density' : kind === 'expressive' ? 'more expressive pacing' : 'moderate density');
-  notes.push(personality === 'minimalist' ? 'low ornament' : personality === 'playful' ? 'larger radius and stronger motion' : personality === 'editorial' ? 'type-led hierarchy' : 'balanced hierarchy');
-  notes.push(currentStyleIndex === 3 ? 'glass surface treatment' : currentStyleIndex === 4 ? 'serif typography treatment' : 'native preset styling');
-  notes.push(darkMode ? 'dark surface contrast' : 'light surface contrast');
-  return notes;
 }
 
 // --- Toast ---

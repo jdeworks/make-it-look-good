@@ -437,10 +437,10 @@
     .preset-filter-row {
       display: flex;
       gap: 6px;
-      padding: 6px 4px 10px;
+      padding: 4px 4px 5px;
       overflow-x: auto;
       position: sticky;
-      top: 49px;
+      top: 0;
       z-index: 1;
       background: var(--bg);
       border-bottom: 1px solid var(--border);
@@ -921,28 +921,6 @@
       font-size: 13px;
       line-height: 1.4;
     }
-    .comparison-tabs {
-      display: flex;
-      gap: 6px;
-      overflow-x: auto;
-      flex-shrink: 0;
-    }
-    .comparison-tab {
-      flex: 0 0 auto;
-      min-height: 30px;
-      padding: 5px 10px;
-      border: 1px solid var(--border);
-      border-radius: 999px;
-      background: var(--bg);
-      color: var(--text-secondary);
-      font: 700 12px/1 var(--font);
-      cursor: pointer;
-    }
-    .comparison-tab.active {
-      background: var(--primary-active);
-      border-color: var(--primary-active);
-      color: white;
-    }
     .comparison-grid {
       flex: 1 1 auto;
       min-height: 0;
@@ -960,15 +938,86 @@
       overflow: hidden;
       background: var(--bg-alt);
     }
+    .comparison-pane-header {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 10px;
+      border-bottom: 1px solid var(--border);
+      min-width: 0;
+    }
     .comparison-pane-label {
       flex-shrink: 0;
-      padding: 8px 10px;
-      border-bottom: 1px solid var(--border);
       color: var(--text-secondary);
       font-size: 11px;
       font-weight: 800;
       text-transform: uppercase;
       letter-spacing: 0.05em;
+    }
+    .comparison-pane-controls {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+    .comparison-swatches {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      gap: 3px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .comparison-swatches::-webkit-scrollbar { display: none; }
+    .comparison-swatch {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      box-shadow: 0 0 0 1px transparent;
+      outline: none;
+      cursor: pointer;
+      flex-shrink: 0;
+      padding: 0;
+    }
+    .comparison-swatch.active {
+      border-color: var(--bg);
+      box-shadow: 0 0 0 2px var(--text);
+    }
+    .comparison-ctrl-btn {
+      min-height: 26px;
+      min-width: 26px;
+      padding: 0 4px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg);
+      color: var(--text-secondary);
+      font-size: 13px;
+      cursor: pointer;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+    }
+    .comparison-ctrl-btn.active {
+      background: var(--primary-active);
+      border-color: var(--primary-active);
+      color: white;
+    }
+    .comparison-effect-sel {
+      height: 26px;
+      padding: 0 4px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg);
+      color: var(--text);
+      font: 12px var(--font);
+      cursor: pointer;
+      flex-shrink: 0;
+      max-width: 84px;
     }
     .comparison-pane iframe {
       flex: 1 1 auto;
@@ -976,34 +1025,6 @@
       min-height: 0;
       border: 0;
       background: white;
-    }
-    .comparison-notes {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 8px;
-      flex-shrink: 0;
-    }
-    .comparison-notes div {
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 10px;
-      background: var(--bg-alt);
-    }
-    .comparison-notes strong,
-    .comparison-notes span {
-      display: block;
-    }
-    .comparison-notes strong {
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--text-secondary);
-      margin-bottom: 4px;
-    }
-    .comparison-notes span {
-      font-size: 12px;
-      line-height: 1.4;
-      color: var(--text);
     }
 
     @media (max-width: 720px) {
@@ -1035,11 +1056,8 @@
         height: 96vh;
         padding: 12px;
       }
-      .comparison-grid,
-      .comparison-notes {
-        grid-template-columns: 1fr;
-      }
       .comparison-grid {
+        grid-template-columns: 1fr;
         overflow: auto;
       }
       .comparison-pane {
