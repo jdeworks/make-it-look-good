@@ -5,29 +5,38 @@
       --font-sans: 'Inter', sans-serif;
     }
   </style>
-<div class="min-h-screen bg-white dark:bg-slate-900">
+<style>
+  /* Frosted lock — bg-white content sections only; nav/mobile-menu keep intentional blur */
+  html:not(.dark) #restaurantWrap,
+  html:not(.dark) #restaurantWrap [class*="bg-white"] { background: white !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+  .dark #restaurantWrap [class*="bg-slate-900"],
+  .dark #restaurantWrap [class*="bg-slate-800"] { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+  @media (max-width: 639px) { #restaurantDesktopNav { display: none !important; } }
+  @media (min-width: 640px) { #restaurantHamburger { display: none !important; } }
+</style>
+<div id="restaurantWrap" class="min-h-screen bg-white dark:bg-slate-900">
 <!-- ========== NAVIGATION ========== -->
   <nav class="sticky top-0 z-50 bg-amber-50/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-amber-200/50 dark:border-slate-700/50" aria-label="Main navigation">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16">
       <a href="#" class="font-serif text-xl font-bold tracking-tight text-amber-900 dark:text-amber-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-600 rounded">Golden Hour</a>
-      <div class="hidden sm:flex items-center gap-6 text-sm font-medium">
+      <div id="restaurantDesktopNav" class="flex items-center gap-6 text-sm font-semibold">
         <a href="#menu" class="py-2 text-amber-800 dark:text-amber-300 hover:text-amber-600 transition-colors min-h-11 inline-flex items-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-600 rounded">Menu</a>
         <a href="#about" class="py-2 text-amber-800 dark:text-amber-300 hover:text-amber-600 transition-colors min-h-11 inline-flex items-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-600 rounded">About</a>
         <a href="#visit" class="py-2 text-amber-800 dark:text-amber-300 hover:text-amber-600 transition-colors min-h-11 inline-flex items-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-600 rounded">Visit</a>
-        <a href="#visit" class="inline-flex items-center py-2.5 px-5 bg-amber-500 text-amber-900 font-semibold rounded-full hover:bg-amber-400 transition-colors min-h-[48px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-600">Order Pickup</a>
+        <a href="#visit" class="inline-flex items-center py-2.5 px-5 bg-amber-700 text-white font-semibold rounded-full hover:bg-amber-600 transition-colors min-h-[48px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700">Order Pickup</a>
       </div>
       <!-- Mobile menu button -->
-      <button onclick="document.getElementById('mobile-menu').classList.toggle('hidden')" class="sm:hidden flex items-center justify-center w-12 h-12 rounded-xl text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-slate-800 transition-colors" aria-label="Toggle menu">
+      <button id="restaurantHamburger" onclick="const m=document.getElementById('mobile-menu');m.classList.toggle('hidden');m.setAttribute('aria-hidden',m.classList.contains('hidden'))" class="flex items-center justify-center w-12 h-12 rounded-xl text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-slate-800 transition-colors" aria-label="Toggle menu">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
       </button>
     </div>
     <!-- Mobile menu (absolute to avoid pushing page content down) -->
-    <div id="mobile-menu" class="hidden sm:hidden absolute left-0 right-0 top-full z-50 border-t border-amber-200/50 dark:border-slate-700/50 bg-amber-50/95 dark:bg-slate-900/95 backdrop-blur-md shadow-lg">
+    <div id="mobile-menu" aria-hidden="true" class="hidden absolute left-0 right-0 top-full z-50 border-t border-amber-200/50 dark:border-slate-700/50 bg-amber-50/95 dark:bg-slate-900/95 backdrop-blur-md shadow-lg">
       <div class="px-4 py-3 flex flex-col gap-1">
-        <a href="#menu" class="py-3 px-3 text-amber-800 dark:text-amber-300 font-medium rounded-xl hover:bg-amber-100 dark:hover:bg-slate-800 transition-colors min-h-11 flex items-center">Menu</a>
-        <a href="#about" class="py-3 px-3 text-amber-800 dark:text-amber-300 font-medium rounded-xl hover:bg-amber-100 dark:hover:bg-slate-800 transition-colors min-h-11 flex items-center">About</a>
-        <a href="#visit" class="py-3 px-3 text-amber-800 dark:text-amber-300 font-medium rounded-xl hover:bg-amber-100 dark:hover:bg-slate-800 transition-colors min-h-11 flex items-center">Visit</a>
-        <a href="#visit" class="mt-2 py-3 px-5 bg-amber-500 text-amber-900 font-semibold rounded-full text-center hover:bg-amber-400 transition-colors min-h-11 flex items-center justify-center">Order Pickup</a>
+        <a href="#menu" class="py-3 px-3 text-amber-800 dark:text-amber-300 font-semibold rounded-xl hover:bg-amber-100 dark:hover:bg-slate-800 transition-colors min-h-11 flex items-center">Menu</a>
+        <a href="#about" class="py-3 px-3 text-amber-800 dark:text-amber-300 font-semibold rounded-xl hover:bg-amber-100 dark:hover:bg-slate-800 transition-colors min-h-11 flex items-center">About</a>
+        <a href="#visit" class="py-3 px-3 text-amber-800 dark:text-amber-300 font-semibold rounded-xl hover:bg-amber-100 dark:hover:bg-slate-800 transition-colors min-h-11 flex items-center">Visit</a>
+        <a href="#visit" class="mt-2 py-3 px-5 bg-amber-700 text-white font-semibold rounded-full text-center hover:bg-amber-600 transition-colors min-h-11 flex items-center justify-center">Order Pickup</a>
       </div>
     </div>
   </nav>
@@ -42,7 +51,7 @@
 
     <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 sm:py-28 md:py-36">
       <div class="max-w-2xl">
-        <p class="text-amber-800 dark:text-amber-300 font-medium text-sm sm:text-base tracking-widest uppercase mb-4">Welcome to</p>
+        <p class="text-amber-800 dark:text-amber-300 font-semibold text-sm sm:text-base tracking-widest uppercase mb-4">Welcome to</p>
         <h1 class="font-serif text-5xl sm:text-6xl md:text-7xl font-bold text-amber-900 dark:text-amber-100 leading-[1.1] mb-6">
           Golden Hour<br>Cafe
         </h1>
@@ -50,7 +59,7 @@
           Artisan coffee &amp; fresh pastries since 2019. Your neighborhood spot for slow mornings and warm afternoons.
         </p>
         <div class="flex flex-col sm:flex-row gap-4">
-          <a href="#menu" class="inline-flex items-center justify-center py-4 px-8 bg-amber-500 text-amber-900 font-bold text-lg rounded-full hover:bg-amber-400 shadow-lg shadow-amber-500/25 transition-all hover:shadow-xl hover:shadow-amber-500/30 min-h-[52px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-600">
+          <a href="#menu" class="inline-flex items-center justify-center py-4 px-8 bg-amber-700 text-white font-bold text-lg rounded-full hover:bg-amber-600 shadow-lg shadow-amber-700/25 transition-all hover:shadow-xl hover:shadow-amber-700/30 min-h-[52px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700">
             View Menu
           </a>
           <a href="#visit" class="inline-flex items-center justify-center py-4 px-8 bg-white/70 dark:bg-slate-800/70 text-amber-900 dark:text-amber-100 font-semibold text-lg rounded-full border-2 border-amber-300 dark:border-amber-700 hover:bg-white dark:hover:bg-slate-800 hover:border-amber-400 dark:hover:border-amber-600 transition-all min-h-[52px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-600">
