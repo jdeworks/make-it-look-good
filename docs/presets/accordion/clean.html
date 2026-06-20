@@ -2,9 +2,6 @@
 .accordion-panel { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 200ms ease-out; }
 .accordion-panel.open { grid-template-rows: 1fr; }
 .accordion-panel > div { overflow: hidden; }
-.accordion-item:has([aria-expanded="true"]) { border-left: 3px solid; border-left-color: rgb(37 99 235); padding-left: 0; }
-@media (prefers-color-scheme: dark) { .accordion-item:has([aria-expanded="true"]) { border-left-color: rgb(96 165 250); } }
-.dark .accordion-item:has([aria-expanded="true"]) { border-left-color: rgb(96 165 250); }
 </style>
 <div class="min-h-screen flex items-center justify-center p-8 bg-slate-50 dark:bg-slate-900"><div class="w-full max-w-2xl">
 <div class="space-y-10">
@@ -171,6 +168,14 @@
 </div></div>
 
 <script>
+function setAccordionItemOpen(item, open) {
+  if (open) {
+    item.classList.add('border-l-[3px]', 'border-l-blue-600', 'dark:border-l-blue-400', 'pl-0');
+  } else {
+    item.classList.remove('border-l-[3px]', 'border-l-blue-600', 'dark:border-l-blue-400', 'pl-0');
+  }
+}
+
 function toggleAccordion(btn) {
   const group = btn.closest('#accordion-group');
   const isOpen = btn.getAttribute('aria-expanded') === 'true';
@@ -180,6 +185,7 @@ function toggleAccordion(btn) {
     b.querySelector('svg').classList.remove('rotate-180');
     const panel = document.getElementById(b.getAttribute('aria-controls'));
     if (panel) panel.classList.remove('open');
+    setAccordionItemOpen(b.closest('.accordion-item'), false);
   });
   // Open clicked (if it was closed)
   if (!isOpen) {
@@ -187,6 +193,7 @@ function toggleAccordion(btn) {
     btn.querySelector('svg').classList.add('rotate-180');
     const panel = document.getElementById(btn.getAttribute('aria-controls'));
     if (panel) panel.classList.add('open');
+    setAccordionItemOpen(btn.closest('.accordion-item'), true);
   }
 }
 
@@ -196,5 +203,11 @@ function toggleAccordionMulti(btn) {
   btn.querySelector('svg').classList.toggle('rotate-180', !isOpen);
   const panel = document.getElementById(btn.getAttribute('aria-controls'));
   if (panel) panel.classList.toggle('open', !isOpen);
+  setAccordionItemOpen(btn.closest('.accordion-item'), !isOpen);
 }
+
+// Apply open state to initially-open item
+document.querySelectorAll('.accordion-item button[aria-expanded="true"]').forEach(btn => {
+  setAccordionItemOpen(btn.closest('.accordion-item'), true);
+});
 </script>
