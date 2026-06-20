@@ -1,16 +1,22 @@
 <!-- Dashboard: Neo-Brutalist | Inspired by Linear, Stripe, neo-brutalist kits -->
 <!-- Stack: HTML + Tailwind CSS | Dark mode: yes | Responsive: yes -->
 <style>
-  /* Lock sidebar backgrounds solid so frosted injection can't make them semi-transparent */
+  /* Frosted lock — prevent frosted effect from making backgrounds transparent */
+  html:not(.dark) #brutDash [class*="bg-white"] { background: white !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+  html:not(.dark) #brutDash [class*="bg-slate-50"] { background: rgb(248 250 252) !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
   html:not(.dark) #brutSidebar,
   html:not(.dark) #brutSidebar nav { background: white !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+  .dark #brutDash [class*="bg-slate-900"],
+  .dark #brutDash [class*="bg-slate-800"] { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
   .dark #brutSidebar,
   .dark #brutSidebar nav { background: rgb(15,23,42) !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
   /* Responsive sidebar — CSS media query so the sidebar isn't detected as a hidden panel */
   @media (max-width: 1023px) {
     #brutSidebar { display: none !important; }
-    #brutSidebar.brut-sb-open { display: flex !important; }
+    #brutSidebar[data-open="true"] { display: flex !important; }
   }
+  /* Mobile header — hidden at desktop via CSS */
+  @media (min-width: 1024px) { #brutMobileHeader { display: none !important; } }
   /* Responsive table columns — CSS media query so columns aren't detected as hidden panels */
   @media (max-width: 767px) { .brut-date-col { display: none !important; } }
   @media (max-width: 639px) { .brut-action-col { display: none !important; } }
@@ -27,9 +33,9 @@
 <div id="brutDash" class="min-h-screen bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
 
   <!-- Mobile header -->
-  <div class="lg:hidden flex items-center justify-between px-4 h-14 border-b-2 border-slate-900 dark:border-slate-200">
+  <div id="brutMobileHeader" class="flex items-center justify-between px-4 h-14 border-b-2 border-slate-900 dark:border-slate-200">
     <span class="font-mono font-bold text-base tracking-tight">APPNAME</span>
-    <button onclick="document.getElementById('brutSidebar').classList.toggle('brut-sb-open')" class="min-h-11 min-w-11 flex items-center justify-center border-2 border-slate-900 dark:border-slate-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 dark:focus-visible:outline-slate-100" aria-label="Toggle menu">
+    <button onclick="const s=document.getElementById('brutSidebar');s.hasAttribute('data-open')?s.removeAttribute('data-open'):s.setAttribute('data-open','true')" class="min-h-11 min-w-11 flex items-center justify-center border-2 border-slate-900 dark:border-slate-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 dark:focus-visible:outline-slate-100" aria-label="Toggle menu">
       <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
     </button>
   </div>
