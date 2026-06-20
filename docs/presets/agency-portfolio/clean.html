@@ -98,7 +98,15 @@
   }
   html.dark #agencyHeader {
     background-color: rgb(2, 6, 23) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
   }
+  html.dark .agency-page nav,
+  html.dark .agency-page header { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+  html.dark .agency-page [class*="bg-slate-950"],
+  html.dark .agency-page [class*="bg-slate-900"] { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+  @media (max-width: 767px) { #agencyDesktopNav { display: none !important; } }
+  @media (min-width: 768px) { #mobileMenuBtn { display: none !important; } }
   html:not(.dark) .agency-page[class*="bg-white"],
   html:not(.dark) .agency-page *[class*="bg-white"] {
     background-color: #ffffff !important;
@@ -143,20 +151,20 @@
   <header id="agencyHeader" class="fixed top-0 left-0 right-0 z-40 flex items-center justify-between px-4 md:px-10 py-3 md:py-4 pointer-events-none opacity-0 transition-opacity duration-500 bg-white dark:bg-slate-950">
     <span id="headerLogo" class="pointer-events-none text-base font-semibold text-slate-900 dark:text-white">Studio Name<span class="text-[0.6em] align-super">&reg;</span></span>
     <!-- Desktop nav -->
-    <nav class="pointer-events-auto hidden md:flex items-center gap-2" aria-label="Main navigation">
+    <nav id="agencyDesktopNav" class="pointer-events-auto flex items-center gap-2" aria-label="Main navigation">
       <a href="#work" class="agency-hit inline-flex px-3 text-sm text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Work</a>
       <a href="#services" class="agency-hit inline-flex px-3 text-sm text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Services</a>
       <a href="#about" class="agency-hit inline-flex px-3 text-sm text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">About</a>
       <a href="#contact" class="agency-hit agency-cta-lock inline-flex px-5 text-sm font-semibold text-white rounded-full transition-colors min-h-11">Contact</a>
     </nav>
     <!-- Mobile menu button -->
-    <button id="mobileMenuBtn" class="pointer-events-auto md:hidden flex items-center justify-center w-11 h-11 text-slate-900 dark:text-white" aria-label="Open menu" aria-expanded="false">
+    <button id="mobileMenuBtn" class="pointer-events-auto flex items-center justify-center w-11 h-11 text-slate-900 dark:text-white" aria-label="Open menu" aria-expanded="false">
       <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
     </button>
   </header>
 
   <!-- Mobile menu overlay -->
-  <div id="mobileMenu" class="fixed inset-0 z-50 hidden" aria-label="Mobile navigation">
+  <div id="mobileMenu" aria-hidden="true" class="fixed inset-0 z-50 hidden" aria-label="Mobile navigation">
     <div class="absolute inset-0 bg-white dark:bg-slate-950 px-6 pt-6 pb-12 flex flex-col overflow-y-auto">
       <div class="flex items-center justify-between mb-12">
         <span class="text-base font-semibold text-slate-900 dark:text-white">Studio Name<span class="text-[0.6em] align-super">&reg;</span></span>
@@ -460,11 +468,13 @@ var mobileMenuClose = document.getElementById('mobileMenuClose');
 
 function closeMobileMenu() {
   mobileMenu.classList.add('hidden');
+  mobileMenu.setAttribute('aria-hidden', 'true');
   mobileMenuBtn.setAttribute('aria-expanded', 'false');
   document.body.style.overflow = '';
 }
 mobileMenuBtn.addEventListener('click', function() {
   mobileMenu.classList.remove('hidden');
+  mobileMenu.setAttribute('aria-hidden', 'false');
   mobileMenuBtn.setAttribute('aria-expanded', 'true');
   document.body.style.overflow = 'hidden';
 });
