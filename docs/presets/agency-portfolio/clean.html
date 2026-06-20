@@ -89,12 +89,52 @@
   .agency-cta-lock { background-color: #0f766e !important; color: #ffffff !important; }
   .agency-cta-lock:hover { background-color: #0d9488 !important; }
 
-  /* Semantic lock: fixed nav header must stay solid — prevents frosted making it translucent */
-  #agencyHeader { background-color: white !important; }
-  html.dark #agencyHeader { background-color: rgb(2, 6, 23) !important; }
-
-  /* Guardrail: mobile menu must fill viewport exactly — prevent frosted measurements */
-  #mobileMenu { max-height: 100vh; overflow: hidden; }
+  /* Guardrails: prevent frosted effect from creating transparency, overflow, or contrast issues.
+     Using specificity > frosted's selectors (0,2,1) so our !important rules win. */
+  #agencyHeader {
+    background-color: #ffffff !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  html.dark #agencyHeader {
+    background-color: rgb(2, 6, 23) !important;
+  }
+  html:not(.dark) .agency-page[class*="bg-white"],
+  html:not(.dark) .agency-page *[class*="bg-white"] {
+    background-color: #ffffff !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  html:not(.dark) .agency-page nav,
+  html:not(.dark) .agency-page header,
+  html:not(.dark) .agency-page aside {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: revert !important;
+    border: none !important;
+  }
+  html:not(.dark) #mobileMenu > div {
+    background-color: #ffffff !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+  html.dark #mobileMenu > div {
+    background-color: rgb(2, 6, 23) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  #mobileMenu { max-height: 100dvh; overflow: hidden; }
+  /* Frosted in light mode darkens text-slate-400 for readability on white bg — but the dark
+     #about section (bg-slate-900) needs the original lighter value to pass contrast on dark bg.
+     Specificity (1,2,1) beats frosted's (0,2,1). */
+  html:not(.dark) #about [class*="text-teal-400"] {
+    color: var(--color-teal-400) !important;
+  }
+  html:not(.dark) #about [class*="text-slate-400"] {
+    color: var(--color-slate-400) !important;
+  }
 </style>
 
 <div class="agency-page min-h-screen bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100">
@@ -104,10 +144,10 @@
     <span id="headerLogo" class="pointer-events-none text-base font-semibold text-slate-900 dark:text-white">Studio Name<span class="text-[0.6em] align-super">&reg;</span></span>
     <!-- Desktop nav -->
     <nav class="pointer-events-auto hidden md:flex items-center gap-2" aria-label="Main navigation">
-      <a href="#work" class="agency-hit inline-flex px-3 text-sm font-medium text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Work</a>
-      <a href="#services" class="agency-hit inline-flex px-3 text-sm font-medium text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Services</a>
-      <a href="#about" class="agency-hit inline-flex px-3 text-sm font-medium text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">About</a>
-      <a href="#contact" class="agency-hit agency-cta-lock inline-flex px-5 text-sm font-medium text-white rounded-full transition-colors min-h-11">Contact</a>
+      <a href="#work" class="agency-hit inline-flex px-3 text-sm text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Work</a>
+      <a href="#services" class="agency-hit inline-flex px-3 text-sm text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Services</a>
+      <a href="#about" class="agency-hit inline-flex px-3 text-sm text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">About</a>
+      <a href="#contact" class="agency-hit agency-cta-lock inline-flex px-5 text-sm font-semibold text-white rounded-full transition-colors min-h-11">Contact</a>
     </nav>
     <!-- Mobile menu button -->
     <button id="mobileMenuBtn" class="pointer-events-auto md:hidden flex items-center justify-center w-11 h-11 text-slate-900 dark:text-white" aria-label="Open menu" aria-expanded="false">
@@ -125,10 +165,10 @@
         </button>
       </div>
       <nav class="flex flex-col gap-6">
-        <a href="#work" class="agency-hit inline-flex justify-start text-2xl font-medium text-slate-900 dark:text-white" onclick="closeMobileMenu()">Work</a>
-        <a href="#services" class="agency-hit inline-flex justify-start text-2xl font-medium text-slate-900 dark:text-white" onclick="closeMobileMenu()">Services</a>
-        <a href="#about" class="agency-hit inline-flex justify-start text-2xl font-medium text-slate-900 dark:text-white" onclick="closeMobileMenu()">About</a>
-        <a href="#contact" class="agency-hit agency-cta-lock inline-flex px-6 mt-4 text-base font-medium text-white rounded-full transition-colors min-h-11" onclick="closeMobileMenu()">Contact</a>
+        <a href="#work" class="agency-hit inline-flex justify-start text-2xl text-slate-900 dark:text-white" onclick="closeMobileMenu()">Work</a>
+        <a href="#services" class="agency-hit inline-flex justify-start text-2xl text-slate-900 dark:text-white" onclick="closeMobileMenu()">Services</a>
+        <a href="#about" class="agency-hit inline-flex justify-start text-2xl text-slate-900 dark:text-white" onclick="closeMobileMenu()">About</a>
+        <a href="#contact" class="agency-hit agency-cta-lock inline-flex px-6 mt-4 text-base font-semibold text-white rounded-full transition-colors min-h-11" onclick="closeMobileMenu()">Contact</a>
       </nav>
     </div>
   </div>
@@ -151,13 +191,13 @@
           A digital studio specialized in UX/UI design and bespoke web development.
           We create tailor-made experiences optimized for impact.
         </p>
-        <a href="#contact" class="agency-hit agency-cta-lock inline-flex px-6 mt-8 text-sm font-medium uppercase tracking-wider text-white rounded-full transition-colors min-h-11">
+        <a href="#contact" class="agency-hit agency-cta-lock inline-flex px-6 mt-8 text-sm font-semibold uppercase tracking-wider text-white rounded-full transition-colors min-h-11">
           Request a quote
         </a>
       </div>
 
       <nav class="flex flex-wrap items-center gap-2 sm:gap-4 text-sm" aria-label="Page sections">
-        <a href="#work" class="agency-hit inline-flex px-3 text-slate-900 dark:text-white font-medium underline underline-offset-4 decoration-1 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Work</a>
+        <a href="#work" class="agency-hit inline-flex px-3 text-slate-900 dark:text-white underline underline-offset-4 decoration-1 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Work</a>
         <a href="#services" class="agency-hit inline-flex px-3 text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Services</a>
         <a href="#about" class="agency-hit inline-flex px-3 text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">About</a>
         <a href="#contact" class="agency-hit inline-flex px-3 text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Contact</a>
@@ -283,7 +323,7 @@
   <section id="about" class="py-16 md:py-24 lg:py-32 px-4 sm:px-8 md:px-10 bg-slate-900 dark:bg-slate-900 text-white">
     <div class="max-w-2xl mx-auto">
       <h2 class="text-xs font-semibold uppercase tracking-widest text-white/60 mb-10 scroll-reveal">About us</h2>
-      <p class="text-2xl sm:text-3xl md:text-4xl font-normal leading-snug tracking-tight scroll-reveal">
+      <p class="text-2xl sm:text-3xl md:text-4xl leading-snug tracking-tight scroll-reveal">
         We are a small team of designers and developers who believe great work comes from deep collaboration, not assembly lines.
       </p>
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-8 mt-16 md:mt-24">
@@ -307,7 +347,7 @@
   <section id="contact" class="py-16 md:py-24 lg:py-32 px-4 sm:px-8 md:px-10 bg-white dark:bg-slate-950">
     <div class="max-w-4xl mx-auto text-center scroll-reveal">
       <h2 class="text-3xl sm:text-4xl md:text-5xl font-light tracking-tight text-slate-900 dark:text-white mb-8">Have a project in mind?</h2>
-      <a href="#" class="agency-hit agency-cta-lock inline-flex px-8 py-4 text-base font-medium text-white rounded-full transition-colors min-h-11">
+      <a href="#" class="agency-hit agency-cta-lock inline-flex px-8 py-4 text-base font-semibold text-white rounded-full transition-colors min-h-11">
         Let's talk
         <svg class="ml-2 w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
       </a>
