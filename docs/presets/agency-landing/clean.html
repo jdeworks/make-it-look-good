@@ -2,6 +2,24 @@
 <!-- Stack: HTML + Tailwind CSS | Dark mode: yes (dark default) | Responsive: yes -->
 <style>
   html { scroll-behavior: smooth; }
+  /* Dark-first design: lock nav/header bg to slate-950 in light mode */
+  html:not(.dark) #agencyLandingWrap nav,
+  html:not(.dark) #agencyLandingWrap header { background: rgb(2, 6, 23) !important; }
+  #agencyLandingWrap nav,
+  #agencyLandingWrap header { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+  /* Lock dark sections: frosted [class*="bg-slate-50"] substring-matches bg-slate-950 in light mode */
+  html:not(.dark) #agencyLandingWrap section:not(.gradient-mesh)[class*="bg-slate-950"],
+  html:not(.dark) #agencyLandingWrap section[class*="bg-slate-900"],
+  html:not(.dark) #agencyLandingWrap footer[class*="bg-slate-950"] {
+    background: rgb(2, 6, 23) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  .dark #agencyLandingWrap [class*="bg-slate-950"],
+  .dark #agencyLandingWrap [class*="bg-slate-900"] { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+  @media (max-width: 767px) { #agencyDesktopNav { display: none !important; } }
+  @media (min-width: 768px) { #agencyMobileBtn { display: none !important; } }
+  @media (max-width: 639px) { #agencyViewAll { display: none !important; } }
   @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Inter:wght@400;600&display=swap');
   .font-display { font-family: 'Playfair Display', Georgia, serif; }
   .font-body { font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }
@@ -26,26 +44,26 @@
   }
 </style>
 
-<div class="bg-slate-950 text-slate-50 min-h-screen font-body">
+<div id="agencyLandingWrap" class="bg-slate-950 text-slate-50 min-h-screen font-body">
 
   <!-- Navigation -->
   <header>
   <nav class="bg-slate-950 border-slate-400/25 fixed top-0 left-0 right-0 z-50 border-b">
     <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
       <a href="#" class="font-display text-xl font-bold tracking-tight text-white focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Arktik</a>
-      <div class="hidden md:flex items-center gap-8 text-sm text-slate-300">
+      <div id="agencyDesktopNav" class="flex items-center gap-8 text-sm text-slate-300">
         <a href="#work" class="hover:text-white transition-colors min-h-[44px] flex items-center focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Work</a>
         <a href="#services" class="hover:text-white transition-colors min-h-[44px] flex items-center focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Services</a>
         <a href="#testimonial" class="hover:text-white transition-colors min-h-[44px] flex items-center focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Testimonial</a>
-        <a href="#contact" class="bg-blue-600 hover:bg-blue-500 text-white font-semibold px-5 py-2.5 rounded-lg transition-colors min-h-[44px] flex items-center focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Get in Touch</a>
+        <a href="#contact" class="bg-blue-700 hover:bg-blue-600 text-white font-semibold px-5 py-2.5 rounded-lg transition-colors min-h-[44px] flex items-center focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Get in Touch</a>
       </div>
       <!-- Mobile menu button -->
-      <button onclick="document.getElementById('agencyCleanMobile').classList.toggle('hidden')" class="md:hidden min-h-[44px] min-w-[44px] flex items-center justify-center text-slate-300 hover:text-white focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none" aria-label="Toggle menu">
+      <button id="agencyMobileBtn" onclick="const m=document.getElementById('agencyCleanMobile');m.classList.toggle('hidden');m.setAttribute('aria-hidden',m.classList.contains('hidden'))" class="min-h-[44px] min-w-[44px] flex items-center justify-center text-slate-300 hover:text-white focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none" aria-label="Toggle menu">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
       </button>
     </div>
     <!-- Mobile menu -->
-    <div id="agencyCleanMobile" class="bg-slate-950 border-slate-400/25 hidden md:hidden border-t">
+    <div id="agencyCleanMobile" aria-hidden="true" class="bg-slate-950 border-slate-400/25 hidden border-t">
       <div class="px-6 py-4 flex flex-col gap-1">
         <a href="#work" class="text-sm text-slate-300 hover:text-white transition-colors min-h-[44px] flex items-center px-3 rounded focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Work</a>
         <a href="#services" class="text-sm text-slate-300 hover:text-white transition-colors min-h-[44px] flex items-center px-3 rounded focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Services</a>
@@ -68,7 +86,7 @@
       <p class="text-lg sm:text-xl text-slate-300 max-w-xl mx-auto mb-10 leading-relaxed">
         A creative agency focused on strategy, design, and technology for brands that want to stand out.
       </p>
-      <a href="#work" class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold px-8 py-4 rounded-lg transition-colors min-h-[44px] text-base focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">
+      <a href="#work" class="inline-flex items-center gap-2 bg-blue-700 hover:bg-blue-600 text-white font-semibold px-8 py-4 rounded-lg transition-colors min-h-[44px] text-base focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">
         View Our Work
         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3"/></svg>
       </a>
@@ -85,13 +103,13 @@
           <p class="text-sm font-semibold text-blue-300 uppercase tracking-widest mb-3">Portfolio</p>
           <h2 class="font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-white">Selected Work</h2>
         </div>
-        <a href="#" class="hidden sm:inline-flex items-center gap-1 text-sm text-slate-300 hover:text-white transition-colors min-h-[44px] focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">
+        <a id="agencyViewAll" href="#" class="inline-flex items-center gap-1 text-sm text-slate-300 hover:text-white transition-colors min-h-[44px] focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">
           View All
           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
         </a>
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-10">
         <!-- Project 1 -->
         <a href="#" class="group block focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none rounded-xl">
           <div class="bg-gray-900 aspect-[16/9] rounded-xl overflow-hidden mb-5">
@@ -100,7 +118,7 @@
           <div class="flex items-start justify-between">
             <div>
               <h3 class="text-xl font-semibold text-white group-hover:text-blue-300 transition-colors">Meridian Brand Identity</h3>
-              <span class="text-sm text-slate-400 mt-1 inline-block">Branding &middot; 2025</span>
+              <span class="text-sm text-slate-300 mt-1 inline-block">Branding &middot; 2025</span>
             </div>
             <span class="bg-blue-400/[.18] text-blue-200 text-xs font-semibold px-3 py-1 rounded-full">Branding</span>
           </div>
@@ -114,7 +132,7 @@
           <div class="flex items-start justify-between">
             <div>
               <h3 class="text-xl font-semibold text-white group-hover:text-blue-300 transition-colors">Vaulta Platform</h3>
-              <span class="text-sm text-slate-400 mt-1 inline-block">Web App &middot; 2025</span>
+              <span class="text-sm text-slate-300 mt-1 inline-block">Web App &middot; 2025</span>
             </div>
             <span class="bg-blue-400/[.18] text-blue-200 text-xs font-semibold px-3 py-1 rounded-full">Product</span>
           </div>
@@ -128,7 +146,7 @@
           <div class="flex items-start justify-between">
             <div>
               <h3 class="text-xl font-semibold text-white group-hover:text-blue-300 transition-colors">Solace Wellness</h3>
-              <span class="text-sm text-slate-400 mt-1 inline-block">Mobile App &middot; 2024</span>
+              <span class="text-sm text-slate-300 mt-1 inline-block">Mobile App &middot; 2024</span>
             </div>
             <span class="bg-blue-400/[.18] text-blue-200 text-xs font-semibold px-3 py-1 rounded-full">Mobile</span>
           </div>
@@ -142,7 +160,7 @@
           <div class="flex items-start justify-between">
             <div>
               <h3 class="text-xl font-semibold text-white group-hover:text-blue-300 transition-colors">Norde Architecture</h3>
-              <span class="text-sm text-slate-400 mt-1 inline-block">Website &middot; 2024</span>
+              <span class="text-sm text-slate-300 mt-1 inline-block">Website &middot; 2024</span>
             </div>
             <span class="bg-blue-400/[.18] text-blue-200 text-xs font-semibold px-3 py-1 rounded-full">Web</span>
           </div>
@@ -160,9 +178,9 @@
       <!-- Service 01 -->
       <div class="service-row group border-t border-slate-700/50 py-8 cursor-pointer">
         <div class="flex items-baseline justify-between gap-6">
-          <span class="text-sm font-mono text-slate-400 shrink-0">01</span>
+          <span class="text-sm font-mono text-slate-300 shrink-0">01</span>
           <h3 class="text-xl sm:text-2xl font-semibold text-white flex-1 group-hover:text-blue-300 transition-colors">Brand Strategy & Identity</h3>
-          <svg class="w-5 h-5 text-slate-400 group-hover:text-blue-300 transition-colors shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+          <svg class="w-5 h-5 text-slate-300 group-hover:text-blue-300 transition-colors shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
         </div>
         <p class="service-desc text-sm text-slate-300 leading-relaxed ml-10">We define your brand's core story, visual language, and market position. From logo systems to comprehensive brand guidelines.</p>
       </div>
@@ -170,9 +188,9 @@
       <!-- Service 02 -->
       <div class="service-row group border-t border-slate-700/50 py-8 cursor-pointer">
         <div class="flex items-baseline justify-between gap-6">
-          <span class="text-sm font-mono text-slate-400 shrink-0">02</span>
+          <span class="text-sm font-mono text-slate-300 shrink-0">02</span>
           <h3 class="text-xl sm:text-2xl font-semibold text-white flex-1 group-hover:text-blue-300 transition-colors">UI/UX Design</h3>
-          <svg class="w-5 h-5 text-slate-400 group-hover:text-blue-300 transition-colors shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+          <svg class="w-5 h-5 text-slate-300 group-hover:text-blue-300 transition-colors shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
         </div>
         <p class="service-desc text-sm text-slate-300 leading-relaxed ml-10">Research-driven interfaces that balance beauty with usability. We design systems that scale from MVP to millions of users.</p>
       </div>
@@ -180,9 +198,9 @@
       <!-- Service 03 -->
       <div class="service-row group border-t border-slate-700/50 py-8 cursor-pointer">
         <div class="flex items-baseline justify-between gap-6">
-          <span class="text-sm font-mono text-slate-400 shrink-0">03</span>
+          <span class="text-sm font-mono text-slate-300 shrink-0">03</span>
           <h3 class="text-xl sm:text-2xl font-semibold text-white flex-1 group-hover:text-blue-300 transition-colors">Web Development</h3>
-          <svg class="w-5 h-5 text-slate-400 group-hover:text-blue-300 transition-colors shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+          <svg class="w-5 h-5 text-slate-300 group-hover:text-blue-300 transition-colors shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
         </div>
         <p class="service-desc text-sm text-slate-300 leading-relaxed ml-10">Performant, accessible websites and web applications built with modern frameworks. From marketing sites to complex platforms.</p>
       </div>
@@ -190,9 +208,9 @@
       <!-- Service 04 -->
       <div class="service-row group border-t border-b border-slate-700/50 py-8 cursor-pointer">
         <div class="flex items-baseline justify-between gap-6">
-          <span class="text-sm font-mono text-slate-400 shrink-0">04</span>
+          <span class="text-sm font-mono text-slate-300 shrink-0">04</span>
           <h3 class="text-xl sm:text-2xl font-semibold text-white flex-1 group-hover:text-blue-300 transition-colors">Motion & Interaction</h3>
-          <svg class="w-5 h-5 text-slate-400 group-hover:text-blue-300 transition-colors shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+          <svg class="w-5 h-5 text-slate-300 group-hover:text-blue-300 transition-colors shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
         </div>
         <p class="service-desc text-sm text-slate-300 leading-relaxed ml-10">Purposeful animation and micro-interactions that guide users and bring interfaces to life. We make digital feel tangible.</p>
       </div>
@@ -208,7 +226,7 @@
       </blockquote>
       <div>
         <p class="text-base font-semibold text-white">Sarah Lindqvist</p>
-        <p class="text-sm text-slate-400 mt-1">CEO, Meridian Health</p>
+        <p class="text-sm text-slate-300 mt-1">CEO, Meridian Health</p>
       </div>
     </div>
   </section>
@@ -225,7 +243,7 @@
         We're always looking for ambitious projects and interesting collaborations. Tell us about yours.
       </p>
       <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
-        <a href="#" class="bg-blue-600 hover:bg-blue-500 text-white font-semibold px-8 py-4 rounded-lg transition-colors min-h-[44px] inline-flex items-center text-base focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">
+        <a href="#" class="bg-blue-700 hover:bg-blue-600 text-white font-semibold px-8 py-4 rounded-lg transition-colors min-h-[44px] inline-flex items-center text-base focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">
           Start a Conversation
         </a>
         <a href="mailto:hello@arktik.studio" class="text-slate-300 hover:text-white font-semibold px-8 py-4 rounded-lg transition-colors min-h-[44px] inline-flex items-center text-base border border-slate-600 hover:border-slate-400 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">
@@ -274,8 +292,8 @@
         </div>
       </div>
       <div class="border-t border-slate-800/50 pt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-        <p class="text-sm text-slate-400">&copy; 2026 Arktik Studio. All rights reserved.</p>
-        <p class="text-sm text-slate-400">Made with intention</p>
+        <p class="text-sm text-slate-300">&copy; 2026 Arktik Studio. All rights reserved.</p>
+        <p class="text-sm text-slate-300">Made with intention</p>
       </div>
     </div>
   </footer>
