@@ -3,9 +3,23 @@
 <style>
   .card-hover { transition: transform 0.2s ease, box-shadow 0.2s ease; }
   .card-hover:hover { transform: translateY(-4px); }
-  .card-hover:hover .add-btn { opacity: 1; }
-  .add-btn { opacity: 0; transition: opacity 0.2s ease; }
-  @media (hover: none) { .add-btn { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) {
+    .card-hover { transition: none !important; }
+    * { transition-duration: 0s !important; }
+  }
+  /* Frosted injection lock */
+  html:not(.dark) #bentoRoot,
+  html:not(.dark) #bentoRoot [class*="bg-white"] { background: white !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+  html:not(.dark) #bentoRoot header,
+  html:not(.dark) #bentoRoot nav { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+  /* Category dropdown container — CSS-controlled desktop hide */
+  @media (min-width: 640px) { #catDropdownClean { display: none !important; } }
+  /* Desktop pills — CSS-controlled mobile hide */
+  @media (max-width: 639px) { #cardDesktopPills { display: none !important; } }
+  @media (min-width: 640px) { #cardDesktopPills { display: flex !important; } }
+  /* Cat menu — open state controlled by aria-hidden / inert */
+  #catMenuClean[aria-hidden="true"] { display: none; }
+  #catMenuClean[aria-hidden="false"] { display: flex; }
 </style>
 
 <div id="bentoRoot" class="min-h-screen bg-white dark:bg-slate-950 text-slate-900 dark:text-white">
@@ -22,7 +36,7 @@
       <div class="flex items-center gap-4">
         <button class="min-h-11 min-w-11 flex items-center justify-center text-slate-600 dark:text-white/70 hover:text-white transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 rounded-lg" aria-label="Cart">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 0 0-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 0 0-16.536-1.84M7.5 14.25 5.106 5.272M6 20.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm12.75 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z"/></svg>
-          <span class="ml-1 text-xs font-bold bg-violet-600 text-white rounded-full w-5 h-5 flex items-center justify-center">3</span>
+          <span class="ml-1 text-sm font-bold bg-violet-700 text-white rounded-full w-5 h-5 flex items-center justify-center">3</span>
         </button>
       </div>
     </header>
@@ -30,22 +44,22 @@
     <!-- Category pills: desktop row, mobile dropdown -->
     <nav aria-label="Product categories" class="px-6 sm:px-10 pb-6">
       <!-- Desktop: inline pills -->
-      <div class="hidden sm:flex gap-2">
-        <button class="shrink-0 px-4 py-2 text-sm font-medium rounded-full bg-violet-600 text-white min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600">All</button>
+      <div id="cardDesktopPills" class="gap-2">
+        <button class="shrink-0 px-4 py-2 text-sm font-medium rounded-full bg-violet-700 text-white min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700">All</button>
         <button class="shrink-0 px-4 py-2 text-sm font-medium rounded-full backdrop-blur-2xl bg-black/[.04] dark:bg-black/[.04] border border-black/[.08] dark:border-white/[.12] text-slate-600 dark:text-white/70 hover:text-white transition-colors min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600">Audio</button>
         <button class="shrink-0 px-4 py-2 text-sm font-medium rounded-full backdrop-blur-2xl bg-black/[.04] dark:bg-black/[.04] border border-black/[.08] dark:border-white/[.12] text-slate-600 dark:text-white/70 hover:text-white transition-colors min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600">Peripherals</button>
         <button class="shrink-0 px-4 py-2 text-sm font-medium rounded-full backdrop-blur-2xl bg-black/[.04] dark:bg-black/[.04] border border-black/[.08] dark:border-white/[.12] text-slate-600 dark:text-white/70 hover:text-white transition-colors min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600">Accessories</button>
         <button class="shrink-0 px-4 py-2 text-sm font-medium rounded-full backdrop-blur-2xl bg-black/[.04] dark:bg-black/[.04] border border-black/[.08] dark:border-white/[.12] text-slate-600 dark:text-white/70 hover:text-white transition-colors min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600">Lighting</button>
       </div>
       <!-- Mobile: dropdown toggle -->
-      <div class="sm:hidden relative" id="catDropdownClean">
-        <button onclick="document.getElementById('catMenuClean').classList.toggle('hidden')" class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-full bg-violet-600 text-white min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600" aria-expanded="false" aria-haspopup="true">
+      <div class="relative" id="catDropdownClean">
+        <button onclick="const m=document.getElementById('catMenuClean');const open=m.getAttribute('aria-hidden')==='false';m.setAttribute('aria-hidden',open?'true':'false');this.setAttribute('aria-expanded',open?'false':'true')" class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-full bg-violet-700 text-white min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700" aria-expanded="false" aria-haspopup="true">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"/></svg>
           All Categories
           <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
-        <div id="catMenuClean" class="hidden absolute left-0 top-full mt-2 z-20 backdrop-blur-2xl bg-black/[.04] dark:bg-black/[.04] border border-black/[.08] dark:border-white/[.12] rounded-xl p-2 min-w-[180px] flex flex-col gap-1">
-          <button class="px-4 py-2.5 text-sm font-medium rounded-lg bg-violet-600 text-white text-left min-h-11">All</button>
+        <div id="catMenuClean" class="absolute left-0 top-full mt-2 z-20 backdrop-blur-2xl bg-black/[.04] dark:bg-black/[.04] border border-black/[.08] dark:border-white/[.12] rounded-xl p-2 min-w-[180px] flex flex-col gap-1" aria-hidden="true">
+          <button class="px-4 py-2.5 text-sm font-medium rounded-lg bg-violet-700 text-white text-left min-h-11">All</button>
           <button class="px-4 py-2.5 text-sm font-medium rounded-lg text-slate-600 dark:text-white/70 hover:bg-white/10 text-left min-h-11 transition-colors">Audio</button>
           <button class="px-4 py-2.5 text-sm font-medium rounded-lg text-slate-600 dark:text-white/70 hover:bg-white/10 text-left min-h-11 transition-colors">Peripherals</button>
           <button class="px-4 py-2.5 text-sm font-medium rounded-lg text-slate-600 dark:text-white/70 hover:bg-white/10 text-left min-h-11 transition-colors">Accessories</button>
@@ -62,30 +76,30 @@
         <!-- Row 1: featured (2-col) + regular -->
         <div class="sm:col-span-2 backdrop-blur-2xl bg-black/[.04] dark:bg-black/[.04] border border-black/[.08] dark:border-white/[.12] rounded-2xl overflow-hidden card-hover relative group">
           <div class="aspect-[2/1] sm:aspect-[2.5/1] bg-gradient-to-br from-violet-600 to-fuchsia-600 flex items-center justify-center">
-            <span class="text-slate-600 dark:text-white/40 text-sm">Wireless Headphones</span>
+            <span class="text-slate-600 dark:text-white/40 text-sm" aria-hidden="true">Wireless Headphones</span>
           </div>
-          <div class="p-5 flex items-center justify-between">
-            <div>
-              <h3 class="font-bold text-lg">Wireless Headphones</h3>
+          <div class="p-5 flex flex-wrap items-center justify-between gap-2">
+            <div class="min-w-0">
+              <h2 class="font-bold text-lg">Wireless Headphones</h2>
               <p class="text-sm text-slate-600 dark:text-white/60 mt-1">Premium sound, 30hr battery</p>
             </div>
-            <span class="text-xl font-bold tabular-nums">$89.99</span>
+            <span class="text-xl font-bold tabular-nums shrink-0">$89.99</span>
           </div>
-          <button class="add-btn absolute top-4 right-4 w-10 h-10 min-h-11 min-w-11 rounded-full bg-violet-600 hover:bg-violet-500 text-white flex items-center justify-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600" aria-label="Add to cart">
+          <button class="absolute top-4 right-4 w-10 h-10 min-h-11 min-w-11 rounded-full bg-violet-700 hover:bg-violet-600 text-white flex items-center justify-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700" aria-label="Add to cart">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14m-7-7h14"/></svg>
           </button>
         </div>
 
         <div class="backdrop-blur-2xl bg-black/[.04] dark:bg-black/[.04] border border-black/[.08] dark:border-white/[.12] rounded-2xl overflow-hidden card-hover relative group">
           <div class="aspect-[4/3] bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center">
-            <span class="text-slate-600 dark:text-white/40 text-sm">Mechanical Keyboard</span>
+            <span class="text-slate-600 dark:text-white/40 text-sm" aria-hidden="true">Mechanical Keyboard</span>
           </div>
           <div class="p-5">
-            <h3 class="font-bold">Mechanical Keyboard</h3>
+            <h2 class="font-bold">Mechanical Keyboard</h2>
             <p class="text-sm text-slate-600 dark:text-white/60 mt-1">Cherry MX, RGB</p>
             <span class="text-lg font-bold mt-2 block tabular-nums">$129.00</span>
           </div>
-          <button class="add-btn absolute top-4 right-4 w-10 h-10 min-h-11 min-w-11 rounded-full bg-violet-600 hover:bg-violet-500 text-white flex items-center justify-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600" aria-label="Add to cart">
+          <button class="absolute top-4 right-4 w-10 h-10 min-h-11 min-w-11 rounded-full bg-violet-700 hover:bg-violet-600 text-white flex items-center justify-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700" aria-label="Add to cart">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14m-7-7h14"/></svg>
           </button>
         </div>
@@ -93,42 +107,42 @@
         <!-- Row 2: 3 equal -->
         <div class="backdrop-blur-2xl bg-black/[.04] dark:bg-black/[.04] border border-black/[.08] dark:border-white/[.12] rounded-2xl overflow-hidden card-hover relative group">
           <div class="aspect-[4/3] bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
-            <span class="text-slate-600 dark:text-white/40 text-sm">USB-C Hub</span>
+            <span class="text-slate-600 dark:text-white/40 text-sm" aria-hidden="true">USB-C Hub</span>
           </div>
           <div class="p-5">
-            <h3 class="font-bold">USB-C Hub</h3>
+            <h2 class="font-bold">USB-C Hub</h2>
             <p class="text-sm text-slate-600 dark:text-white/60 mt-1">7-in-1 adapter</p>
             <span class="text-lg font-bold mt-2 block tabular-nums">$45.00</span>
           </div>
-          <button class="add-btn absolute top-4 right-4 w-10 h-10 min-h-11 min-w-11 rounded-full bg-violet-600 hover:bg-violet-500 text-white flex items-center justify-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600" aria-label="Add to cart">
+          <button class="absolute top-4 right-4 w-10 h-10 min-h-11 min-w-11 rounded-full bg-violet-700 hover:bg-violet-600 text-white flex items-center justify-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700" aria-label="Add to cart">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14m-7-7h14"/></svg>
           </button>
         </div>
 
         <div class="backdrop-blur-2xl bg-black/[.04] dark:bg-black/[.04] border border-black/[.08] dark:border-white/[.12] rounded-2xl overflow-hidden card-hover relative group">
           <div class="aspect-[4/3] bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
-            <span class="text-slate-600 dark:text-white/40 text-sm">Desk Lamp</span>
+            <span class="text-slate-600 dark:text-white/40 text-sm" aria-hidden="true">Desk Lamp</span>
           </div>
           <div class="p-5">
-            <h3 class="font-bold">Desk Lamp</h3>
+            <h2 class="font-bold">Desk Lamp</h2>
             <p class="text-sm text-slate-600 dark:text-white/60 mt-1">LED, 5 brightness levels</p>
             <span class="text-lg font-bold mt-2 block tabular-nums">$35.50</span>
           </div>
-          <button class="add-btn absolute top-4 right-4 w-10 h-10 min-h-11 min-w-11 rounded-full bg-violet-600 hover:bg-violet-500 text-white flex items-center justify-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600" aria-label="Add to cart">
+          <button class="absolute top-4 right-4 w-10 h-10 min-h-11 min-w-11 rounded-full bg-violet-700 hover:bg-violet-600 text-white flex items-center justify-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700" aria-label="Add to cart">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14m-7-7h14"/></svg>
           </button>
         </div>
 
         <div class="backdrop-blur-2xl bg-black/[.04] dark:bg-black/[.04] border border-black/[.08] dark:border-white/[.12] rounded-2xl overflow-hidden card-hover relative group">
           <div class="aspect-[4/3] bg-gradient-to-br from-rose-500 to-pink-600 flex items-center justify-center">
-            <span class="text-slate-600 dark:text-white/40 text-sm">Webcam HD</span>
+            <span class="text-slate-600 dark:text-white/40 text-sm" aria-hidden="true">Webcam HD</span>
           </div>
           <div class="p-5">
-            <h3 class="font-bold">Webcam HD</h3>
+            <h2 class="font-bold">Webcam HD</h2>
             <p class="text-sm text-slate-600 dark:text-white/60 mt-1">1080p, autofocus, mic</p>
             <span class="text-lg font-bold mt-2 block tabular-nums">$59.99</span>
           </div>
-          <button class="add-btn absolute top-4 right-4 w-10 h-10 min-h-11 min-w-11 rounded-full bg-violet-600 hover:bg-violet-500 text-white flex items-center justify-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600" aria-label="Add to cart">
+          <button class="absolute top-4 right-4 w-10 h-10 min-h-11 min-w-11 rounded-full bg-violet-700 hover:bg-violet-600 text-white flex items-center justify-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700" aria-label="Add to cart">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14m-7-7h14"/></svg>
           </button>
         </div>
@@ -136,34 +150,34 @@
         <!-- Row 3: regular + featured (2-col) -->
         <div class="backdrop-blur-2xl bg-black/[.04] dark:bg-black/[.04] border border-black/[.08] dark:border-white/[.12] rounded-2xl overflow-hidden card-hover relative group">
           <div class="aspect-[4/3] bg-gradient-to-br from-slate-500 to-slate-700 flex items-center justify-center">
-            <span class="text-slate-600 dark:text-white/40 text-sm">Monitor Stand</span>
+            <span class="text-slate-600 dark:text-white/40 text-sm" aria-hidden="true">Monitor Stand</span>
           </div>
           <div class="p-5">
-            <h3 class="font-bold">Monitor Stand</h3>
+            <h2 class="font-bold">Monitor Stand</h2>
             <p class="text-sm text-slate-600 dark:text-white/60 mt-1">Ergonomic riser + drawer</p>
             <span class="text-lg font-bold mt-2 block tabular-nums">$42.00</span>
           </div>
-          <button class="add-btn absolute top-4 right-4 w-10 h-10 min-h-11 min-w-11 rounded-full bg-violet-600 hover:bg-violet-500 text-white flex items-center justify-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600" aria-label="Add to cart">
+          <button class="absolute top-4 right-4 w-10 h-10 min-h-11 min-w-11 rounded-full bg-violet-700 hover:bg-violet-600 text-white flex items-center justify-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700" aria-label="Add to cart">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14m-7-7h14"/></svg>
           </button>
         </div>
 
         <div class="sm:col-span-2 backdrop-blur-2xl bg-black/[.04] dark:bg-black/[.04] border border-black/[.08] dark:border-white/[.12] rounded-2xl overflow-hidden card-hover relative group">
-          <div class="grid grid-cols-2 gap-0">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-0">
             <div class="aspect-square sm:aspect-auto bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center p-6">
-              <span class="text-slate-600 dark:text-white/40 text-sm">Wireless Mouse + Cable Organizer</span>
+              <span class="text-slate-600 dark:text-white/40 text-sm" aria-hidden="true">Wireless Mouse + Cable Organizer</span>
             </div>
             <div class="p-6 flex flex-col justify-center">
-              <h3 class="font-bold text-lg mb-1">Bundle Deal</h3>
+              <h2 class="font-bold text-lg mb-1">Bundle Deal</h2>
               <p class="text-sm text-slate-600 dark:text-white/60 mb-1">Wireless Mouse + Cable Organizer</p>
-              <p class="text-xs text-slate-600 dark:text-white/60 mb-3">Ergonomic silent mouse paired with silicone desk clips</p>
-              <div class="flex items-center gap-3">
+              <p class="text-sm text-slate-600 dark:text-white/60 mb-3">Ergonomic silent mouse paired with silicone desk clips</p>
+              <div class="flex flex-wrap items-center gap-3">
                 <span class="text-xl font-bold tabular-nums">$42.98</span>
                 <span class="text-sm text-slate-600 dark:text-white/60 line-through tabular-nums">$42.98</span>
               </div>
             </div>
           </div>
-          <button class="add-btn absolute top-4 right-4 w-10 h-10 min-h-11 min-w-11 rounded-full bg-violet-600 hover:bg-violet-500 text-white flex items-center justify-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600" aria-label="Add to cart">
+          <button class="absolute top-4 right-4 w-10 h-10 min-h-11 min-w-11 rounded-full bg-violet-700 hover:bg-violet-600 text-white flex items-center justify-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700" aria-label="Add to cart">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14m-7-7h14"/></svg>
           </button>
         </div>
