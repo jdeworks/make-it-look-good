@@ -5,6 +5,14 @@
   html { scroll-behavior: smooth; }
   @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap');
   .font-display { font-family: 'Space Grotesk', sans-serif; }
+  /* Frosted lock — this is a dark-first design; lock nav/header bg to slate-950 in all modes */
+  html:not(.dark) #jdePersonalWrap nav,
+  html:not(.dark) #jdePersonalWrap header { background: rgb(2, 6, 23) !important; }
+  #jdePersonalWrap nav,
+  #jdePersonalWrap header { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+  /* Responsive nav */
+  @media (max-width: 639px) { #jdeDesktopNav { display: none !important; } }
+  @media (min-width: 640px) { #jdeMobileBtn { display: none !important; } }
 
   .scroll-reveal {
     opacity: 1;
@@ -36,20 +44,20 @@
   }
 </style>
 
-<div class="jde-clean-shell min-h-screen bg-slate-950 text-slate-300 font-display">
+<div id="jdePersonalWrap" class="jde-clean-shell min-h-screen bg-slate-950 text-slate-300 font-display">
   <!-- Nav -->
   <nav class="jde-clean-nav bg-slate-950 max-w-5xl mx-auto px-6 py-6 flex items-center justify-between">
     <span class="text-xl font-bold text-white tracking-tight">JDE</span>
-    <div class="hidden sm:flex items-center gap-1">
+    <div id="jdeDesktopNav" class="flex items-center gap-1">
       <a href="#story" class="inline-flex items-center text-sm jde-clean-muted text-slate-100 hover:text-violet-50 transition-colors px-3 py-2 min-h-[44px] rounded-lg focus-visible:ring-2 focus-visible:ring-violet-300 focus-visible:outline-none">Story</a>
       <a href="#work" class="inline-flex items-center text-sm jde-clean-muted text-slate-100 hover:text-violet-50 transition-colors px-3 py-2 min-h-[44px] rounded-lg focus-visible:ring-2 focus-visible:ring-violet-300 focus-visible:outline-none">Work</a>
       <a href="#contact" class="inline-flex items-center text-sm jde-clean-muted text-slate-100 hover:text-violet-50 transition-colors px-3 py-2 min-h-[44px] rounded-lg focus-visible:ring-2 focus-visible:ring-violet-300 focus-visible:outline-none">Contact</a>
     </div>
-    <button id="jdeCleanMenuButton" type="button" class="sm:hidden min-h-[48px] min-w-[48px] flex items-center justify-center jde-clean-muted text-slate-100 hover:text-white rounded-lg focus-visible:ring-2 focus-visible:ring-violet-300 focus-visible:outline-none" aria-controls="jdeCleanMobile" aria-expanded="false" aria-label="Toggle menu">
+    <button id="jdeMobileBtn" type="button" class="min-h-[48px] min-w-[48px] flex items-center justify-center jde-clean-muted text-slate-100 hover:text-white rounded-lg focus-visible:ring-2 focus-visible:ring-violet-300 focus-visible:outline-none" aria-controls="jdeCleanMobile" aria-expanded="false" aria-label="Toggle menu">
       <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
     </button>
   </nav>
-  <div id="jdeCleanMobile" class="jde-clean-mobile-panel bg-slate-950 border-slate-400/25 hidden sm:hidden border-t px-6 py-3">
+  <div id="jdeCleanMobile" class="jde-clean-mobile-panel bg-slate-950 border-slate-400/25 hidden border-t px-6 py-3" aria-hidden="true">
     <a href="#story" class="flex py-3 px-3 text-sm jde-clean-subtle text-white min-h-[48px] items-center rounded-lg focus-visible:ring-2 focus-visible:ring-violet-300 focus-visible:outline-none">Story</a>
     <a href="#work" class="flex py-3 px-3 text-sm jde-clean-subtle text-white min-h-[48px] items-center rounded-lg focus-visible:ring-2 focus-visible:ring-violet-300 focus-visible:outline-none">Work</a>
     <a href="#contact" class="flex py-3 px-3 text-sm jde-clean-subtle text-white min-h-[48px] items-center rounded-lg focus-visible:ring-2 focus-visible:ring-violet-300 focus-visible:outline-none">Contact</a>
@@ -255,11 +263,13 @@ document.addEventListener('DOMContentLoaded', () => {
       const isOpen = menuButton.getAttribute('aria-expanded') === 'true';
       menuButton.setAttribute('aria-expanded', String(!isOpen));
       mobileMenu.classList.toggle('hidden', isOpen);
+      mobileMenu.setAttribute('aria-hidden', String(isOpen));
     });
     mobileMenu.querySelectorAll('a').forEach(link => {
       link.addEventListener('click', () => {
         menuButton.setAttribute('aria-expanded', 'false');
         mobileMenu.classList.add('hidden');
+        mobileMenu.setAttribute('aria-hidden', 'true');
       });
     });
   }

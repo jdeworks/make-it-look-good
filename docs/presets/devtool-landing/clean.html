@@ -47,18 +47,25 @@
     /* Lock: when color=slate, checkmark <p> elements get text-slate-400 → frosted darkens to slate-600 (2.5:1 on dark bg); restore to slate-400 */
     html:not(.dark) .code-block p[class*="text-slate-400"] { color: #94a3b8 !important; }
     /* Lock: nav and mobile menu backgrounds must stay solid (beats frosted nav/bg-white overrides) */
-    html:not(.dark) nav.dtl-nav { background: white !important; }
-    .dark nav.dtl-nav { background: rgb(2,6,23) !important; }
-    html:not(.dark) div#devCleanMobile { background: rgba(255,255,255,0.95) !important; }
-    .dark div#devCleanMobile { background: rgba(15,23,42,0.95) !important; }
+    html:not(.dark) nav.dtl-nav,
+    html:not(.dark) nav.dtl-nav { background: white !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+    .dark nav.dtl-nav { background: rgb(2,6,23) !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+    html:not(.dark) div#devCleanMobile { background: rgba(255,255,255,0.95) !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+    .dark div#devCleanMobile { background: rgba(15,23,42,0.95) !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+    html:not(.dark) #devtoolWrap header { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+    html:not(.dark) #devtoolWrap [class*="bg-white"] { background: white !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+    .dark #devtoolWrap [class*="bg-slate-950"],
+    .dark #devtoolWrap [class*="bg-slate-900"] { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+    @media (max-width: 767px) { #devDesktopNav { display: none !important; } }
+    @media (min-width: 768px) { #devMobileBtn { display: none !important; } }
 </style>
-<div class="min-h-screen bg-white text-slate-950 dark:bg-slate-950 dark:text-slate-100">
+<div id="devtoolWrap" class="min-h-screen bg-white text-slate-950 dark:bg-slate-950 dark:text-slate-100">
     <!-- Navigation -->
     <header>
     <nav class="dtl-nav fixed top-0 left-0 right-0 z-50 bg-white dark:bg-slate-950 backdrop-blur-xl border-b border-slate-200/70 dark:border-slate-800/50">
         <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
             <a href="#hero" class="min-h-[44px] flex items-center text-xl font-bold tracking-tight text-cyan-700 dark:text-cyan-400 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Acme<span class="text-slate-500 dark:text-slate-500">/</span>cli</a>
-            <div class="hidden md:flex items-center gap-6 text-sm text-slate-600 dark:text-slate-400">
+            <div id="devDesktopNav" class="flex items-center gap-6 text-sm text-slate-600 dark:text-slate-400">
                 <a href="#features" class="hover:text-slate-950 dark:hover:text-white transition-colors min-h-[44px] flex items-center focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Docs</a>
                 <a href="#pricing" class="hover:text-slate-950 dark:hover:text-white transition-colors min-h-[44px] flex items-center focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Pricing</a>
                 <a href="#code" class="hover:text-slate-950 dark:hover:text-white transition-colors min-h-[44px] flex items-center focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Changelog</a>
@@ -68,11 +75,11 @@
                 </a>
                 <a href="#hero" class="bg-cyan-700 hover:bg-cyan-600 text-white font-bold px-4 py-2 rounded-lg transition-colors min-h-[44px] flex items-center focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Get Started</a>
             </div>
-            <button onclick="document.getElementById('devCleanMobile').classList.toggle('hidden')" class="md:hidden text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white min-h-[44px] min-w-[44px] flex items-center justify-center focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none" aria-label="Toggle menu">
+            <button id="devMobileBtn" onclick="const m=document.getElementById('devCleanMobile');m.classList.toggle('hidden');m.setAttribute('aria-hidden',m.classList.contains('hidden'))" class="text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white min-h-[44px] min-w-[44px] flex items-center justify-center focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none" aria-label="Toggle menu">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
             </button>
         </div>
-        <div id="devCleanMobile" class="hidden md:hidden border-t border-slate-200/70 dark:border-slate-800/50 bg-white/95 dark:bg-slate-950/95 backdrop-blur-xl">
+        <div id="devCleanMobile" aria-hidden="true" class="hidden border-t border-slate-200/70 dark:border-slate-800/50 bg-white/95 dark:bg-slate-950/95 backdrop-blur-xl">
             <div class="px-6 py-4 flex flex-col gap-3 text-sm text-slate-600 dark:text-slate-400">
                 <a href="#features" class="hover:text-slate-950 dark:hover:text-white transition-colors py-2 min-h-[44px] flex items-center focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Docs</a>
                 <a href="#pricing" class="hover:text-slate-950 dark:hover:text-white transition-colors py-2 min-h-[44px] flex items-center focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Pricing</a>
@@ -93,7 +100,7 @@
                 v3.2 &mdash; Now with streaming builds
             </div>
             <h1 class="text-5xl sm:text-6xl md:text-7xl font-bold tracking-tight mb-6 leading-tight">
-                Ship code<br class="hidden sm:block"> <span class="text-cyan-700 dark:text-cyan-400">10x faster</span>
+                Ship code<br class="hidden sm:block" aria-hidden="true"> <span class="text-cyan-700 dark:text-cyan-400">10x faster</span>
             </h1>
             <p class="text-lg sm:text-xl text-slate-600 dark:text-slate-400 max-w-2xl mx-auto mb-10 leading-relaxed">
                 The developer toolkit that handles builds, deploys, and monitoring so you can focus on writing code.

@@ -9,6 +9,15 @@
       transition-duration: 0.01ms !important;
     }
   }
+  /* Frosted lock — dark-first design, lock nav bg to black in all modes */
+  html:not(.dark) #portfolioWrap nav { background: black !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+  html:not(.dark) #portfolioWrap nav, html:not(.dark) #portfolioWrap nav * { color: white !important; }
+  #portfolioWrap nav { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+  #portfolioWrap [class*="bg-slate-900"],
+  #portfolioWrap [class*="bg-slate-950"] { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+  /* Responsive nav */
+  @media (max-width: 639px) { #portfolioDesktopNav { display: none !important; } }
+  @media (min-width: 640px) { #portfolioMobileBtn { display: none !important; } }
 </style>
 <!-- Note: This preset is intentionally dark-themed. Dark mode toggle inverts it. -->
 <style type="text/tailwindcss">
@@ -17,24 +26,24 @@
       --font-mono: 'JetBrains Mono', ui-monospace, monospace;
     }
   </style>
-<div class="portfolio-clean dark min-h-screen bg-slate-950">
+<div id="portfolioWrap" class="portfolio-clean dark min-h-screen bg-slate-950">
 <!-- Navigation -->
   <nav class="sticky top-0 z-50 border-b border-black bg-black shadow-lg shadow-black/40">
     <div class="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
       <a href="#" class="inline-flex min-h-11 min-w-11 items-center justify-center px-2 text-lg font-bold tracking-tight text-white font-mono">AC</a>
-      <div class="hidden sm:flex items-center gap-4">
+      <div id="portfolioDesktopNav" class="flex items-center gap-4">
         <a href="#about" class="inline-flex min-h-11 min-w-11 items-center justify-center px-3 text-sm text-white hover:text-white transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-emerald-500 rounded">About</a>
         <a href="#projects" class="inline-flex min-h-11 min-w-11 items-center justify-center px-3 text-sm text-white hover:text-white transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-emerald-500 rounded">Projects</a>
         <a href="#stack" class="inline-flex min-h-11 min-w-11 items-center justify-center px-3 text-sm text-white hover:text-white transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-emerald-500 rounded">Stack</a>
         <a href="#contact" class="inline-flex min-h-11 min-w-11 items-center justify-center px-3 text-sm text-white hover:text-white transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-emerald-500 rounded">Contact</a>
       </div>
       <!-- Mobile menu button -->
-      <button id="mobile-nav-btn" class="sm:hidden flex items-center justify-center w-11 h-11 rounded-lg text-white hover:text-white hover:bg-slate-800 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500" aria-label="Toggle menu" onclick="document.getElementById('mobile-nav').classList.toggle('hidden')">
+      <button id="portfolioMobileBtn" class="flex items-center justify-center w-11 h-11 rounded-lg text-white hover:text-white hover:bg-slate-800 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500" aria-label="Toggle menu" onclick="const m=document.getElementById('mobile-nav');m.classList.toggle('hidden');m.setAttribute('aria-hidden',m.classList.contains('hidden'))">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
       </button>
     </div>
     <!-- Mobile menu -->
-    <div id="mobile-nav" class="sm:hidden hidden border-t border-slate-800 bg-black">
+    <div id="mobile-nav" class="hidden border-t border-slate-800 bg-black" aria-hidden="true">
       <div class="px-6 py-4 flex flex-col gap-1">
         <a href="#about" class="min-h-11 min-w-11 flex items-center text-sm text-white hover:text-white transition-colors rounded px-3 focus-visible:outline-2 focus-visible:outline-emerald-500">About</a>
         <a href="#projects" class="min-h-11 min-w-11 flex items-center text-sm text-white hover:text-white transition-colors rounded px-3 focus-visible:outline-2 focus-visible:outline-emerald-500">Projects</a>
@@ -50,12 +59,12 @@
     <div class="max-w-5xl mx-auto">
       <p class="font-mono text-white text-sm mb-4 tracking-wide">Hi, my name is</p>
       <h1 class="text-4xl sm:text-5xl lg:text-6xl font-bold text-white leading-tight tracking-tight">Alex Chen</h1>
-      <h2 class="text-2xl font-mono text-white mt-3 font-medium">Full-Stack Developer</h2>
+      <h2 class="text-2xl font-mono text-white mt-3 font-semibold">Full-Stack Developer</h2>
       <p class="mt-6 text-slate-100 text-base sm:text-lg max-w-lg leading-relaxed">I build performant web applications and developer tools with clean architecture, great UX, and fast delivery.</p>
 
       <div class="mt-10 flex flex-wrap items-center gap-4">
         <!-- Download Resume -->
-        <a href="#" class="min-h-11 inline-flex items-center justify-center h-11 px-6 border border-emerald-200 text-white text-sm font-medium rounded-lg hover:bg-emerald-500/10 transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500">
+        <a href="#" class="min-h-11 inline-flex items-center justify-center h-11 px-6 border border-emerald-200 text-white text-sm font-semibold rounded-lg hover:bg-emerald-500/10 transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500">
           <svg class="w-4 h-4 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           Download Resume
         </a>

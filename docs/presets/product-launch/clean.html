@@ -7,7 +7,7 @@
 <style>
   html { scroll-behavior: smooth; }
     .gradient-hero {
-        background: linear-gradient(180deg, #020617 0%, #111827 52%, #020617 100%);
+        background-image: linear-gradient(180deg, #020617 0%, #111827 52%, #020617 100%);
     }
     .glow-card {
         transition: box-shadow 0.3s ease, border-color 0.3s ease;
@@ -35,14 +35,26 @@
         .animate-pulse { animation: none; }
     }
 </style>
-<div class="min-h-screen bg-slate-950 text-slate-100">
+<style>
+/* Frosted lock — dark-first design, lock nav bg to slate-950 in light mode */
+html:not(.dark) #productLaunchWrap nav { background: rgb(2, 6, 23) !important; }
+#productLaunchWrap nav { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+#productLaunchWrap [class*="bg-slate-950"],
+#productLaunchWrap [class*="bg-slate-900"] { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+html:not(.dark) #productLaunchWrap input,
+html:not(.dark) #productLaunchWrap textarea { background: rgb(15, 23, 42) !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+/* Responsive nav */
+@media (max-width: 767px) { #plDesktopNav { display: none !important; } }
+@media (min-width: 768px) { #plMobileBtn { display: none !important; } }
+</style>
+<div id="productLaunchWrap" class="min-h-screen bg-slate-950 text-slate-100">
     <!-- Navigation -->
     <nav class="sticky top-0 z-50 bg-slate-950 border-b border-slate-700">
         <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
             <a href="#hero" class="text-xl font-bold tracking-tight">
                 <span class="text-indigo-200">Launchpad</span>
             </a>
-            <div class="hidden md:flex items-center gap-8 text-sm text-slate-300">
+            <div id="plDesktopNav" class="flex items-center gap-8 text-sm text-slate-300">
                 <a href="#features" class="hover:text-white transition-colors min-h-[44px] inline-flex items-center">Features</a>
                 <a href="#how-it-works" class="hover:text-white transition-colors min-h-[44px] inline-flex items-center">How It Works</a>
                 <a href="#pricing" class="hover:text-white transition-colors min-h-[44px] inline-flex items-center">Pricing</a>
@@ -51,12 +63,12 @@
                 </a>
             </div>
             <!-- Mobile menu button -->
-            <button onclick="document.getElementById('plCleanMobile').classList.toggle('hidden')" class="md:hidden text-slate-300 hover:text-white min-h-[44px] min-w-[44px] flex items-center justify-center" aria-label="Toggle menu">
+            <button id="plMobileBtn" onclick="const m=document.getElementById('plCleanMobile');m.classList.toggle('hidden');m.setAttribute('aria-hidden',m.classList.contains('hidden'))" class="text-slate-300 hover:text-white min-h-[44px] min-w-[44px] flex items-center justify-center" aria-label="Toggle menu">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
             </button>
         </div>
         <!-- Mobile menu -->
-        <div id="plCleanMobile" class="hidden md:hidden border-t border-slate-800 bg-slate-950 max-h-[calc(100vh-4rem)] overflow-y-auto">
+        <div id="plCleanMobile" class="hidden border-t border-slate-800 bg-slate-950 max-h-[calc(100vh-4rem)] overflow-y-auto" aria-hidden="true">
             <div class="px-6 py-4 flex flex-col gap-1 text-sm text-slate-300">
                 <a href="#features" class="hover:text-white transition-colors py-3 min-h-[44px] flex items-center">Features</a>
                 <a href="#how-it-works" class="hover:text-white transition-colors py-3 min-h-[44px] flex items-center">How It Works</a>
@@ -68,7 +80,7 @@
 <main>
 
     <!-- Hero Section -->
-    <section id="hero" class="gradient-hero relative overflow-hidden">
+    <section id="hero" class="gradient-hero bg-slate-950 relative overflow-hidden">
         <!-- Radial glow -->
         <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(99,102,241,0.12)_0%,transparent_70%)]"></div>
         <div class="relative max-w-7xl mx-auto px-6 pt-40 pb-28 text-center">
@@ -183,7 +195,7 @@
             <div class="space-y-12">
                 <!-- Step 1 -->
                 <div class="step-line flex gap-6">
-                    <div class="flex-shrink-0 w-12 h-12 rounded-full bg-indigo-600 flex items-center justify-center text-lg font-bold">1</div>
+                    <div class="flex-shrink-0 w-12 h-12 rounded-full bg-slate-800 ring-2 ring-indigo-400 flex items-center justify-center text-lg font-bold text-white">1</div>
                     <div class="pt-1">
                         <h2 class="text-xl font-bold mb-2">Connect your repository</h2>
                         <p class="text-slate-300 leading-relaxed">Link your repo. We detect the framework and configure the pipeline.</p>
@@ -192,7 +204,7 @@
 
                 <!-- Step 2 -->
                 <div class="step-line flex gap-6">
-                    <div class="flex-shrink-0 w-12 h-12 rounded-full bg-indigo-600 flex items-center justify-center text-lg font-bold">2</div>
+                    <div class="flex-shrink-0 w-12 h-12 rounded-full bg-slate-800 ring-2 ring-indigo-400 flex items-center justify-center text-lg font-bold text-white">2</div>
                     <div class="pt-1">
                         <h2 class="text-xl font-bold mb-2">Configure and deploy</h2>
                         <p class="text-slate-300 leading-relaxed">Set variables and domains, or ship instantly with smart defaults.</p>
@@ -201,7 +213,7 @@
 
                 <!-- Step 3 -->
                 <div class="flex gap-6">
-                    <div class="flex-shrink-0 w-12 h-12 rounded-full bg-indigo-600 flex items-center justify-center text-lg font-bold">3</div>
+                    <div class="flex-shrink-0 w-12 h-12 rounded-full bg-slate-800 ring-2 ring-indigo-400 flex items-center justify-center text-lg font-bold text-white">3</div>
                     <div class="pt-1">
                         <h2 class="text-xl font-bold mb-2">Scale with confidence</h2>
                         <p class="text-slate-300 leading-relaxed">Monitor performance, enable auto-scaling, and keep building.</p>
