@@ -7,6 +7,14 @@
   html { scroll-behavior: smooth; }
   .font-body { font-family: 'Inter', system-ui, sans-serif; }
   .font-accent { font-family: 'Playfair Display', Georgia, serif; font-style: italic; }
+  /* Frosted lock: nav keeps its dark bg; phone Screen 1 detail card stays near-transparent */
+  html:not(.dark) #appShowcaseWrap nav,
+  html:not(.dark) #appShowcaseWrap header { background: hsl(20,78%,13%) !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+  html:not(.dark) #appShowcaseWrap #txnDetails { background: rgba(255,255,255,0.08) !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; border: none !important; box-shadow: none !important; }
+  /* Responsive visibility — no hidden class on key elements */
+  @media (max-width: 639px) { #appDesktopNav { display: none !important; } }
+  @media (min-width: 640px) { #navBurger { display: none !important; } }
+  @media (max-width: 639px) { #sideCardL, #sideCardR { display: none !important; } }
 
   .scroll-reveal {
     opacity: 1; transform: none;
@@ -38,7 +46,7 @@
   }
 </style>
 
-<div class="app-showcase-clean min-h-screen font-body bg-[hsl(33,100%,96%)] overflow-x-clip">
+<div id="appShowcaseWrap" class="app-showcase-clean min-h-screen font-body bg-[hsl(33,100%,96%)] overflow-x-clip">
 
   <!-- Sticky Nav -->
   <nav id="appNav" class="sticky top-0 z-50 transition-colors bg-[hsl(20,78%,13%)]">
@@ -50,17 +58,17 @@
         </svg>
         PayFlow
       </a>
-      <div class="hidden sm:flex items-center gap-7">
+      <div id="appDesktopNav" class="flex items-center gap-7">
         <a href="#features" class="text-sm hover:text-white transition-colors min-h-11 inline-flex items-center nav-link focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none rounded">Features</a>
         <a href="#brands" class="text-sm hover:text-white transition-colors min-h-11 inline-flex items-center nav-link focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none rounded">For Brands</a>
         <a href="#stats" class="text-sm hover:text-white transition-colors min-h-11 inline-flex items-center nav-link focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none rounded">Results</a>
         <a href="#cta" class="text-sm font-semibold px-5 py-2.5 rounded-full min-h-11 inline-flex items-center transition-colors nav-cta focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none bg-[hsl(20,78%,30%)] text-white">Get Started</a>
       </div>
-      <button id="navBurger" onclick="document.getElementById('appMobileMenu').classList.toggle('hidden')" class="sm:hidden min-h-11 min-w-[44px] flex items-center justify-center text-white rounded-lg focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none" aria-label="Toggle menu">
+      <button id="navBurger" onclick="const m=document.getElementById('appMobileMenu');m.classList.toggle('hidden');m.setAttribute('aria-hidden',m.classList.contains('hidden'))" class="min-h-11 min-w-[44px] flex items-center justify-center text-white rounded-lg focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none" aria-label="Toggle menu">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
       </button>
     </div>
-    <div id="appMobileMenu" class="hidden sm:hidden px-5 pb-4 space-y-1 bg-[hsl(20,78%,13%)]">
+    <div id="appMobileMenu" aria-hidden="true" class="hidden px-5 pb-4 space-y-1 bg-[hsl(20,78%,13%)]">
       <a href="#features" class="block text-sm text-white hover:text-white min-h-11 flex items-center px-3 rounded-lg">Features</a>
       <a href="#brands" class="block text-sm text-white hover:text-white min-h-11 flex items-center px-3 rounded-lg">For Brands</a>
       <a href="#stats" class="block text-sm text-white hover:text-white min-h-11 flex items-center px-3 rounded-lg">Results</a>
@@ -86,7 +94,7 @@
   <!-- Phone Scroll Zone: separate section, NO overflow-hidden, so sticky works -->
   <section id="phoneScrollZone" class="relative pt-[30vh] bg-[hsl(20,78%,13%)]" style="height: 330vh;">
       <!-- Side cards (static, blur on initial view) -->
-      <div class="side-card hidden sm:block absolute top-8 sm:top-6 -left-4 sm:left-8 lg:left-16 w-48 sm:w-56 h-72 sm:h-80 rounded-2xl opacity-90" id="sideCardL" style="background: linear-gradient(135deg, rgba(255,135,102,0.2), rgba(255,200,170,0.12)); transform: translateX(60px);">
+      <div class="side-card absolute top-8 sm:top-6 -left-4 sm:left-8 lg:left-16 w-48 sm:w-56 h-72 sm:h-80 rounded-2xl opacity-90" id="sideCardL" style="background: linear-gradient(135deg, rgba(255,135,102,0.2), rgba(255,200,170,0.12)); transform: translateX(60px);">
         <div class="p-5 space-y-3">
           <div class="w-10 h-10 rounded-xl bg-[hsl(20,78%,30%)]/30"></div>
           <div class="h-3 w-3/4 rounded bg-white/15"></div>
@@ -94,7 +102,7 @@
           <div class="h-20 w-full rounded-xl mt-4 bg-white/[.06]"></div>
         </div>
       </div>
-      <div class="side-card hidden sm:block absolute top-8 sm:top-6 -right-4 sm:right-8 lg:right-16 w-48 sm:w-56 h-72 sm:h-80 rounded-2xl opacity-90" id="sideCardR" style="background: linear-gradient(225deg, rgba(255,135,102,0.18), rgba(180,140,120,0.12)); transform: translateX(-60px);">
+      <div class="side-card absolute top-8 sm:top-6 -right-4 sm:right-8 lg:right-16 w-48 sm:w-56 h-72 sm:h-80 rounded-2xl opacity-90" id="sideCardR" style="background: linear-gradient(225deg, rgba(255,135,102,0.18), rgba(180,140,120,0.12)); transform: translateX(-60px);">
         <div class="p-5 space-y-3">
           <div class="w-10 h-10 rounded-xl bg-[hsl(20,78%,30%)]/30"></div>
           <div class="h-3 w-2/3 rounded bg-white/15"></div>
@@ -119,7 +127,7 @@
                 </svg>
                 <p class="text-white text-xs font-medium mb-1">Payment Successful</p>
                 <p class="text-2xl font-semibold text-white mb-3">$42.50</p>
-                <div class="w-full rounded-xl p-3 space-y-2 bg-white/[.08]">
+                <div id="txnDetails" class="w-full rounded-xl p-3 space-y-2 bg-white/[.08]">
                   <div class="flex justify-between text-xs"><span class="text-white/80">To</span><span class="text-white">Morning Brew Coffee</span></div>
                   <div class="flex justify-between text-xs"><span class="text-white/80">Reward</span><span class="font-medium text-[hsl(142,82%,72%)]">+$2.10 cashback</span></div>
                 </div>
