@@ -12,13 +12,21 @@
       transition-duration: 0.01ms !important;
     }
   }
+  /* Guardrail: guarantee solid nav bg independent of Tailwind CDN timing and frosted effect.
+     Specificity #ID (1,0,0) + !important beats frosted's html:not(.dark) nav (0,1,1) + !important */
+  #stickyNav {
+    background-color: rgb(255, 255, 255) !important;
+  }
+  html.dark #stickyNav {
+    background-color: rgb(2, 6, 23) !important;
+  }
 </style>
 <div class="scroll-reveal-clean min-h-screen bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100" style="font-family: system-ui, -apple-system, sans-serif;">
 
   <!-- Sticky Nav (floating pill) -->
   <nav id="stickyNav" class="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex max-w-[calc(100vw-1rem)] items-center gap-3 px-3 py-3 rounded-full border border-slate-200/80 shadow-lg shadow-slate-950/10 transition-all duration-300 bg-white dark:bg-slate-950" aria-label="Main navigation">
     <a href="#" id="navBrand" class="text-lg font-bold tracking-tight text-slate-900 transition-colors duration-300 min-h-11 flex items-center">Lumino</a>
-    <a href="#topics" id="navCta" class="bg-slate-900 hover:bg-slate-800 text-white font-medium text-sm px-5 py-2 rounded-full transition-colors duration-300 min-h-11 flex items-center whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 shadow-sm shadow-slate-950/10">Get Started</a>
+    <a href="#topics" id="navCta" class="bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm px-5 py-2 rounded-full transition-colors duration-300 min-h-11 flex items-center whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 shadow-sm shadow-slate-950/10">Get Started</a>
   </nav>
 
   <main>
@@ -50,8 +58,8 @@
     <!-- Why Us: line-by-line text reveal -->
     <section class="px-4 sm:px-6 lg:px-8 py-20 sm:py-28 lg:py-36">
       <div class="max-w-3xl mx-auto">
-        <p class="text-sm font-medium uppercase tracking-widest text-slate-700 dark:text-slate-200 mb-8 text-center reveal-line" style="opacity:0; transform:translateY(32px);">Why Lumino?</p>
-        <div class="text-2xl sm:text-3xl lg:text-4xl font-medium leading-snug tracking-tight text-slate-800 dark:text-slate-200">
+        <p class="text-sm font-bold uppercase tracking-widest text-slate-700 dark:text-slate-200 mb-8 text-center reveal-line" style="opacity:0; transform:translateY(32px);">Why Lumino?</p>
+        <div class="text-2xl sm:text-3xl lg:text-4xl font-bold leading-snug tracking-tight text-slate-800 dark:text-slate-200">
           <p class="mb-8">
             <span class="reveal-line block" style="opacity:0; transform:translateY(32px);">Most design advice is vague.</span>
             <span class="reveal-line block" style="opacity:0; transform:translateY(32px);">"Make it clean." "Add whitespace."</span>
@@ -71,42 +79,42 @@
     </section>
 
     <!-- Topics Grid: pastel cards with open-up effect -->
-    <section id="topics" class="px-4 sm:px-6 lg:px-8 py-16 sm:py-24">
+    <section id="topics" class="px-4 sm:px-6 lg:px-8 py-16 sm:py-24 overflow-x-hidden">
       <div class="max-w-5xl mx-auto">
         <h2 class="text-3xl sm:text-4xl font-bold text-center mb-4">Explore Topics</h2>
         <p class="text-base text-slate-700 dark:text-slate-300 text-center mb-12 max-w-lg mx-auto">From color theory to responsive patterns, master the foundations that make interfaces feel right.</p>
         <div id="topicsGrid" class="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5" style="perspective: 1200px;">
           <!-- Cards with staggered entrance animation -->
-          <a href="#" class="topic-card group block rounded-2xl p-5 sm:p-6 hover:shadow-lg min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500" style="background-color: rgb(253,219,206); opacity:0; transform:translateY(48px) scale(0.88);">
-            <span class="inline-block text-xs font-medium uppercase tracking-wider border px-3 py-1 rounded-full mb-3 text-gray-900 dark:text-slate-50 border-gray-900/45 dark:border-slate-50/50">Color</span>
+          <a href="#" class="topic-card group block rounded-2xl p-5 sm:p-6 overflow-hidden hover:shadow-lg min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500" style="background-color: rgb(253,219,206); opacity:0; transform:translateY(48px) scale(0.88);">
+            <span class="inline-block text-sm font-bold uppercase tracking-wider border px-3 py-1 rounded-full mb-3 text-gray-900 dark:text-slate-50 border-gray-900/45 dark:border-slate-50/50">Color</span>
             <p class="text-base sm:text-lg font-bold text-gray-800 dark:text-slate-50">Contrast Ratios</p>
           </a>
-          <a href="#" class="topic-card group block rounded-2xl p-5 sm:p-6 hover:shadow-lg min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500" style="background-color: rgb(215,206,240); opacity:0; transform:translateY(48px) scale(0.88);">
-            <span class="inline-block text-xs font-medium uppercase tracking-wider border px-3 py-1 rounded-full mb-3 text-gray-900 dark:text-slate-50 border-gray-900/45 dark:border-slate-50/50">Typography</span>
+          <a href="#" class="topic-card group block rounded-2xl p-5 sm:p-6 overflow-hidden hover:shadow-lg min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500" style="background-color: rgb(215,206,240); opacity:0; transform:translateY(48px) scale(0.88);">
+            <span class="inline-block text-sm font-bold uppercase tracking-wider border px-3 py-1 rounded-full mb-3 text-gray-900 dark:text-slate-50 border-gray-900/45 dark:border-slate-50/50">Typography</span>
             <p class="text-base sm:text-lg font-bold text-gray-800 dark:text-slate-50">Type Scale</p>
           </a>
-          <a href="#" class="topic-card group block rounded-2xl p-5 sm:p-6 hover:shadow-lg min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500" style="background-color: rgb(213,226,218); opacity:0; transform:translateY(48px) scale(0.88);">
-            <span class="inline-block text-xs font-medium uppercase tracking-wider border px-3 py-1 rounded-full mb-3 text-gray-900 dark:text-slate-50 border-gray-900/45 dark:border-slate-50/50">Layout</span>
+          <a href="#" class="topic-card group block rounded-2xl p-5 sm:p-6 overflow-hidden hover:shadow-lg min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500" style="background-color: rgb(213,226,218); opacity:0; transform:translateY(48px) scale(0.88);">
+            <span class="inline-block text-sm font-bold uppercase tracking-wider border px-3 py-1 rounded-full mb-3 text-gray-900 dark:text-slate-50 border-gray-900/45 dark:border-slate-50/50">Layout</span>
             <p class="text-base sm:text-lg font-bold text-gray-800 dark:text-slate-50">Spacing Systems</p>
           </a>
-          <a href="#" class="topic-card group block rounded-2xl p-5 sm:p-6 hover:shadow-lg min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500" style="background-color: rgb(219,229,240); opacity:0; transform:translateY(48px) scale(0.88);">
-            <span class="inline-block text-xs font-medium uppercase tracking-wider border px-3 py-1 rounded-full mb-3 text-gray-900 dark:text-slate-50 border-gray-900/45 dark:border-slate-50/50">Responsive</span>
+          <a href="#" class="topic-card group block rounded-2xl p-5 sm:p-6 overflow-hidden hover:shadow-lg min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500" style="background-color: rgb(219,229,240); opacity:0; transform:translateY(48px) scale(0.88);">
+            <span class="inline-block text-sm font-bold uppercase tracking-wider border px-3 py-1 rounded-full mb-3 text-gray-900 dark:text-slate-50 border-gray-900/45 dark:border-slate-50/50">Responsive</span>
             <p class="text-base sm:text-lg font-bold text-gray-800 dark:text-slate-50">Breakpoints</p>
           </a>
-          <a href="#" class="topic-card group block rounded-2xl p-5 sm:p-6 hover:shadow-lg min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500" style="background-color: rgb(246,231,207); opacity:0; transform:translateY(48px) scale(0.88);">
-            <span class="inline-block text-xs font-medium uppercase tracking-wider border px-3 py-1 rounded-full mb-3 text-gray-900 dark:text-slate-50 border-gray-900/45 dark:border-slate-50/50">Interaction</span>
+          <a href="#" class="topic-card group block rounded-2xl p-5 sm:p-6 overflow-hidden hover:shadow-lg min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500" style="background-color: rgb(246,231,207); opacity:0; transform:translateY(48px) scale(0.88);">
+            <span class="inline-block text-sm font-bold uppercase tracking-wider border px-3 py-1 rounded-full mb-3 text-gray-900 dark:text-slate-50 border-gray-900/45 dark:border-slate-50/50">Interaction</span>
             <p class="text-base sm:text-lg font-bold text-gray-800 dark:text-slate-50">Touch Targets</p>
           </a>
-          <a href="#" class="topic-card group block rounded-2xl p-5 sm:p-6 hover:shadow-lg min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500" style="background-color: rgb(253,219,206); opacity:0; transform:translateY(48px) scale(0.88);">
-            <span class="inline-block text-xs font-medium uppercase tracking-wider border px-3 py-1 rounded-full mb-3 text-gray-900 dark:text-slate-50 border-gray-900/45 dark:border-slate-50/50">Motion</span>
+          <a href="#" class="topic-card group block rounded-2xl p-5 sm:p-6 overflow-hidden hover:shadow-lg min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500" style="background-color: rgb(253,219,206); opacity:0; transform:translateY(48px) scale(0.88);">
+            <span class="inline-block text-sm font-bold uppercase tracking-wider border px-3 py-1 rounded-full mb-3 text-gray-900 dark:text-slate-50 border-gray-900/45 dark:border-slate-50/50">Motion</span>
             <p class="text-base sm:text-lg font-bold text-gray-800 dark:text-slate-50">Animation Timing</p>
           </a>
-          <a href="#" class="topic-card group block rounded-2xl p-5 sm:p-6 hover:shadow-lg min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500" style="background-color: rgb(215,206,240); opacity:0; transform:translateY(48px) scale(0.88);">
-            <span class="inline-block text-xs font-medium uppercase tracking-wider border px-3 py-1 rounded-full mb-3 text-gray-900 dark:text-slate-50 border-gray-900/45 dark:border-slate-50/50">Systems</span>
+          <a href="#" class="topic-card group block rounded-2xl p-5 sm:p-6 overflow-hidden hover:shadow-lg min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500" style="background-color: rgb(215,206,240); opacity:0; transform:translateY(48px) scale(0.88);">
+            <span class="inline-block text-sm font-bold uppercase tracking-wider border px-3 py-1 rounded-full mb-3 text-gray-900 dark:text-slate-50 border-gray-900/45 dark:border-slate-50/50">Systems</span>
             <p class="text-base sm:text-lg font-bold text-gray-800 dark:text-slate-50">Design Tokens</p>
           </a>
-          <a href="#" class="topic-card group block rounded-2xl p-5 sm:p-6 hover:shadow-lg min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500" style="background-color: rgb(213,226,218); opacity:0; transform:translateY(48px) scale(0.88);">
-            <span class="inline-block text-xs font-medium uppercase tracking-wider border px-3 py-1 rounded-full mb-3 text-gray-900 dark:text-slate-50 border-gray-900/45 dark:border-slate-50/50">Accessibility</span>
+          <a href="#" class="topic-card group block rounded-2xl p-5 sm:p-6 overflow-hidden hover:shadow-lg min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500" style="background-color: rgb(213,226,218); opacity:0; transform:translateY(48px) scale(0.88);">
+            <span class="inline-block text-sm font-bold uppercase tracking-wider border px-3 py-1 rounded-full mb-3 text-gray-900 dark:text-slate-50 border-gray-900/45 dark:border-slate-50/50">Accessibility</span>
             <p class="text-base sm:text-lg font-bold text-gray-800 dark:text-slate-50">WCAG Essentials</p>
           </a>
         </div>
@@ -125,7 +133,7 @@
                 <!-- Screen states driven by scroll -->
                 <div id="featureScreens" class="absolute inset-0 top-8" aria-hidden="true">
                   <div class="feature-screen absolute inset-0 flex flex-col px-5 pt-10 transition-opacity duration-300" data-screen="0" style="opacity:1;">
-                    <p class="text-white text-xs font-medium mb-2">DESIGN SYSTEM</p>
+                    <p class="text-white text-xs mb-2">DESIGN SYSTEM</p>
                     <p class="text-white text-lg font-bold mb-4">Spacing Scale</p>
                     <div class="space-y-2">
                       <div class="flex items-center gap-2"><div class="w-1 h-4 bg-white rounded"></div><span class="text-white text-xs">4px</span></div>
@@ -136,7 +144,7 @@
                     </div>
                   </div>
                   <div class="feature-screen absolute inset-0 flex flex-col px-5 pt-10 transition-opacity duration-300" data-screen="1" style="opacity:0;">
-                    <p class="text-white text-xs font-medium mb-2">CONTRAST CHECK</p>
+                    <p class="text-white text-xs mb-2">CONTRAST CHECK</p>
                     <p class="text-white text-lg font-bold mb-4">AA Compliant</p>
                     <div class="space-y-3">
                       <div class="bg-slate-900/[.88] rounded-xl p-3"><div class="flex justify-between mb-1"><span class="text-white text-xs">Text on white</span><span class="text-green-100 text-xs font-bold">4.5:1</span></div><div class="h-2 rounded bg-white"><div class="h-full rounded bg-green-300" style="width:75%"></div></div></div>
@@ -145,7 +153,7 @@
                     </div>
                   </div>
                   <div class="feature-screen absolute inset-0 flex flex-col px-5 pt-10 transition-opacity duration-300" data-screen="2" style="opacity:0;">
-                    <p class="text-white text-xs font-medium mb-2">DECISION TREE</p>
+                    <p class="text-white text-xs mb-2">DECISION TREE</p>
                     <p class="text-white text-lg font-bold mb-4">Pick a Layout</p>
                     <div class="space-y-2 text-xs">
                       <div class="bg-slate-900/[.88] rounded-lg p-3 text-white">Need sidebar nav?</div>
@@ -168,17 +176,17 @@
           <!-- Scrolling feature descriptions (tall to give the phone dwell time) -->
           <div class="space-y-32 sm:space-y-40 lg:space-y-52">
             <div class="scroll-driven feature-text" data-screen="0" style="opacity:0; transform:translateY(32px);">
-              <p class="text-sm font-medium uppercase tracking-widest text-slate-700 dark:text-slate-200 mb-4">Concrete numbers</p>
+              <p class="text-sm font-bold uppercase tracking-widest text-slate-700 dark:text-slate-200 mb-4">Concrete numbers</p>
               <h2 class="text-3xl sm:text-4xl font-bold leading-tight mb-6">Spacing scales,<br>not guesswork</h2>
               <p class="text-lg text-slate-700 dark:text-slate-300 leading-relaxed">Every rule comes with exact pixel values. The 4px base grid, the 8-step scale, component padding - all derived from real design systems used by teams shipping to millions.</p>
             </div>
             <div class="scroll-driven feature-text" data-screen="1" style="opacity:0; transform:translateY(32px);">
-              <p class="text-sm font-medium uppercase tracking-widest text-slate-700 dark:text-slate-200 mb-4">Accessibility built in</p>
+              <p class="text-sm font-bold uppercase tracking-widest text-slate-700 dark:text-slate-200 mb-4">Accessibility built in</p>
               <h2 class="text-3xl sm:text-4xl font-bold leading-tight mb-6">Contrast checks,<br>not afterthoughts</h2>
               <p class="text-lg text-slate-700 dark:text-slate-300 leading-relaxed">4.5:1 for body text, 3:1 for large text, 44px touch targets. Every pattern ships with WCAG AA compliance verified, so accessibility is the default.</p>
             </div>
             <div class="scroll-driven feature-text" data-screen="2" style="opacity:0; transform:translateY(32px);">
-              <p class="text-sm font-medium uppercase tracking-widest text-slate-700 dark:text-slate-200 mb-4">Decision frameworks</p>
+              <p class="text-sm font-bold uppercase tracking-widest text-slate-700 dark:text-slate-200 mb-4">Decision frameworks</p>
               <h2 class="text-3xl sm:text-4xl font-bold leading-tight mb-6">Decision trees,<br>not endless options</h2>
               <p class="text-lg text-slate-700 dark:text-slate-300 leading-relaxed">Sidebar or marketing shell? Cards or table? Serif or sans? Each topic includes a decision tree that gets you to the right answer fast.</p>
             </div>
@@ -218,7 +226,7 @@
   <!-- Footer -->
   <footer class="border-t border-slate-200 dark:border-slate-800 px-4 sm:px-6 lg:px-8 py-10">
     <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-slate-700 dark:text-slate-300">
-      <span class="font-medium text-slate-700 dark:text-slate-300">Lumino</span>
+      <span class="font-bold text-slate-700 dark:text-slate-300">Lumino</span>
       <div class="flex gap-6">
         <a href="#" class="hover:text-slate-700 dark:hover:text-slate-200 transition-colors min-h-11 flex items-center">Privacy</a>
         <a href="#" class="hover:text-slate-700 dark:hover:text-slate-200 transition-colors min-h-11 flex items-center">Terms</a>
