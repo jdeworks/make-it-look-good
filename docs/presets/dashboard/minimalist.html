@@ -1,17 +1,6 @@
 <!-- Dashboard: Minimalist | No shadows, hairline separators, extreme whitespace -->
 <!-- Stack: HTML + Tailwind CSS | Dark mode: yes | Responsive: yes -->
 <style>
-  .dashboard-minimalist { background: #f8fafc !important; }
-  .dark .dashboard-minimalist { background: #020617 !important; }
-  .dashboard-minimalist,
-  .dashboard-minimalist * {
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-  }
-  /* Prevent fixed sidebar from triggering "outside viewport" in matrix capture */
-  .dashboard-minimalist .dm-sidebar { position: relative !important; }
-  /* Hide sidebar at mobile via CSS (not Tailwind hidden) so the analyzer skips it as a panel */
-  @media (max-width: 1023px) { .dashboard-minimalist .dm-sidebar { display: none !important; } }
   /* Lock status badge text to accessible colors regardless of matrix color theme */
   .dashboard-minimalist .dm-status-green { color: #047857 !important; }
   .dark .dashboard-minimalist .dm-status-green { color: #6ee7b7 !important; }
@@ -20,13 +9,7 @@
   .dark .dashboard-minimalist .dm-status-amber { color: #fcd34d !important; }
   .dashboard-minimalist .dm-status-red { color: #b91c1c !important; }
   .dark .dashboard-minimalist .dm-status-red { color: #fca5a5 !important; }
-  /* Orders grid — desktop: 5-col grid per row; mobile: stacked flex */
-  .dashboard-minimalist .dm-orders-header,
-  .dashboard-minimalist .dm-orders-row {
-    display: grid;
-    grid-template-columns: 4rem 1fr 5.5rem 6.5rem 4rem;
-    align-items: center;
-  }
+  /* Orders grid — mobile: stacked flex override */
   @media (max-width: 639px) {
     .dashboard-minimalist .dm-orders-header { display: none; }
     .dashboard-minimalist .dm-orders-row {
@@ -64,7 +47,7 @@
 
   <div class="flex">
     <!-- Sidebar -->
-    <aside class="dm-sidebar lg:fixed lg:inset-y-0 lg:left-0 lg:w-[180px] lg:bg-slate-50 lg:dark:bg-slate-950 lg:border-r lg:border-slate-200 lg:dark:border-slate-800 lg:flex lg:flex-col lg:z-30">
+    <aside class="dm-sidebar hidden lg:block lg:fixed lg:inset-y-0 lg:left-0 lg:w-[180px] lg:bg-slate-50 lg:dark:bg-slate-950 lg:border-r lg:border-slate-200 lg:dark:border-slate-800 lg:flex lg:flex-col lg:z-30">
       <div class="h-14 flex items-center px-6 border-b border-slate-200 dark:border-slate-800">
         <span class="text-sm font-light tracking-widest uppercase">AppName</span>
       </div>
@@ -108,7 +91,7 @@
         <h2 class="text-lg font-light mb-8">Recent Orders</h2>
         <div role="grid" aria-label="Recent orders" class="w-full text-sm">
           <div role="rowgroup">
-            <div role="row" class="dm-orders-header border-b border-slate-200 dark:border-slate-800 pb-3">
+            <div role="row" class="dm-orders-header grid grid-cols-[4rem_1fr_5.5rem_6.5rem_4rem] items-center border-b border-slate-200 dark:border-slate-800 pb-3">
               <div role="columnheader" class="text-xs font-light tracking-widest uppercase text-slate-700 dark:text-slate-300">Order</div>
               <div role="columnheader" class="text-xs font-light tracking-widest uppercase text-slate-700 dark:text-slate-300">Customer</div>
               <div role="columnheader" class="text-right text-xs font-light tracking-widest uppercase text-slate-700 dark:text-slate-300">Amount</div>
@@ -117,35 +100,35 @@
             </div>
           </div>
           <div role="rowgroup">
-            <div role="row" class="dm-orders-row border-b border-slate-100 dark:border-slate-800/50">
+            <div role="row" class="dm-orders-row grid grid-cols-[4rem_1fr_5.5rem_6.5rem_4rem] items-center border-b border-slate-100 dark:border-slate-800/50">
               <div role="cell" class="dm-orders-cell dm-cell-order text-slate-700 dark:text-slate-300">#1042</div>
               <div role="cell" class="dm-orders-cell dm-cell-customer text-slate-600 dark:text-slate-400">Sarah Chen</div>
               <div role="cell" class="dm-orders-cell dm-cell-amount text-right tabular-nums">$240.00</div>
               <div role="cell" class="dm-orders-cell dm-cell-status pl-6"><span class="dm-status-green text-emerald-700 dark:text-emerald-300 text-xs">Completed</span></div>
               <div role="cell" class="dm-orders-cell dm-cell-date text-xs text-slate-700 dark:text-slate-300">Mar 15</div>
             </div>
-            <div role="row" class="dm-orders-row border-b border-slate-100 dark:border-slate-800/50">
+            <div role="row" class="dm-orders-row grid grid-cols-[4rem_1fr_5.5rem_6.5rem_4rem] items-center border-b border-slate-100 dark:border-slate-800/50">
               <div role="cell" class="dm-orders-cell dm-cell-order text-slate-700 dark:text-slate-300">#1041</div>
               <div role="cell" class="dm-orders-cell dm-cell-customer text-slate-600 dark:text-slate-400">James Wilson</div>
               <div role="cell" class="dm-orders-cell dm-cell-amount text-right tabular-nums">$125.50</div>
               <div role="cell" class="dm-orders-cell dm-cell-status pl-6"><span class="dm-status-amber text-amber-700 dark:text-amber-300 text-xs">Pending</span></div>
               <div role="cell" class="dm-orders-cell dm-cell-date text-xs text-slate-700 dark:text-slate-300">Mar 15</div>
             </div>
-            <div role="row" class="dm-orders-row border-b border-slate-100 dark:border-slate-800/50">
+            <div role="row" class="dm-orders-row grid grid-cols-[4rem_1fr_5.5rem_6.5rem_4rem] items-center border-b border-slate-100 dark:border-slate-800/50">
               <div role="cell" class="dm-orders-cell dm-cell-order text-slate-700 dark:text-slate-300">#1040</div>
               <div role="cell" class="dm-orders-cell dm-cell-customer text-slate-600 dark:text-slate-400">Maria Garcia</div>
               <div role="cell" class="dm-orders-cell dm-cell-amount text-right tabular-nums">$89.99</div>
               <div role="cell" class="dm-orders-cell dm-cell-status pl-6"><span class="dm-status-green text-emerald-700 dark:text-emerald-300 text-xs">Completed</span></div>
               <div role="cell" class="dm-orders-cell dm-cell-date text-xs text-slate-700 dark:text-slate-300">Mar 14</div>
             </div>
-            <div role="row" class="dm-orders-row border-b border-slate-100 dark:border-slate-800/50">
+            <div role="row" class="dm-orders-row grid grid-cols-[4rem_1fr_5.5rem_6.5rem_4rem] items-center border-b border-slate-100 dark:border-slate-800/50">
               <div role="cell" class="dm-orders-cell dm-cell-order text-slate-700 dark:text-slate-300">#1039</div>
               <div role="cell" class="dm-orders-cell dm-cell-customer text-slate-600 dark:text-slate-400">Alex Thompson</div>
               <div role="cell" class="dm-orders-cell dm-cell-amount text-right tabular-nums">$312.00</div>
               <div role="cell" class="dm-orders-cell dm-cell-status pl-6"><span class="dm-status-red text-red-700 dark:text-red-300 text-xs">Cancelled</span></div>
               <div role="cell" class="dm-orders-cell dm-cell-date text-xs text-slate-700 dark:text-slate-300">Mar 14</div>
             </div>
-            <div role="row" class="dm-orders-row">
+            <div role="row" class="dm-orders-row grid grid-cols-[4rem_1fr_5.5rem_6.5rem_4rem] items-center">
               <div role="cell" class="dm-orders-cell dm-cell-order text-slate-700 dark:text-slate-300">#1038</div>
               <div role="cell" class="dm-orders-cell dm-cell-customer text-slate-600 dark:text-slate-400">Priya Patel</div>
               <div role="cell" class="dm-orders-cell dm-cell-amount text-right tabular-nums">$67.25</div>
