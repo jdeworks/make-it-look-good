@@ -1348,7 +1348,7 @@ function renderTemplateChooser() {
     + chooserQuestion('what', 'What are you building?', [['landing','Landing page'], ['app','App / dashboard'], ['form','Form / onboarding'], ['content','Docs / content'], ['portfolio','Portfolio'], ['product','Product page'], ['component','Component']])
     + chooserQuestion('audience', 'Who is it for?', [['developers','Developers'], ['business','Business users'], ['public','General public'], ['mobile','Mobile-first consumers']])
     + chooserQuestion('personality', 'Personality?', [['clean','Clean'], ['minimalist','Minimalist'], ['playful','Playful'], ['editorial','Editorial'], ['dark','Dark technical']])
-    + chooserQuestion('framework', 'Need framework code?', [['html','HTML'], ['react','React'], ['vue','Vue'], ['svelte','Svelte']])
+    // Framework question removed — all presets convert to any framework via LLM; filter added noise
     + '  </div>'
     + '  <div class="chooser-results" id="chooserResults"></div>'
     + '</div>';
@@ -1392,11 +1392,7 @@ function scorePresetRecommendation(element, info) {
   if (chooserState.audience === 'mobile' && /form|landing|product|event/.test(element + ' ' + tags)) score += 2;
   if (info.personalities && info.personalities[chooserState.personality]) score += 2;
   if (chooserState.personality === 'dark' && /dev|docs|status|dashboard|oss/.test(element + ' ' + tags)) score += 2;
-  if (chooserState.framework && chooserState.framework !== 'html') {
-    const frameworks = getPresetFrameworks(element, info);
-    if (frameworks.indexOf(chooserState.framework) !== -1) score += 3;
-    else score -= 1;
-  }
+  // Framework scoring removed — filter caused noise since most presets are HTML-only
   return score;
 }
 
