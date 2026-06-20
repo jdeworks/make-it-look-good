@@ -107,6 +107,13 @@ function startServer() {
     res.writeHead(200, { 'Content-Type': mimeTypes[extname(filePath)] || 'application/octet-stream' });
     res.end(readFileSync(filePath));
   });
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.log(`Port ${PORT} already in use — assuming existing server serves docs.`);
+    } else {
+      throw err;
+    }
+  });
   server.listen(PORT, '127.0.0.1');
   return server;
 }
