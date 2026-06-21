@@ -11,6 +11,15 @@ A user wants you to improve THEIR project, using this repo as a design knowledge
 ## 🔧 If you are MAINTAINING this repo
 See `MAINTAINING.md`.
 
+## 🚫 PRIME DIRECTIVE — NO `<style>` BLOCKS IN PRESET TEMPLATES
+This is absolute and overrides any urge to "make a template pass the analyzer."
+- **Preset HTML files (`docs/presets/**/*.html`) must NOT contain `<style>` blocks, and must NOT use inline `style="..."` attributes.** All styling is Tailwind utility classes only. If a `<style>` block exists in a preset, **we failed** — remove it.
+- **Never hack a template to satisfy the analyzer.** Frosted/backdrop-filter "locks", `!important` color overrides, `[data-open]` visibility CSS, and media-query `display:none` hacks are all forbidden — they were band-aids over analyzer findings, not real fixes.
+- **If the analyzer is wrong, fix the analyzer** (`docs/analyzer-*.js`, `docs/scoring/*.js`), not the template. False positives get fixed at the source.
+- **We do NOT need 100/A on every template/personality/color/effect combination.** Chasing infinite edge-case optimization via template hacks is exactly what produced the `<style>` mess. The goal is to **showcase the templates well AND resolve the genuine open issues** — not to game a perfect score.
+- Tailwind covers nearly everything via utilities + arbitrary values: fonts → `font-['Sora']`, smooth scroll → `scroll-smooth`, hover motion → `hover:-translate-y-1 transition`, gradients → `bg-[radial-gradient(...)]`, responsive table→card → `max-sm:block` variants. Use these instead of CSS.
+- The only thing CDN Tailwind genuinely cannot express is custom `@keyframes`. If a template truly needs one, raise it explicitly — do not silently add a `<style>` block.
+
 ## Quick Start
 - **Design consultation** → Read `CONSULT.md` and follow the steps
 - **Need a component** → Read `docs/presets/index.json` (machine-readable source of truth for all available templates), then `docs/presets/_index.md` for composition recipes
