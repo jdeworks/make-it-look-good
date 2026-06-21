@@ -244,12 +244,25 @@ function buildSrcdoc(html, job, extractFn = '') {
         'var f=(document.fonts&&document.fonts.ready)?document.fonts.ready:Promise.resolve();' +
         'f.then(function(){requestAnimationFrame(function(){requestAnimationFrame(function(){(' + extractFn + ')()})})});' +
       '}' +
+      // settled = Tailwind compiled AND no finite entrance/reveal animation still active
+      // (opacity-based contrast must be measured at the animation END state). Infinite loops
+      // (e.g. gradient shifts) are ignored so they never block. Small floor for layout settle.
+      'function settled(){' +
+        'if(!ready())return false;' +
+        'try{var as=document.getAnimations?document.getAnimations():[];' +
+          'for(var i=0;i<as.length;i++){var a=as[i];' +
+            'if(a.playState!=="running"&&a.playState!=="pending")continue;' +
+            'var t=(a.effect&&a.effect.getComputedTiming)?a.effect.getComputedTiming():null;' +
+            'if(t&&t.iterations===Infinity)continue;' +
+            'return false;}' +
+        '}catch(e){}' +
+        'return true;' +
+      '}' +
       'var start=Date.now();' +
-      'var FLOOR=2500;' +  // settle floor: let reveal/entrance animations & transitions finish before measuring opacity-based contrast
       '(function poll(){' +
         'var el=Date.now()-start;' +
-        'if((ready()&&el>=FLOOR)||el>8000){go();}' +
-        'else{setTimeout(poll,100);}' +
+        'if((settled()&&el>=300)||el>8000){go();}' +
+        'else{setTimeout(poll,80);}' +
       '})();' +
     '})()</' + 'script>' : '') +
     '</body></html>';
