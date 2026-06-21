@@ -258,10 +258,14 @@ function buildSrcdoc(html, job, extractFn = '') {
         '}catch(e){}' +
         'return true;' +
       '}' +
+      // Floor of 2500ms: ready() (a probe utility compiling) does NOT guarantee the whole
+      // document is painted — a large preset needs time after first compile. Empirically a
+      // 300ms floor mis-measures static presets as unstyled. Keep 2500ms AND wait for any
+      // finite animation still running past it.
       'var start=Date.now();' +
       '(function poll(){' +
         'var el=Date.now()-start;' +
-        'if((settled()&&el>=300)||el>8000){go();}' +
+        'if((settled()&&el>=2500)||el>8000){go();}' +
         'else{setTimeout(poll,80);}' +
       '})();' +
     '})()</' + 'script>' : '') +
