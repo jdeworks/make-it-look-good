@@ -144,8 +144,8 @@ async function main() {
       continue;
     }
 
-    if (existingRows > 0 && existingRows < EXPECTED_ROWS) {
-      log(`Deleting partial results for ${preset} (${existingRows}/${EXPECTED_ROWS} rows)`);
+    if (existingRows > 0) {
+      log(`Clearing stale results for ${preset} (${existingRows} rows, ${bad} bad)`);
       execSync(`rm -f "${join(outDir, 'results.jsonl')}"`, { cwd: ROOT });
     }
 
@@ -192,8 +192,8 @@ async function main() {
       recordResult('ALREADY-COMMITTED', 'accordion');
     }
   } else {
-    if (accExistingRows > 0 && accExistingRows < EXPECTED_ROWS_ACC) {
-      log(`Deleting partial accordion results (${accExistingRows}/${EXPECTED_ROWS_ACC} rows)`);
+    if (accExistingRows > 0) {
+      log(`Clearing stale accordion results (${accExistingRows} rows, ${accBad} bad)`);
       execSync(`rm -f "${join(accOutDir, 'results.jsonl')}"`, { cwd: ROOT });
     }
     runMatrix('accordion', 'tmp/bv-accordion', EXPECTED_ROWS_ACC);
