@@ -225,7 +225,33 @@ function buildSrcdoc(html, job, extractFn = '') {
     '<style>body{margin:0}</style></head><body>' +
     '<script>window.__milgIsFragment=true;</' + 'script>' +
     html +
-    (extractFn ? '<script>setTimeout(function(){(' + extractFn + ')()},2500)</' + 'script>' : '') +
+    // @tailwindcss/browser@4 compiles utilities ASYNCHRONOUSLY (MutationObserver, no
+    // ready event). A flat setTimeout races the compile under parallel workers and can
+    // measure a completely UNSTYLED document → spurious touch-target/line-length/contrast
+    // findings. Instead poll a sentinel arbitrary utility (min-h-[44px]) until it computes,
+    // then wait for fonts, then settle one frame. Hard cap so a broken render still scores.
+    (extractFn ? '<script>(function(){' +
+      'function ready(){' +
+        'var p=document.createElement("a");' +
+        'p.className="min-h-[44px]";' +
+        'p.style.cssText="position:absolute;left:-9999px;top:-9999px";' +
+        'document.body.appendChild(p);' +
+        'var ok=parseFloat(getComputedStyle(p).minHeight)>=44;' +
+        'p.remove();' +
+        'return ok;' +
+      '}' +
+      'function go(){' +
+        'var f=(document.fonts&&document.fonts.ready)?document.fonts.ready:Promise.resolve();' +
+        'f.then(function(){requestAnimationFrame(function(){requestAnimationFrame(function(){(' + extractFn + ')()})})});' +
+      '}' +
+      'var start=Date.now();' +
+      'var FLOOR=2500;' +  // settle floor: let reveal/entrance animations & transitions finish before measuring opacity-based contrast
+      '(function poll(){' +
+        'var el=Date.now()-start;' +
+        'if((ready()&&el>=FLOOR)||el>8000){go();}' +
+        'else{setTimeout(poll,100);}' +
+      '})();' +
+    '})()</' + 'script>' : '') +
     '</body></html>';
 }
 
