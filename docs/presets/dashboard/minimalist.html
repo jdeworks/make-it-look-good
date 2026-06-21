@@ -1,32 +1,5 @@
 <!-- Dashboard: Minimalist | No shadows, hairline separators, extreme whitespace -->
 <!-- Stack: HTML + Tailwind CSS | Dark mode: yes | Responsive: yes -->
-<style>
-  /* Lock status badge text to accessible colors regardless of matrix color theme */
-  .dashboard-minimalist .dm-status-green { color: #047857 !important; }
-  .dark .dashboard-minimalist .dm-status-green { color: #6ee7b7 !important; }
-  /* amber-800 for sufficient contrast on frosted/gradient backgrounds */
-  .dashboard-minimalist .dm-status-amber { color: #92400e !important; }
-  .dark .dashboard-minimalist .dm-status-amber { color: #fcd34d !important; }
-  .dashboard-minimalist .dm-status-red { color: #b91c1c !important; }
-  .dark .dashboard-minimalist .dm-status-red { color: #fca5a5 !important; }
-  /* Orders grid — mobile: stacked flex override */
-  @media (max-width: 639px) {
-    .dashboard-minimalist .dm-orders-header { display: none; }
-    .dashboard-minimalist .dm-orders-row {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 0 1rem;
-      padding: 0.5rem 0;
-    }
-    .dashboard-minimalist .dm-orders-row .dm-orders-cell { min-height: 44px; display: flex; align-items: center; }
-    .dashboard-minimalist .dm-orders-row .dm-cell-order { order: 0; font-weight: 300; }
-    .dashboard-minimalist .dm-orders-row .dm-cell-status { order: 1; margin-left: auto; }
-    .dashboard-minimalist .dm-orders-row .dm-cell-customer { order: 2; flex: 1 0 50%; }
-    .dashboard-minimalist .dm-orders-row .dm-cell-amount { order: 3; flex: 0 0 auto; }
-    .dashboard-minimalist .dm-orders-row .dm-cell-date { order: 4; flex: 0 0 auto; }
-  }
-</style>
 <div class="dashboard-minimalist min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
 
   <!-- Mobile header -->
@@ -91,7 +64,7 @@
         <h2 class="text-lg font-light mb-8">Recent Orders</h2>
         <div role="grid" aria-label="Recent orders" class="w-full text-sm">
           <div role="rowgroup">
-            <div role="row" class="dm-orders-header grid grid-cols-[4rem_1fr_5.5rem_6.5rem_4rem] items-center border-b border-slate-200 dark:border-slate-800 pb-3">
+            <div role="row" class="max-sm:hidden grid grid-cols-[4rem_1fr_5.5rem_6.5rem_4rem] items-center border-b border-slate-200 dark:border-slate-800 pb-3">
               <div role="columnheader" class="text-xs font-light tracking-widest uppercase text-slate-700 dark:text-slate-300">Order</div>
               <div role="columnheader" class="text-xs font-light tracking-widest uppercase text-slate-700 dark:text-slate-300">Customer</div>
               <div role="columnheader" class="text-right text-xs font-light tracking-widest uppercase text-slate-700 dark:text-slate-300">Amount</div>
@@ -100,40 +73,40 @@
             </div>
           </div>
           <div role="rowgroup">
-            <div role="row" class="dm-orders-row grid grid-cols-[4rem_1fr_5.5rem_6.5rem_4rem] items-center border-b border-slate-100 dark:border-slate-800/50">
-              <div role="cell" class="dm-orders-cell dm-cell-order text-slate-700 dark:text-slate-300">#1042</div>
-              <div role="cell" class="dm-orders-cell dm-cell-customer text-slate-600 dark:text-slate-400">Sarah Chen</div>
-              <div role="cell" class="dm-orders-cell dm-cell-amount text-right tabular-nums">$240.00</div>
-              <div role="cell" class="dm-orders-cell dm-cell-status pl-6"><span class="dm-status-green text-emerald-700 dark:text-emerald-300 text-xs">Completed</span></div>
-              <div role="cell" class="dm-orders-cell dm-cell-date text-xs text-slate-700 dark:text-slate-300">Mar 15</div>
+            <div role="row" class="grid grid-cols-[4rem_1fr_5.5rem_6.5rem_4rem] items-center border-b border-slate-100 dark:border-slate-800/50 max-sm:flex max-sm:flex-wrap max-sm:items-center max-sm:gap-x-4 max-sm:py-2">
+              <div role="cell" class="text-slate-700 dark:text-slate-300 max-sm:order-1 max-sm:min-h-11 max-sm:flex max-sm:items-center max-sm:font-light">#1042</div>
+              <div role="cell" class="text-slate-600 dark:text-slate-400 max-sm:order-3 max-sm:basis-1/2 max-sm:grow max-sm:min-h-11 max-sm:flex max-sm:items-center">Sarah Chen</div>
+              <div role="cell" class="text-right tabular-nums max-sm:order-4 max-sm:basis-auto max-sm:grow-0 max-sm:min-h-11 max-sm:flex max-sm:items-center">$240.00</div>
+              <div role="cell" class="pl-6 max-sm:order-2 max-sm:ml-auto max-sm:pl-0 max-sm:min-h-11 max-sm:flex max-sm:items-center"><span class="text-emerald-700 dark:text-emerald-300 text-xs">Completed</span></div>
+              <div role="cell" class="text-xs text-slate-700 dark:text-slate-300 max-sm:order-5 max-sm:basis-auto max-sm:grow-0 max-sm:min-h-11 max-sm:flex max-sm:items-center">Mar 15</div>
             </div>
-            <div role="row" class="dm-orders-row grid grid-cols-[4rem_1fr_5.5rem_6.5rem_4rem] items-center border-b border-slate-100 dark:border-slate-800/50">
-              <div role="cell" class="dm-orders-cell dm-cell-order text-slate-700 dark:text-slate-300">#1041</div>
-              <div role="cell" class="dm-orders-cell dm-cell-customer text-slate-600 dark:text-slate-400">James Wilson</div>
-              <div role="cell" class="dm-orders-cell dm-cell-amount text-right tabular-nums">$125.50</div>
-              <div role="cell" class="dm-orders-cell dm-cell-status pl-6"><span class="dm-status-amber text-amber-700 dark:text-amber-300 text-xs">Pending</span></div>
-              <div role="cell" class="dm-orders-cell dm-cell-date text-xs text-slate-700 dark:text-slate-300">Mar 15</div>
+            <div role="row" class="grid grid-cols-[4rem_1fr_5.5rem_6.5rem_4rem] items-center border-b border-slate-100 dark:border-slate-800/50 max-sm:flex max-sm:flex-wrap max-sm:items-center max-sm:gap-x-4 max-sm:py-2">
+              <div role="cell" class="text-slate-700 dark:text-slate-300 max-sm:order-1 max-sm:min-h-11 max-sm:flex max-sm:items-center max-sm:font-light">#1041</div>
+              <div role="cell" class="text-slate-600 dark:text-slate-400 max-sm:order-3 max-sm:basis-1/2 max-sm:grow max-sm:min-h-11 max-sm:flex max-sm:items-center">James Wilson</div>
+              <div role="cell" class="text-right tabular-nums max-sm:order-4 max-sm:basis-auto max-sm:grow-0 max-sm:min-h-11 max-sm:flex max-sm:items-center">$125.50</div>
+              <div role="cell" class="pl-6 max-sm:order-2 max-sm:ml-auto max-sm:pl-0 max-sm:min-h-11 max-sm:flex max-sm:items-center"><span class="text-amber-700 dark:text-amber-300 text-xs">Pending</span></div>
+              <div role="cell" class="text-xs text-slate-700 dark:text-slate-300 max-sm:order-5 max-sm:basis-auto max-sm:grow-0 max-sm:min-h-11 max-sm:flex max-sm:items-center">Mar 15</div>
             </div>
-            <div role="row" class="dm-orders-row grid grid-cols-[4rem_1fr_5.5rem_6.5rem_4rem] items-center border-b border-slate-100 dark:border-slate-800/50">
-              <div role="cell" class="dm-orders-cell dm-cell-order text-slate-700 dark:text-slate-300">#1040</div>
-              <div role="cell" class="dm-orders-cell dm-cell-customer text-slate-600 dark:text-slate-400">Maria Garcia</div>
-              <div role="cell" class="dm-orders-cell dm-cell-amount text-right tabular-nums">$89.99</div>
-              <div role="cell" class="dm-orders-cell dm-cell-status pl-6"><span class="dm-status-green text-emerald-700 dark:text-emerald-300 text-xs">Completed</span></div>
-              <div role="cell" class="dm-orders-cell dm-cell-date text-xs text-slate-700 dark:text-slate-300">Mar 14</div>
+            <div role="row" class="grid grid-cols-[4rem_1fr_5.5rem_6.5rem_4rem] items-center border-b border-slate-100 dark:border-slate-800/50 max-sm:flex max-sm:flex-wrap max-sm:items-center max-sm:gap-x-4 max-sm:py-2">
+              <div role="cell" class="text-slate-700 dark:text-slate-300 max-sm:order-1 max-sm:min-h-11 max-sm:flex max-sm:items-center max-sm:font-light">#1040</div>
+              <div role="cell" class="text-slate-600 dark:text-slate-400 max-sm:order-3 max-sm:basis-1/2 max-sm:grow max-sm:min-h-11 max-sm:flex max-sm:items-center">Maria Garcia</div>
+              <div role="cell" class="text-right tabular-nums max-sm:order-4 max-sm:basis-auto max-sm:grow-0 max-sm:min-h-11 max-sm:flex max-sm:items-center">$89.99</div>
+              <div role="cell" class="pl-6 max-sm:order-2 max-sm:ml-auto max-sm:pl-0 max-sm:min-h-11 max-sm:flex max-sm:items-center"><span class="text-emerald-700 dark:text-emerald-300 text-xs">Completed</span></div>
+              <div role="cell" class="text-xs text-slate-700 dark:text-slate-300 max-sm:order-5 max-sm:basis-auto max-sm:grow-0 max-sm:min-h-11 max-sm:flex max-sm:items-center">Mar 14</div>
             </div>
-            <div role="row" class="dm-orders-row grid grid-cols-[4rem_1fr_5.5rem_6.5rem_4rem] items-center border-b border-slate-100 dark:border-slate-800/50">
-              <div role="cell" class="dm-orders-cell dm-cell-order text-slate-700 dark:text-slate-300">#1039</div>
-              <div role="cell" class="dm-orders-cell dm-cell-customer text-slate-600 dark:text-slate-400">Alex Thompson</div>
-              <div role="cell" class="dm-orders-cell dm-cell-amount text-right tabular-nums">$312.00</div>
-              <div role="cell" class="dm-orders-cell dm-cell-status pl-6"><span class="dm-status-red text-red-700 dark:text-red-300 text-xs">Cancelled</span></div>
-              <div role="cell" class="dm-orders-cell dm-cell-date text-xs text-slate-700 dark:text-slate-300">Mar 14</div>
+            <div role="row" class="grid grid-cols-[4rem_1fr_5.5rem_6.5rem_4rem] items-center border-b border-slate-100 dark:border-slate-800/50 max-sm:flex max-sm:flex-wrap max-sm:items-center max-sm:gap-x-4 max-sm:py-2">
+              <div role="cell" class="text-slate-700 dark:text-slate-300 max-sm:order-1 max-sm:min-h-11 max-sm:flex max-sm:items-center max-sm:font-light">#1039</div>
+              <div role="cell" class="text-slate-600 dark:text-slate-400 max-sm:order-3 max-sm:basis-1/2 max-sm:grow max-sm:min-h-11 max-sm:flex max-sm:items-center">Alex Thompson</div>
+              <div role="cell" class="text-right tabular-nums max-sm:order-4 max-sm:basis-auto max-sm:grow-0 max-sm:min-h-11 max-sm:flex max-sm:items-center">$312.00</div>
+              <div role="cell" class="pl-6 max-sm:order-2 max-sm:ml-auto max-sm:pl-0 max-sm:min-h-11 max-sm:flex max-sm:items-center"><span class="text-red-700 dark:text-red-300 text-xs">Cancelled</span></div>
+              <div role="cell" class="text-xs text-slate-700 dark:text-slate-300 max-sm:order-5 max-sm:basis-auto max-sm:grow-0 max-sm:min-h-11 max-sm:flex max-sm:items-center">Mar 14</div>
             </div>
-            <div role="row" class="dm-orders-row grid grid-cols-[4rem_1fr_5.5rem_6.5rem_4rem] items-center">
-              <div role="cell" class="dm-orders-cell dm-cell-order text-slate-700 dark:text-slate-300">#1038</div>
-              <div role="cell" class="dm-orders-cell dm-cell-customer text-slate-600 dark:text-slate-400">Priya Patel</div>
-              <div role="cell" class="dm-orders-cell dm-cell-amount text-right tabular-nums">$67.25</div>
-              <div role="cell" class="dm-orders-cell dm-cell-status pl-6"><span class="dm-status-green text-emerald-700 dark:text-emerald-300 text-xs">Completed</span></div>
-              <div role="cell" class="dm-orders-cell dm-cell-date text-xs text-slate-700 dark:text-slate-300">Mar 13</div>
+            <div role="row" class="grid grid-cols-[4rem_1fr_5.5rem_6.5rem_4rem] items-center max-sm:flex max-sm:flex-wrap max-sm:items-center max-sm:gap-x-4 max-sm:py-2">
+              <div role="cell" class="text-slate-700 dark:text-slate-300 max-sm:order-1 max-sm:min-h-11 max-sm:flex max-sm:items-center max-sm:font-light">#1038</div>
+              <div role="cell" class="text-slate-600 dark:text-slate-400 max-sm:order-3 max-sm:basis-1/2 max-sm:grow max-sm:min-h-11 max-sm:flex max-sm:items-center">Priya Patel</div>
+              <div role="cell" class="text-right tabular-nums max-sm:order-4 max-sm:basis-auto max-sm:grow-0 max-sm:min-h-11 max-sm:flex max-sm:items-center">$67.25</div>
+              <div role="cell" class="pl-6 max-sm:order-2 max-sm:ml-auto max-sm:pl-0 max-sm:min-h-11 max-sm:flex max-sm:items-center"><span class="text-emerald-700 dark:text-emerald-300 text-xs">Completed</span></div>
+              <div role="cell" class="text-xs text-slate-700 dark:text-slate-300 max-sm:order-5 max-sm:basis-auto max-sm:grow-0 max-sm:min-h-11 max-sm:flex max-sm:items-center">Mar 13</div>
             </div>
           </div>
         </div>

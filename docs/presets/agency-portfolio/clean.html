@@ -1,170 +1,27 @@
 <!-- Agency Portfolio: Clean | Inspired by nographism.com — giant logo hero with scroll-shrink, -->
 <!-- two-column services, horizontal marquee, project cards, alternating light/dark sections -->
 <!-- Stack: HTML + Tailwind CSS | Dark mode: yes | Responsive: yes -->
-<style>
-  html { scroll-behavior: smooth; overflow-x: hidden; }
-  body { overflow-x: hidden; }
 
-  .agency-page {
-    overflow-x: clip;
-  }
-
-  .agency-hit {
-    min-width: 44px;
-    min-height: 44px;
-    align-items: center;
-  }
-
-  #mobileMenu.hidden {
-    display: none !important;
-  }
-
-  /* Logo — always fixed, JS interpolates size/position on scroll */
-  .hero-logo {
-    position: fixed;
-    z-index: 50;
-    line-height: 0.95;
-    letter-spacing: -0.03em;
-    pointer-events: none;
-    transform-origin: top left;
-    will-change: transform;
-    max-width: calc(100vw - 2rem);
-    overflow-wrap: anywhere;
-    padding: 0.02em 0.04em;
-  }
-
-  /* Horizontal marquee ticker */
-  @keyframes marquee {
-    0% { transform: translateX(0); }
-    100% { transform: translateX(-50%); }
-  }
-  .marquee-track {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem 0;
-    width: 100%;
-    max-width: 100%;
-    animation: none;
-  }
-  .marquee-track:hover { animation-play-state: paused; }
-
-  /* Scroll reveal */
-  .scroll-reveal {
-    opacity: 1;
-    transform: none;
-    transition: opacity 0.5s ease-out, transform 0.5s ease-out;
-  }
-  .scroll-reveal.revealed {
-    opacity: 1;
-    transform: translateY(0);
-  }
-  .scroll-reveal:nth-child(2) { transition-delay: 100ms; }
-  .scroll-reveal:nth-child(3) { transition-delay: 200ms; }
-  .scroll-reveal:nth-child(4) { transition-delay: 300ms; }
-
-  /* Service list hover */
-  .service-item {
-    transition: padding-left 0.3s ease, color 0.3s ease;
-  }
-  .service-item:hover {
-    padding-left: 1rem;
-  }
-
-  /* Project card image zoom */
-  .project-card img {
-    transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
-  }
-  .project-card:hover img {
-    transform: scale(1.05);
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .scroll-reveal { opacity: 1; transform: none; transition: none; }
-    .marquee-track { animation: none; }
-    .service-item { transition: none; }
-    .project-card img { transition: none; }
-  }
-
-  /* Semantic lock: primary CTA must always maintain white text legibility */
-  .agency-cta-lock { background-color: #0f766e !important; color: #ffffff !important; }
-  .agency-cta-lock:hover { background-color: #0d9488 !important; }
-
-  /* Guardrails: prevent frosted effect from creating transparency, overflow, or contrast issues.
-     Using specificity > frosted's selectors (0,2,1) so our !important rules win. */
-  #agencyHeader {
-    background-color: #ffffff !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-  }
-  html.dark #agencyHeader {
-    background-color: rgb(2, 6, 23) !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-  }
-  html.dark .agency-page nav,
-  html.dark .agency-page header { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
-  html.dark .agency-page [class*="bg-slate-950"],
-  html.dark .agency-page [class*="bg-slate-900"] { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
-  @media (max-width: 767px) { #agencyDesktopNav { display: none !important; } }
-  @media (min-width: 768px) { #mobileMenuBtn { display: none !important; } }
-  html:not(.dark) .agency-page[class*="bg-white"],
-  html:not(.dark) .agency-page *[class*="bg-white"] {
-    background-color: #ffffff !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-  }
-  html:not(.dark) .agency-page nav,
-  html:not(.dark) .agency-page header,
-  html:not(.dark) .agency-page aside {
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-    background: revert !important;
-    border: none !important;
-  }
-  html:not(.dark) #mobileMenu > div {
-    background-color: #ffffff !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-    border: none !important;
-    box-shadow: none !important;
-  }
-  html.dark #mobileMenu > div {
-    background-color: rgb(2, 6, 23) !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-  }
-  #mobileMenu { max-height: 100dvh; overflow: hidden; }
-  /* Frosted in light mode darkens text-slate-400 for readability on white bg — but the dark
-     #about section (bg-slate-900) needs the original lighter value to pass contrast on dark bg.
-     Specificity (1,2,1) beats frosted's (0,2,1). */
-  html:not(.dark) #about [class*="text-teal-400"] {
-    color: var(--color-teal-400) !important;
-  }
-  html:not(.dark) #about [class*="text-slate-400"] {
-    color: var(--color-slate-400) !important;
-  }
-</style>
-
-<div class="agency-page min-h-screen bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+<div class="agency-page scroll-smooth overflow-x-clip min-h-screen bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100">
 
   <!-- Header (visible after scroll, fixed top-right) -->
   <header id="agencyHeader" class="fixed top-0 left-0 right-0 z-40 flex items-center justify-between px-4 md:px-10 py-3 md:py-4 pointer-events-none opacity-0 transition-opacity duration-500 bg-white dark:bg-slate-950">
     <span id="headerLogo" class="pointer-events-none text-base font-semibold text-slate-900 dark:text-white">Studio Name<span class="text-[0.6em] align-super">&reg;</span></span>
     <!-- Desktop nav -->
-    <nav id="agencyDesktopNav" class="pointer-events-auto flex items-center gap-2" aria-label="Main navigation">
-      <a href="#work" class="agency-hit inline-flex px-3 text-sm text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Work</a>
-      <a href="#services" class="agency-hit inline-flex px-3 text-sm text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Services</a>
-      <a href="#about" class="agency-hit inline-flex px-3 text-sm text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">About</a>
-      <a href="#contact" class="agency-hit agency-cta-lock inline-flex px-5 text-sm font-semibold text-white rounded-full transition-colors min-h-11">Contact</a>
+    <nav id="agencyDesktopNav" class="pointer-events-auto hidden md:flex items-center gap-2" aria-label="Main navigation">
+      <a href="#work" class="min-w-11 min-h-11 items-center inline-flex px-3 text-sm text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Work</a>
+      <a href="#services" class="min-w-11 min-h-11 items-center inline-flex px-3 text-sm text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Services</a>
+      <a href="#about" class="min-w-11 min-h-11 items-center inline-flex px-3 text-sm text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">About</a>
+      <a href="#contact" class="min-w-11 min-h-11 items-center bg-teal-700 hover:bg-teal-600 text-white inline-flex px-5 text-sm font-semibold text-white rounded-full transition-colors min-h-11">Contact</a>
     </nav>
     <!-- Mobile menu button -->
-    <button id="mobileMenuBtn" class="pointer-events-auto flex items-center justify-center w-11 h-11 text-slate-900 dark:text-white" aria-label="Open menu" aria-expanded="false">
+    <button id="mobileMenuBtn" class="pointer-events-auto md:hidden flex items-center justify-center w-11 h-11 text-slate-900 dark:text-white" aria-label="Open menu" aria-expanded="false">
       <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
     </button>
   </header>
 
   <!-- Mobile menu overlay -->
-  <div id="mobileMenu" aria-hidden="true" class="fixed inset-0 z-50 hidden" aria-label="Mobile navigation">
+  <div id="mobileMenu" aria-hidden="true" class="fixed inset-0 z-50 hidden max-h-[100dvh] overflow-hidden" aria-label="Mobile navigation">
     <div class="absolute inset-0 bg-white dark:bg-slate-950 px-6 pt-6 pb-12 flex flex-col overflow-y-auto">
       <div class="flex items-center justify-between mb-12">
         <span class="text-base font-semibold text-slate-900 dark:text-white">Studio Name<span class="text-[0.6em] align-super">&reg;</span></span>
@@ -173,10 +30,10 @@
         </button>
       </div>
       <nav class="flex flex-col gap-6">
-        <a href="#work" class="agency-hit inline-flex justify-start text-2xl text-slate-900 dark:text-white" onclick="closeMobileMenu()">Work</a>
-        <a href="#services" class="agency-hit inline-flex justify-start text-2xl text-slate-900 dark:text-white" onclick="closeMobileMenu()">Services</a>
-        <a href="#about" class="agency-hit inline-flex justify-start text-2xl text-slate-900 dark:text-white" onclick="closeMobileMenu()">About</a>
-        <a href="#contact" class="agency-hit agency-cta-lock inline-flex px-6 mt-4 text-base font-semibold text-white rounded-full transition-colors min-h-11" onclick="closeMobileMenu()">Contact</a>
+        <a href="#work" class="min-w-11 min-h-11 items-center inline-flex justify-start text-2xl text-slate-900 dark:text-white" onclick="closeMobileMenu()">Work</a>
+        <a href="#services" class="min-w-11 min-h-11 items-center inline-flex justify-start text-2xl text-slate-900 dark:text-white" onclick="closeMobileMenu()">Services</a>
+        <a href="#about" class="min-w-11 min-h-11 items-center inline-flex justify-start text-2xl text-slate-900 dark:text-white" onclick="closeMobileMenu()">About</a>
+        <a href="#contact" class="min-w-11 min-h-11 items-center bg-teal-700 hover:bg-teal-600 text-white inline-flex px-6 mt-4 text-base font-semibold text-white rounded-full transition-colors min-h-11" onclick="closeMobileMenu()">Contact</a>
       </nav>
     </div>
   </div>
@@ -184,7 +41,7 @@
   <main>
 
   <!-- Logo (fixed, JS-driven scroll interpolation) -->
-  <h1 id="heroLogo" class="hero-logo text-slate-900 dark:text-white" aria-label="Studio Name">
+  <h1 id="heroLogo" class="fixed z-50 leading-[0.95] tracking-[-0.03em] pointer-events-none origin-top-left will-change-transform max-w-[calc(100vw-2rem)] [overflow-wrap:anywhere] px-[0.04em] py-[0.02em] text-slate-900 dark:text-white" aria-label="Studio Name">
     Studio Name<span class="align-super text-[0.25em]">&reg;</span>
   </h1>
 
@@ -199,16 +56,16 @@
           A digital studio specialized in UX/UI design and bespoke web development.
           We create tailor-made experiences optimized for impact.
         </p>
-        <a href="#contact" class="agency-hit agency-cta-lock inline-flex px-6 mt-8 text-sm font-semibold uppercase tracking-wider text-white rounded-full transition-colors min-h-11">
+        <a href="#contact" class="min-w-11 min-h-11 items-center bg-teal-700 hover:bg-teal-600 text-white inline-flex px-6 mt-8 text-sm font-semibold uppercase tracking-wider text-white rounded-full transition-colors min-h-11">
           Request a quote
         </a>
       </div>
 
       <nav class="flex flex-wrap items-center gap-2 sm:gap-4 text-sm" aria-label="Page sections">
-        <a href="#work" class="agency-hit inline-flex px-3 text-slate-900 dark:text-white underline underline-offset-4 decoration-1 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Work</a>
-        <a href="#services" class="agency-hit inline-flex px-3 text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Services</a>
-        <a href="#about" class="agency-hit inline-flex px-3 text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">About</a>
-        <a href="#contact" class="agency-hit inline-flex px-3 text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Contact</a>
+        <a href="#work" class="min-w-11 min-h-11 items-center inline-flex px-3 text-slate-900 dark:text-white underline underline-offset-4 decoration-1 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Work</a>
+        <a href="#services" class="min-w-11 min-h-11 items-center inline-flex px-3 text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Services</a>
+        <a href="#about" class="min-w-11 min-h-11 items-center inline-flex px-3 text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">About</a>
+        <a href="#contact" class="min-w-11 min-h-11 items-center inline-flex px-3 text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">Contact</a>
       </nav>
     </div>
   </section>
@@ -221,12 +78,12 @@
         <div class="scroll-reveal">
           <h2 class="text-3xl sm:text-4xl font-light tracking-tight mb-8 md:mb-12 text-slate-900 dark:text-white">Design</h2>
           <div class="divide-y divide-slate-300 dark:divide-slate-700">
-            <div class="service-item py-4 text-base text-slate-700 dark:text-slate-300 cursor-default">Art direction</div>
-            <div class="service-item py-4 text-base text-slate-700 dark:text-slate-300 cursor-default">UX/UI Design</div>
-            <div class="service-item py-4 text-base text-slate-700 dark:text-slate-300 cursor-default">Motion Design</div>
-            <div class="service-item py-4 text-base text-slate-700 dark:text-slate-300 cursor-default">Design Systems</div>
-            <div class="service-item py-4 text-base text-slate-700 dark:text-slate-300 cursor-default">Content strategy</div>
-            <div class="service-item py-4 text-base text-slate-700 dark:text-slate-300 cursor-default">Usability testing</div>
+            <div class="transition-[padding,color] duration-300 motion-reduce:transition-none hover:pl-4 py-4 text-base text-slate-700 dark:text-slate-300 cursor-default">Art direction</div>
+            <div class="transition-[padding,color] duration-300 motion-reduce:transition-none hover:pl-4 py-4 text-base text-slate-700 dark:text-slate-300 cursor-default">UX/UI Design</div>
+            <div class="transition-[padding,color] duration-300 motion-reduce:transition-none hover:pl-4 py-4 text-base text-slate-700 dark:text-slate-300 cursor-default">Motion Design</div>
+            <div class="transition-[padding,color] duration-300 motion-reduce:transition-none hover:pl-4 py-4 text-base text-slate-700 dark:text-slate-300 cursor-default">Design Systems</div>
+            <div class="transition-[padding,color] duration-300 motion-reduce:transition-none hover:pl-4 py-4 text-base text-slate-700 dark:text-slate-300 cursor-default">Content strategy</div>
+            <div class="transition-[padding,color] duration-300 motion-reduce:transition-none hover:pl-4 py-4 text-base text-slate-700 dark:text-slate-300 cursor-default">Usability testing</div>
           </div>
         </div>
 
@@ -234,12 +91,12 @@
         <div class="scroll-reveal mt-12 md:mt-0">
           <h2 class="text-3xl sm:text-4xl font-light tracking-tight mb-8 md:mb-12 text-slate-900 dark:text-white">Development</h2>
           <div class="divide-y divide-slate-300 dark:divide-slate-700">
-            <div class="service-item py-4 text-base text-slate-700 dark:text-slate-300 cursor-default">Front-end development</div>
-            <div class="service-item py-4 text-base text-slate-700 dark:text-slate-300 cursor-default">Back-end development</div>
-            <div class="service-item py-4 text-base text-slate-700 dark:text-slate-300 cursor-default">E-Commerce platforms</div>
-            <div class="service-item py-4 text-base text-slate-700 dark:text-slate-300 cursor-default">CMS integration</div>
-            <div class="service-item py-4 text-base text-slate-700 dark:text-slate-300 cursor-default">API development</div>
-            <div class="service-item py-4 text-base text-slate-700 dark:text-slate-300 cursor-default">Performance & SEO</div>
+            <div class="transition-[padding,color] duration-300 motion-reduce:transition-none hover:pl-4 py-4 text-base text-slate-700 dark:text-slate-300 cursor-default">Front-end development</div>
+            <div class="transition-[padding,color] duration-300 motion-reduce:transition-none hover:pl-4 py-4 text-base text-slate-700 dark:text-slate-300 cursor-default">Back-end development</div>
+            <div class="transition-[padding,color] duration-300 motion-reduce:transition-none hover:pl-4 py-4 text-base text-slate-700 dark:text-slate-300 cursor-default">E-Commerce platforms</div>
+            <div class="transition-[padding,color] duration-300 motion-reduce:transition-none hover:pl-4 py-4 text-base text-slate-700 dark:text-slate-300 cursor-default">CMS integration</div>
+            <div class="transition-[padding,color] duration-300 motion-reduce:transition-none hover:pl-4 py-4 text-base text-slate-700 dark:text-slate-300 cursor-default">API development</div>
+            <div class="transition-[padding,color] duration-300 motion-reduce:transition-none hover:pl-4 py-4 text-base text-slate-700 dark:text-slate-300 cursor-default">Performance & SEO</div>
           </div>
         </div>
       </div>
@@ -248,7 +105,7 @@
 
   <!-- Horizontal marquee ticker -->
   <section class="overflow-hidden py-10 md:py-14 bg-white dark:bg-slate-950 border-y border-slate-200 dark:border-slate-800">
-    <div class="marquee-track">
+    <div class="flex flex-wrap gap-y-2 w-full max-w-full">
       <span class="text-5xl sm:text-7xl md:text-8xl font-semibold tracking-tighter text-slate-900 dark:text-white whitespace-nowrap px-6">No shortcuts</span>
       <span class="text-5xl sm:text-7xl md:text-8xl font-semibold tracking-tighter whitespace-nowrap px-6 text-slate-500" aria-hidden="true">&bull;</span>
       <span class="text-5xl sm:text-7xl md:text-8xl font-semibold tracking-tighter text-slate-900 dark:text-white whitespace-nowrap px-6">No templates</span>
@@ -355,7 +212,7 @@
   <section id="contact" class="py-16 md:py-24 lg:py-32 px-4 sm:px-8 md:px-10 bg-white dark:bg-slate-950">
     <div class="max-w-4xl mx-auto text-center scroll-reveal">
       <h2 class="text-3xl sm:text-4xl md:text-5xl font-light tracking-tight text-slate-900 dark:text-white mb-8">Have a project in mind?</h2>
-      <a href="#" class="agency-hit agency-cta-lock inline-flex px-8 py-4 text-base font-semibold text-white rounded-full transition-colors min-h-11">
+      <a href="#" class="min-w-11 min-h-11 items-center bg-teal-700 hover:bg-teal-600 text-white inline-flex px-8 py-4 text-base font-semibold text-white rounded-full transition-colors min-h-11">
         Let's talk
         <svg class="ml-2 w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
       </a>
@@ -372,9 +229,9 @@
         <p class="text-sm text-slate-700 dark:text-slate-400 mt-1">&copy; 2026 All rights reserved.</p>
       </div>
       <nav class="flex flex-wrap items-center gap-2 text-sm text-slate-700 dark:text-slate-400" aria-label="Footer links">
-        <a href="#" class="agency-hit inline-flex px-3 hover:text-slate-900 dark:hover:text-white transition-colors">Instagram</a>
-        <a href="#" class="agency-hit inline-flex px-3 hover:text-slate-900 dark:hover:text-white transition-colors">LinkedIn</a>
-        <a href="#" class="agency-hit inline-flex px-3 hover:text-slate-900 dark:hover:text-white transition-colors">Dribbble</a>
+        <a href="#" class="min-w-11 min-h-11 items-center inline-flex px-3 hover:text-slate-900 dark:hover:text-white transition-colors">Instagram</a>
+        <a href="#" class="min-w-11 min-h-11 items-center inline-flex px-3 hover:text-slate-900 dark:hover:text-white transition-colors">LinkedIn</a>
+        <a href="#" class="min-w-11 min-h-11 items-center inline-flex px-3 hover:text-slate-900 dark:hover:text-white transition-colors">Dribbble</a>
       </nav>
     </div>
   </footer>

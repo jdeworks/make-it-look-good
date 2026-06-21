@@ -1,13 +1,5 @@
-<style type="text/tailwindcss">
-    @theme {
-      --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
-    }
-  </style>
-<style>
-    .toggle-slider { transition: transform 200ms ease-in-out; }
-    .price-value { transition: opacity 150ms ease-in-out; }
-  </style>
-<div class="min-h-screen bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap">
+<div class="min-h-screen bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-['Inter']">
   <!-- Nav -->
   <nav class="sticky top-0 z-50 bg-white/90 dark:bg-slate-950/90 backdrop-blur-md border-b border-slate-100 dark:border-slate-800/50" aria-label="Main navigation">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16">
@@ -46,7 +38,7 @@
         <div class="mt-12 flex items-center justify-center gap-3">
           <span id="label-monthly" class="text-sm font-normal text-slate-900 dark:text-white">Monthly</span>
           <button id="billing-toggle" type="button" role="switch" aria-checked="false" aria-label="Toggle annual billing" class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500" onclick="toggleBilling()">
-            <span class="toggle-slider pointer-events-none inline-block h-4 w-4 translate-x-0.5 rounded-full bg-slate-900 dark:bg-white ring-0 mt-[3px]"></span>
+            <span class="toggle-slider pointer-events-none inline-block h-4 w-4 translate-x-0.5 rounded-full bg-slate-900 dark:bg-white ring-0 mt-[3px] transition-transform duration-200 ease-in-out motion-reduce:transition-none"></span>
           </button>
           <span id="label-annual" class="text-sm font-light text-slate-600 dark:text-slate-400">Annual <span class="ml-1 text-xs text-slate-600 dark:text-slate-400">Save 20%</span></span>
         </div>
@@ -82,7 +74,7 @@
             <h2 class="text-sm font-normal tracking-widest uppercase text-slate-900 dark:text-white">Pro</h2>
             <p class="mt-1 text-sm font-light text-slate-600 dark:text-slate-400">For growing teams that need more power</p>
             <div class="mt-8">
-              <span class="text-5xl font-light tabular-nums price-value" data-monthly="29" data-annual="23">$29</span>
+              <span class="text-5xl font-light tabular-nums price-value transition-opacity duration-150 ease-in-out motion-reduce:transition-none" data-monthly="29" data-annual="23">$29</span>
               <span class="text-sm font-light text-slate-600 dark:text-slate-400 ml-1">/month</span>
               <div class="mt-1 h-5"><span class="annual-note text-xs font-light text-slate-600 dark:text-slate-400 hidden">Billed annually ($276/yr)</span></div>
             </div>
@@ -104,7 +96,7 @@
             <h2 class="text-sm font-light tracking-widest uppercase text-slate-600 dark:text-slate-400">Enterprise</h2>
             <p class="mt-1 text-sm font-light text-slate-600 dark:text-slate-400">For organizations that need full control</p>
             <div class="mt-8">
-              <span class="text-5xl font-light tabular-nums price-value" data-monthly="99" data-annual="79">$99</span>
+              <span class="text-5xl font-light tabular-nums price-value transition-opacity duration-150 ease-in-out motion-reduce:transition-none" data-monthly="99" data-annual="79">$99</span>
               <span class="text-sm font-light text-slate-600 dark:text-slate-400 ml-1">/month</span>
               <div class="mt-1 h-5"><span class="annual-note text-xs font-light text-slate-600 dark:text-slate-400 hidden">Billed annually ($948/yr)</span></div>
             </div>
@@ -137,19 +129,19 @@
     const labelA = document.getElementById('label-annual');
     if (!isAnnual) {
       btn.classList.replace('bg-slate-100', 'bg-slate-900'); btn.classList.replace('dark:bg-slate-800', 'dark:bg-white');
-      slider.style.transform = 'translateX(1.25rem)';
+      slider.classList.replace('translate-x-0.5', 'translate-x-5');
       slider.classList.replace('bg-slate-900', 'bg-white'); slider.classList.replace('dark:bg-white', 'dark:bg-slate-900');
       labelM.classList.replace('text-slate-900', 'text-slate-500'); labelM.classList.replace('font-normal', 'font-light');
     } else {
       btn.classList.replace('bg-slate-900', 'bg-slate-100'); btn.classList.replace('dark:bg-white', 'dark:bg-slate-800');
-      slider.style.transform = 'translateX(0.125rem)';
+      slider.classList.replace('translate-x-5', 'translate-x-0.5');
       slider.classList.replace('bg-white', 'bg-slate-900'); slider.classList.replace('dark:bg-slate-900', 'dark:bg-white');
       labelM.classList.replace('text-slate-500', 'text-slate-900'); labelM.classList.replace('font-light', 'font-normal');
     }
     document.querySelectorAll('.price-value').forEach(el => {
       const price = !isAnnual ? el.dataset.annual : el.dataset.monthly;
-      el.style.opacity = '0';
-      setTimeout(() => { el.textContent = '$' + price; el.style.opacity = '1'; }, 150);
+      el.classList.add('opacity-0');
+      setTimeout(() => { el.textContent = '$' + price; el.classList.remove('opacity-0'); }, 150);
     });
     document.querySelectorAll('.annual-note').forEach(el => { el.classList.toggle('hidden', isAnnual); });
   }

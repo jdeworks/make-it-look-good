@@ -1,32 +1,10 @@
 <!-- Cards: Bento Glass | Inspired by Apple Store bento, glassmorphism -->
 <!-- Stack: HTML + Tailwind CSS | Dark mode: inverted (default=dark) | Responsive: yes -->
-<style>
-  .card-hover { transition: transform 0.2s ease, box-shadow 0.2s ease; }
-  .card-hover:hover { transform: translateY(-4px); }
-  @media (prefers-reduced-motion: reduce) {
-    .card-hover { transition: none !important; }
-    * { transition-duration: 0s !important; }
-  }
-  /* Frosted injection lock */
-  html:not(.dark) #bentoRoot,
-  html:not(.dark) #bentoRoot [class*="bg-white"] { background: white !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
-  html:not(.dark) #bentoRoot header,
-  html:not(.dark) #bentoRoot nav { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
-  /* Category dropdown container — CSS-controlled desktop hide */
-  @media (min-width: 640px) { #catDropdownClean { display: none !important; } }
-  /* Desktop pills — CSS-controlled mobile hide */
-  @media (max-width: 639px) { #cardDesktopPills { display: none !important; } }
-  @media (min-width: 640px) { #cardDesktopPills { display: flex !important; } }
-  /* Cat menu — open state controlled by aria-hidden / inert */
-  #catMenuClean[aria-hidden="true"] { display: none; }
-  #catMenuClean[aria-hidden="false"] { display: flex; }
-</style>
-
 <div id="bentoRoot" class="min-h-screen bg-white dark:bg-slate-950 text-slate-900 dark:text-white">
   <!-- Ambient glow -->
   <div class="fixed inset-0 pointer-events-none overflow-hidden z-0">
-    <div class="absolute top-1/4 left-1/4 w-96 h-96 bg-violet-500/5 dark:bg-violet-500/20 rounded-full" style="filter:blur(120px)"></div>
-    <div class="absolute bottom-1/4 right-1/4 w-80 h-80 bg-fuchsia-500/5 dark:bg-fuchsia-500/15 rounded-full" style="filter:blur(100px)"></div>
+    <div class="absolute top-1/4 left-1/4 w-96 h-96 bg-violet-500/5 dark:bg-violet-500/20 rounded-full blur-[120px]"></div>
+    <div class="absolute bottom-1/4 right-1/4 w-80 h-80 bg-fuchsia-500/5 dark:bg-fuchsia-500/15 rounded-full blur-[100px]"></div>
   </div>
 
   <div class="relative z-10">
@@ -44,7 +22,7 @@
     <!-- Category pills: desktop row, mobile dropdown -->
     <nav aria-label="Product categories" class="px-6 sm:px-10 pb-6">
       <!-- Desktop: inline pills -->
-      <div id="cardDesktopPills" class="gap-2">
+      <div id="cardDesktopPills" class="hidden sm:flex gap-2">
         <button class="shrink-0 px-4 py-2 text-sm font-medium rounded-full bg-violet-700 text-white min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700">All</button>
         <button class="shrink-0 px-4 py-2 text-sm font-medium rounded-full backdrop-blur-2xl bg-black/[.04] dark:bg-black/[.04] border border-black/[.08] dark:border-white/[.12] text-slate-600 dark:text-white/70 hover:text-white transition-colors min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600">Audio</button>
         <button class="shrink-0 px-4 py-2 text-sm font-medium rounded-full backdrop-blur-2xl bg-black/[.04] dark:bg-black/[.04] border border-black/[.08] dark:border-white/[.12] text-slate-600 dark:text-white/70 hover:text-white transition-colors min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600">Peripherals</button>
@@ -52,13 +30,13 @@
         <button class="shrink-0 px-4 py-2 text-sm font-medium rounded-full backdrop-blur-2xl bg-black/[.04] dark:bg-black/[.04] border border-black/[.08] dark:border-white/[.12] text-slate-600 dark:text-white/70 hover:text-white transition-colors min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600">Lighting</button>
       </div>
       <!-- Mobile: dropdown toggle -->
-      <div class="relative" id="catDropdownClean">
-        <button onclick="const m=document.getElementById('catMenuClean');const open=m.getAttribute('aria-hidden')==='false';m.setAttribute('aria-hidden',open?'true':'false');this.setAttribute('aria-expanded',open?'false':'true')" class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-full bg-violet-700 text-white min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700" aria-expanded="false" aria-haspopup="true">
+      <div class="relative sm:hidden" id="catDropdownClean">
+        <button onclick="const m=document.getElementById('catMenuClean');const open=!m.classList.contains('hidden');m.classList.toggle('hidden');m.classList.toggle('flex');m.setAttribute('aria-hidden',open?'true':'false');this.setAttribute('aria-expanded',open?'false':'true')" class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-full bg-violet-700 text-white min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700" aria-expanded="false" aria-haspopup="true">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"/></svg>
           All Categories
           <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
-        <div id="catMenuClean" class="absolute left-0 top-full mt-2 z-20 backdrop-blur-2xl bg-black/[.04] dark:bg-black/[.04] border border-black/[.08] dark:border-white/[.12] rounded-xl p-2 min-w-[180px] flex flex-col gap-1" aria-hidden="true">
+        <div id="catMenuClean" class="hidden absolute left-0 top-full mt-2 z-20 backdrop-blur-2xl bg-black/[.04] dark:bg-black/[.04] border border-black/[.08] dark:border-white/[.12] rounded-xl p-2 min-w-[180px] flex-col gap-1" aria-hidden="true">
           <button class="px-4 py-2.5 text-sm font-medium rounded-lg bg-violet-700 text-white text-left min-h-11">All</button>
           <button class="px-4 py-2.5 text-sm font-medium rounded-lg text-slate-600 dark:text-white/70 hover:bg-white/10 text-left min-h-11 transition-colors">Audio</button>
           <button class="px-4 py-2.5 text-sm font-medium rounded-lg text-slate-600 dark:text-white/70 hover:bg-white/10 text-left min-h-11 transition-colors">Peripherals</button>
@@ -74,7 +52,7 @@
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-6xl mx-auto">
 
         <!-- Row 1: featured (2-col) + regular -->
-        <div class="sm:col-span-2 backdrop-blur-2xl bg-black/[.04] dark:bg-black/[.04] border border-black/[.08] dark:border-white/[.12] rounded-2xl overflow-hidden card-hover relative group">
+        <div class="sm:col-span-2 backdrop-blur-2xl bg-black/[.04] dark:bg-black/[.04] border border-black/[.08] dark:border-white/[.12] rounded-2xl overflow-hidden transition-[transform,box-shadow] duration-200 ease-[ease] hover:-translate-y-1 motion-reduce:transition-none relative group">
           <div class="aspect-[2/1] sm:aspect-[2.5/1] bg-gradient-to-br from-violet-600 to-fuchsia-600 flex items-center justify-center">
             <span class="text-slate-600 dark:text-white/40 text-sm" aria-hidden="true">Wireless Headphones</span>
           </div>
@@ -90,7 +68,7 @@
           </button>
         </div>
 
-        <div class="backdrop-blur-2xl bg-black/[.04] dark:bg-black/[.04] border border-black/[.08] dark:border-white/[.12] rounded-2xl overflow-hidden card-hover relative group">
+        <div class="backdrop-blur-2xl bg-black/[.04] dark:bg-black/[.04] border border-black/[.08] dark:border-white/[.12] rounded-2xl overflow-hidden transition-[transform,box-shadow] duration-200 ease-[ease] hover:-translate-y-1 motion-reduce:transition-none relative group">
           <div class="aspect-[4/3] bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center">
             <span class="text-slate-600 dark:text-white/40 text-sm" aria-hidden="true">Mechanical Keyboard</span>
           </div>
@@ -105,7 +83,7 @@
         </div>
 
         <!-- Row 2: 3 equal -->
-        <div class="backdrop-blur-2xl bg-black/[.04] dark:bg-black/[.04] border border-black/[.08] dark:border-white/[.12] rounded-2xl overflow-hidden card-hover relative group">
+        <div class="backdrop-blur-2xl bg-black/[.04] dark:bg-black/[.04] border border-black/[.08] dark:border-white/[.12] rounded-2xl overflow-hidden transition-[transform,box-shadow] duration-200 ease-[ease] hover:-translate-y-1 motion-reduce:transition-none relative group">
           <div class="aspect-[4/3] bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
             <span class="text-slate-600 dark:text-white/40 text-sm" aria-hidden="true">USB-C Hub</span>
           </div>
@@ -119,7 +97,7 @@
           </button>
         </div>
 
-        <div class="backdrop-blur-2xl bg-black/[.04] dark:bg-black/[.04] border border-black/[.08] dark:border-white/[.12] rounded-2xl overflow-hidden card-hover relative group">
+        <div class="backdrop-blur-2xl bg-black/[.04] dark:bg-black/[.04] border border-black/[.08] dark:border-white/[.12] rounded-2xl overflow-hidden transition-[transform,box-shadow] duration-200 ease-[ease] hover:-translate-y-1 motion-reduce:transition-none relative group">
           <div class="aspect-[4/3] bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
             <span class="text-slate-600 dark:text-white/40 text-sm" aria-hidden="true">Desk Lamp</span>
           </div>
@@ -133,7 +111,7 @@
           </button>
         </div>
 
-        <div class="backdrop-blur-2xl bg-black/[.04] dark:bg-black/[.04] border border-black/[.08] dark:border-white/[.12] rounded-2xl overflow-hidden card-hover relative group">
+        <div class="backdrop-blur-2xl bg-black/[.04] dark:bg-black/[.04] border border-black/[.08] dark:border-white/[.12] rounded-2xl overflow-hidden transition-[transform,box-shadow] duration-200 ease-[ease] hover:-translate-y-1 motion-reduce:transition-none relative group">
           <div class="aspect-[4/3] bg-gradient-to-br from-rose-500 to-pink-600 flex items-center justify-center">
             <span class="text-slate-600 dark:text-white/40 text-sm" aria-hidden="true">Webcam HD</span>
           </div>
@@ -148,7 +126,7 @@
         </div>
 
         <!-- Row 3: regular + featured (2-col) -->
-        <div class="backdrop-blur-2xl bg-black/[.04] dark:bg-black/[.04] border border-black/[.08] dark:border-white/[.12] rounded-2xl overflow-hidden card-hover relative group">
+        <div class="backdrop-blur-2xl bg-black/[.04] dark:bg-black/[.04] border border-black/[.08] dark:border-white/[.12] rounded-2xl overflow-hidden transition-[transform,box-shadow] duration-200 ease-[ease] hover:-translate-y-1 motion-reduce:transition-none relative group">
           <div class="aspect-[4/3] bg-gradient-to-br from-slate-500 to-slate-700 flex items-center justify-center">
             <span class="text-slate-600 dark:text-white/40 text-sm" aria-hidden="true">Monitor Stand</span>
           </div>
@@ -162,7 +140,7 @@
           </button>
         </div>
 
-        <div class="sm:col-span-2 backdrop-blur-2xl bg-black/[.04] dark:bg-black/[.04] border border-black/[.08] dark:border-white/[.12] rounded-2xl overflow-hidden card-hover relative group">
+        <div class="sm:col-span-2 backdrop-blur-2xl bg-black/[.04] dark:bg-black/[.04] border border-black/[.08] dark:border-white/[.12] rounded-2xl overflow-hidden transition-[transform,box-shadow] duration-200 ease-[ease] hover:-translate-y-1 motion-reduce:transition-none relative group">
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-0">
             <div class="aspect-square sm:aspect-auto bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center p-6">
               <span class="text-slate-600 dark:text-white/40 text-sm" aria-hidden="true">Wireless Mouse + Cable Organizer</span>

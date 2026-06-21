@@ -1,44 +1,5 @@
 <style>
-    /* ─── Spinner Animation ─── */
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-    .btn-spinner {
-      animation: spin 600ms linear infinite;
-    }
-    @media (prefers-reduced-motion: reduce) {
-      .btn-spinner { animation: none; }
-    }
-
-    /* ─── Tooltip ─── */
-    .icon-btn-wrap {
-      position: relative;
-      display: inline-flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 4px;
-    }
-
-    /* ─── Line-length guard — px cap avoids ch-unit variance in headless Chromium ─── */
-    #buttonsWrap main p {
-      max-width: 520px !important;
-      overflow-wrap: anywhere;
-    }
-    #buttonsWrap main code {
-      white-space: normal;
-      overflow-wrap: anywhere;
-    }
-
-    /* ─── Touch-target floor: Tailwind v4 CDN may skip min-h-[*px] arbitrary values ─── */
-    #buttonsWrap button { min-height: 24px; }
-    /* ─── Disabled opacity reset: UA/Tailwind may apply opacity that drops contrast ─── */
-    #buttonsWrap button:disabled { opacity: 1; }
-
-  html:not(.dark) #buttonsWrap,
-  html:not(.dark) #buttonsWrap [class*="bg-white"] { background: white !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
-  html:not(.dark) #buttonsWrap [class*="bg-slate-50"] { background: rgb(248 250 252) !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
-  .dark #buttonsWrap [class*="bg-slate-900"],
-  .dark #buttonsWrap [class*="bg-slate-800"] { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 <div id="buttonsWrap" class="buttons-clean min-h-screen bg-white dark:bg-slate-900">
 <main class="max-w-5xl mx-auto px-4 sm:px-6 py-12">
@@ -73,7 +34,7 @@
           Disabled
         </button>
         <button disabled aria-busy="true" aria-label="Loading" class="inline-flex items-center justify-center rounded-lg bg-emerald-800 text-white text-sm font-semibold px-3 py-2 min-h-[36px] min-w-[88px] cursor-not-allowed">
-          <svg class="btn-spinner h-4 w-4" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-dasharray="32" stroke-dashoffset="12"/></svg>
+          <svg class="animate-[spin_600ms_linear_infinite] motion-reduce:animate-noneh-4 w-4" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-dasharray="32" stroke-dashoffset="12"/></svg>
         </button>
       </div>
 
@@ -93,7 +54,7 @@
           Add to Cart
         </button>
         <button disabled aria-busy="true" aria-label="Adding to cart" class="inline-flex items-center justify-center rounded-lg bg-emerald-800 text-white text-base font-semibold px-5 py-2 min-h-[44px] min-w-[130px] cursor-not-allowed">
-          <svg class="btn-spinner h-5 w-5" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-dasharray="32" stroke-dashoffset="12"/></svg>
+          <svg class="animate-[spin_600ms_linear_infinite] motion-reduce:animate-noneh-5 w-5" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-dasharray="32" stroke-dashoffset="12"/></svg>
         </button>
       </div>
 
@@ -113,7 +74,7 @@
           Proceed to Checkout
         </button>
         <button disabled aria-busy="true" aria-label="Processing checkout" class="inline-flex items-center justify-center rounded-lg bg-emerald-800 text-white text-lg font-semibold px-7 py-3 min-h-[52px] min-w-[218px] cursor-not-allowed">
-          <svg class="btn-spinner h-5 w-5" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-dasharray="32" stroke-dashoffset="12"/></svg>
+          <svg class="animate-[spin_600ms_linear_infinite] motion-reduce:animate-noneh-5 w-5" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-dasharray="32" stroke-dashoffset="12"/></svg>
         </button>
       </div>
 
@@ -325,69 +286,69 @@
       <!-- Small (36px) -->
       <h3 class="text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-3">Small (36px)</h3>
       <div class="flex flex-wrap items-center gap-4 mb-6">
-        <div class="icon-btn-wrap">
+        <div class="relative inline-flex flex-col items-center gap-1">
           <button class="inline-flex items-center justify-center rounded-lg w-9 h-9 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 dark:focus:ring-offset-slate-900 cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none" aria-label="Edit">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5m-1.414-9.414a2 2 0 1 1 2.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
           </button>
-          <span class="position-static text-xs font-semibold whitespace-nowrap pointer-events-none bg-slate-800 dark:bg-slate-100 text-slate-50 dark:text-slate-900 px-2 py-1 rounded-md">Edit</span>
+          <span class="static text-xs font-semibold whitespace-nowrap pointer-events-none bg-slate-800 dark:bg-slate-100 text-slate-50 dark:text-slate-900 px-2 py-1 rounded-md">Edit</span>
         </div>
-        <div class="icon-btn-wrap">
+        <div class="relative inline-flex flex-col items-center gap-1">
           <button class="inline-flex items-center justify-center rounded-lg w-9 h-9 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 dark:focus:ring-offset-slate-900 cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none" aria-label="Copy">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
           </button>
-          <span class="position-static text-xs font-semibold whitespace-nowrap pointer-events-none bg-slate-800 dark:bg-slate-100 text-slate-50 dark:text-slate-900 px-2 py-1 rounded-md">Copy</span>
+          <span class="static text-xs font-semibold whitespace-nowrap pointer-events-none bg-slate-800 dark:bg-slate-100 text-slate-50 dark:text-slate-900 px-2 py-1 rounded-md">Copy</span>
         </div>
-        <div class="icon-btn-wrap">
+        <div class="relative inline-flex flex-col items-center gap-1">
           <button class="inline-flex items-center justify-center rounded-lg w-9 h-9 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-800 dark:hover:text-red-300 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 dark:focus:ring-offset-slate-900 cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none" aria-label="Delete">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0 1 16.138 21H7.862a2 2 0 0 1-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v3M4 7h16"/></svg>
           </button>
-          <span class="position-static text-xs font-semibold whitespace-nowrap pointer-events-none bg-slate-800 dark:bg-slate-100 text-slate-50 dark:text-slate-900 px-2 py-1 rounded-md">Delete</span>
+          <span class="static text-xs font-semibold whitespace-nowrap pointer-events-none bg-slate-800 dark:bg-slate-100 text-slate-50 dark:text-slate-900 px-2 py-1 rounded-md">Delete</span>
         </div>
       </div>
 
       <!-- Medium (44px) -->
       <h3 class="text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-3">Medium (44px &mdash; default)</h3>
       <div class="flex flex-wrap items-center gap-4 mb-6">
-        <div class="icon-btn-wrap">
+        <div class="relative inline-flex flex-col items-center gap-1">
           <button class="inline-flex items-center justify-center rounded-lg w-11 h-11 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 dark:focus:ring-offset-slate-900 cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none" aria-label="Settings">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
           </button>
-          <span class="position-static text-xs font-semibold whitespace-nowrap pointer-events-none bg-slate-800 dark:bg-slate-100 text-slate-50 dark:text-slate-900 px-2 py-1 rounded-md">Settings</span>
+          <span class="static text-xs font-semibold whitespace-nowrap pointer-events-none bg-slate-800 dark:bg-slate-100 text-slate-50 dark:text-slate-900 px-2 py-1 rounded-md">Settings</span>
         </div>
-        <div class="icon-btn-wrap">
+        <div class="relative inline-flex flex-col items-center gap-1">
           <button class="inline-flex items-center justify-center rounded-lg w-11 h-11 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 dark:focus:ring-offset-slate-900 cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none" aria-label="Notifications">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
           </button>
-          <span class="position-static text-xs font-semibold whitespace-nowrap pointer-events-none bg-slate-800 dark:bg-slate-100 text-slate-50 dark:text-slate-900 px-2 py-1 rounded-md">Notifications</span>
+          <span class="static text-xs font-semibold whitespace-nowrap pointer-events-none bg-slate-800 dark:bg-slate-100 text-slate-50 dark:text-slate-900 px-2 py-1 rounded-md">Notifications</span>
         </div>
-        <div class="icon-btn-wrap">
+        <div class="relative inline-flex flex-col items-center gap-1">
           <button class="inline-flex items-center justify-center rounded-lg w-11 h-11 bg-emerald-800 text-white hover:bg-emerald-900 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 dark:focus:ring-offset-slate-900 cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none" aria-label="Add new">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
           </button>
-          <span class="position-static text-xs font-semibold whitespace-nowrap pointer-events-none bg-slate-800 dark:bg-slate-100 text-slate-50 dark:text-slate-900 px-2 py-1 rounded-md">Add New</span>
+          <span class="static text-xs font-semibold whitespace-nowrap pointer-events-none bg-slate-800 dark:bg-slate-100 text-slate-50 dark:text-slate-900 px-2 py-1 rounded-md">Add New</span>
         </div>
-        <div class="icon-btn-wrap">
+        <div class="relative inline-flex flex-col items-center gap-1">
           <button class="inline-flex items-center justify-center rounded-lg w-11 h-11 bg-red-700 text-white hover:bg-red-800 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 dark:focus:ring-offset-slate-900 cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none" aria-label="Delete">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0 1 16.138 21H7.862a2 2 0 0 1-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v3M4 7h16"/></svg>
           </button>
-          <span class="position-static text-xs font-semibold whitespace-nowrap pointer-events-none bg-slate-800 dark:bg-slate-100 text-slate-50 dark:text-slate-900 px-2 py-1 rounded-md">Delete</span>
+          <span class="static text-xs font-semibold whitespace-nowrap pointer-events-none bg-slate-800 dark:bg-slate-100 text-slate-50 dark:text-slate-900 px-2 py-1 rounded-md">Delete</span>
         </div>
       </div>
 
       <!-- Large (52px) -->
       <h3 class="text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-3">Large (52px)</h3>
       <div class="flex flex-wrap items-center gap-4 mb-4">
-        <div class="icon-btn-wrap">
+        <div class="relative inline-flex flex-col items-center gap-1">
           <button class="inline-flex items-center justify-center rounded-xl w-[52px] h-[52px] text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 dark:focus:ring-offset-slate-900 cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none" aria-label="Toggle menu">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
           </button>
-          <span class="position-static text-xs font-semibold whitespace-nowrap pointer-events-none bg-slate-800 dark:bg-slate-100 text-slate-50 dark:text-slate-900 px-2 py-1 rounded-md">Menu</span>
+          <span class="static text-xs font-semibold whitespace-nowrap pointer-events-none bg-slate-800 dark:bg-slate-100 text-slate-50 dark:text-slate-900 px-2 py-1 rounded-md">Menu</span>
         </div>
-        <div class="icon-btn-wrap">
+        <div class="relative inline-flex flex-col items-center gap-1">
           <button class="inline-flex items-center justify-center rounded-xl w-[52px] h-[52px] bg-emerald-800 text-white hover:bg-emerald-900 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 dark:focus:ring-offset-slate-900 cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none" aria-label="Add new">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
           </button>
-          <span class="position-static text-xs font-semibold whitespace-nowrap pointer-events-none bg-slate-800 dark:bg-slate-100 text-slate-50 dark:text-slate-900 px-2 py-1 rounded-md">Add New</span>
+          <span class="static text-xs font-semibold whitespace-nowrap pointer-events-none bg-slate-800 dark:bg-slate-100 text-slate-50 dark:text-slate-900 px-2 py-1 rounded-md">Add New</span>
         </div>
       </div>
 
@@ -455,25 +416,25 @@
       <div class="flex flex-wrap items-center gap-4 mb-6">
         <!-- Primary loading -->
         <button disabled aria-busy="true" aria-label="Saving changes" class="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-800 text-white text-base font-semibold px-5 py-2 min-h-[44px] min-w-[160px] cursor-not-allowed">
-          <svg class="btn-spinner h-5 w-5" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-dasharray="32" stroke-dashoffset="12"/></svg>
+          <svg class="animate-[spin_600ms_linear_infinite] motion-reduce:animate-noneh-5 w-5" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-dasharray="32" stroke-dashoffset="12"/></svg>
           Saving...
         </button>
 
         <!-- Secondary loading -->
         <button disabled aria-busy="true" aria-label="Loading" class="inline-flex items-center justify-center gap-2 rounded-lg border-2 border-emerald-700 dark:border-emerald-300 text-emerald-800 dark:text-emerald-200 bg-transparent text-base font-semibold px-5 py-2 min-h-[44px] min-w-[140px] cursor-not-allowed">
-          <svg class="btn-spinner h-5 w-5" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-dasharray="32" stroke-dashoffset="12"/></svg>
+          <svg class="animate-[spin_600ms_linear_infinite] motion-reduce:animate-noneh-5 w-5" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-dasharray="32" stroke-dashoffset="12"/></svg>
           Loading...
         </button>
 
         <!-- Destructive loading -->
         <button disabled aria-busy="true" aria-label="Deleting" class="inline-flex items-center justify-center gap-2 rounded-lg bg-red-700 text-white text-base font-semibold px-5 py-2 min-h-[44px] min-w-[140px] cursor-not-allowed">
-          <svg class="btn-spinner h-5 w-5" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-dasharray="32" stroke-dashoffset="12"/></svg>
+          <svg class="animate-[spin_600ms_linear_infinite] motion-reduce:animate-noneh-5 w-5" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-dasharray="32" stroke-dashoffset="12"/></svg>
           Deleting...
         </button>
 
         <!-- Icon-only loading -->
         <button disabled aria-busy="true" aria-label="Loading" class="inline-flex items-center justify-center rounded-lg w-11 h-11 bg-emerald-800 text-white cursor-not-allowed">
-          <svg class="btn-spinner h-5 w-5" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-dasharray="32" stroke-dashoffset="12"/></svg>
+          <svg class="animate-[spin_600ms_linear_infinite] motion-reduce:animate-noneh-5 w-5" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-dasharray="32" stroke-dashoffset="12"/></svg>
         </button>
       </div>
 

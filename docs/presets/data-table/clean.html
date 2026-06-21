@@ -1,55 +1,3 @@
-<style>
-  .dt-status-green { background: #dcfce7 !important; color: #14532d !important; }
-  .dt-status-amber { background: #fef3c7 !important; color: #78350f !important; }
-  .dt-status-red { background: #fee2e2 !important; color: #7f1d1d !important; }
-  .dark .dt-status-green { background: #14532d !important; color: #dcfce7 !important; }
-  .dark .dt-status-amber { background: #78350f !important; color: #fef3c7 !important; }
-  .dark .dt-status-red { background: #7f1d1d !important; color: #fee2e2 !important; }
-  @media (max-width: 640px) {
-    .dt-clean-table thead { display: none; }
-    .dt-clean-table,
-    .dt-clean-table tbody,
-    .dt-clean-table tr,
-    .dt-clean-table td { display: block; width: 100%; }
-    .dt-clean-table tr {
-      border: 1px solid rgb(226 232 240);
-      border-radius: 0.75rem;
-      margin: 0.75rem 0;
-      padding: 0.5rem 0;
-    }
-    .dark .dt-clean-table tr { border-color: rgb(51 65 85); }
-    .dt-clean-table td {
-      align-items: center;
-      display: flex;
-      justify-content: space-between;
-      min-height: 44px;
-      padding: 0.5rem 1rem;
-      text-align: right;
-    }
-    .dt-clean-table td::before {
-      content: attr(data-label);
-      color: #334155;
-      font-size: 0.875rem;
-      font-weight: 600;
-      margin-right: 1rem;
-      text-align: left;
-    }
-    .dark .dt-clean-table td::before { color: #cbd5e1; }
-    .dt-clean-table td > * { text-align: right; }
-  }
-</style>
-<style>
-  html:not(.dark) #dataTableWrap,
-  html:not(.dark) #dataTableWrap [class*="bg-white"],
-  html:not(.dark) #dataTableWrap [class*="bg-slate-50"] { background: white !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
-  .dark #dataTableWrap [class*="bg-slate-900"],
-  .dark #dataTableWrap [class*="bg-slate-800"] { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
-  /* Prevent hushed effect from shrinking any text below 12px */
-  #dataTableWrap th button { font-size: inherit !important; }
-  #dataTableWrap { font-size: inherit !important; }
-  /* Prevent table from overflowing its scroll container */
-  #dataTableWrap .overflow-x-auto { min-width: 0; max-width: 100%; }
-</style>
 <main id="dataTableWrap" class="min-h-screen flex items-center justify-center p-4 md:p-6 lg:p-8 bg-slate-50 dark:bg-slate-900">
 <div class="w-full max-w-4xl">
 <!-- Data Table: Sortable columns, status badges, hover rows -->
@@ -58,10 +6,10 @@
     <h1 id="orders-title" class="text-2xl font-semibold text-slate-900 dark:text-white">Orders</h1>
     <span class="text-sm text-slate-500 dark:text-slate-400">5 results</span>
   </header>
-  <div class="overflow-x-auto min-w-0">
-    <table class="dt-clean-table w-full">
+  <div class="overflow-x-auto min-w-0 max-w-full">
+    <table class="w-full max-sm:block">
       <caption class="sr-only">Recent orders</caption>
-      <thead>
+      <thead class="max-sm:hidden">
         <tr class="border-b border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-700/30">
           <th scope="col" class="text-left text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider px-4 py-3">
             <button class="min-h-11 inline-flex items-center gap-1.5 hover:text-slate-700 dark:hover:text-slate-200 transition-colors group focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none" aria-label="Sort by Order number">
@@ -96,106 +44,161 @@
           </th>
         </tr>
       </thead>
-      <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
-        <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
-          <td data-label="Order #" class="px-4 py-4 text-sm font-medium text-slate-900 dark:text-white">#4721</td>
-          <td data-label="Customer" class="px-4 py-4">
-            <div class="flex items-center gap-3">
+      <tbody class="divide-y divide-slate-100 dark:divide-slate-700 max-sm:divide-y-0">
+        <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors max-sm:block max-sm:w-full max-sm:my-3 max-sm:py-2 max-sm:rounded-xl max-sm:border max-sm:border-slate-200 dark:max-sm:border-slate-700">
+          <td data-label="Order #" class="px-4 py-4 text-sm font-medium text-slate-900 dark:text-white max-sm:flex max-sm:w-full max-sm:items-center max-sm:justify-between max-sm:gap-4 max-sm:min-h-11 max-sm:text-right">
+            <span class="hidden max-sm:block text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Order #</span>
+            <span class="min-w-0 break-words">#4721</span>
+          </td>
+          <td data-label="Customer" class="px-4 py-4 max-sm:flex max-sm:w-full max-sm:items-center max-sm:justify-between max-sm:gap-4 max-sm:min-h-11 max-sm:text-right">
+            <span class="hidden max-sm:block text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Customer</span>
+            <div class="flex items-center gap-3 min-w-0">
               <div class="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-sm font-medium text-blue-700 dark:text-blue-300 shrink-0">SC</div>
-              <div>
+              <div class="min-w-0">
                 <p class="text-sm font-medium text-slate-900 dark:text-white">Sarah Chen</p>
-                <p class="text-sm text-slate-500 dark:text-slate-400">sarah.chen@email.com</p>
+                <p class="text-sm text-slate-500 dark:text-slate-400 break-words">sarah.chen@email.com</p>
               </div>
             </div>
           </td>
-          <td data-label="Amount" class="px-4 py-4 text-sm text-slate-900 dark:text-white text-right font-medium tabular-nums">$1,240.00</td>
-          <td data-label="Status" class="px-4 py-4">
-            <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium dt-status-green">
+          <td data-label="Amount" class="px-4 py-4 text-sm text-slate-900 dark:text-white text-right font-medium tabular-nums max-sm:flex max-sm:w-full max-sm:items-center max-sm:justify-between max-sm:gap-4 max-sm:min-h-11">
+            <span class="hidden max-sm:block text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Amount</span>
+            <span>$1,240.00</span>
+          </td>
+          <td data-label="Status" class="px-4 py-4 max-sm:flex max-sm:w-full max-sm:items-center max-sm:justify-between max-sm:gap-4 max-sm:min-h-11 max-sm:text-right">
+            <span class="hidden max-sm:block text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Status</span>
+            <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium bg-emerald-100 text-emerald-900 dark:bg-emerald-900/60 dark:text-emerald-100">
               <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3"/></svg>
               Completed
             </span>
           </td>
-          <td data-label="Date" class="px-4 py-4 text-sm text-slate-600 dark:text-slate-400">Mar 15, 2026</td>
+          <td data-label="Date" class="px-4 py-4 text-sm text-slate-600 dark:text-slate-400 max-sm:flex max-sm:w-full max-sm:items-center max-sm:justify-between max-sm:gap-4 max-sm:min-h-11 max-sm:text-right">
+            <span class="hidden max-sm:block text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Date</span>
+            <span>Mar 15, 2026</span>
+          </td>
         </tr>
-        <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
-          <td data-label="Order #" class="px-4 py-4 text-sm font-medium text-slate-900 dark:text-white">#4720</td>
-          <td data-label="Customer" class="px-4 py-4">
-            <div class="flex items-center gap-3">
+        <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors max-sm:block max-sm:w-full max-sm:my-3 max-sm:py-2 max-sm:rounded-xl max-sm:border max-sm:border-slate-200 dark:max-sm:border-slate-700">
+          <td data-label="Order #" class="px-4 py-4 text-sm font-medium text-slate-900 dark:text-white max-sm:flex max-sm:w-full max-sm:items-center max-sm:justify-between max-sm:gap-4 max-sm:min-h-11 max-sm:text-right">
+            <span class="hidden max-sm:block text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Order #</span>
+            <span class="min-w-0 break-words">#4720</span>
+          </td>
+          <td data-label="Customer" class="px-4 py-4 max-sm:flex max-sm:w-full max-sm:items-center max-sm:justify-between max-sm:gap-4 max-sm:min-h-11 max-sm:text-right">
+            <span class="hidden max-sm:block text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Customer</span>
+            <div class="flex items-center gap-3 min-w-0">
               <div class="w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900/40 flex items-center justify-center text-sm font-medium text-purple-700 dark:text-purple-300 shrink-0">JW</div>
-              <div>
+              <div class="min-w-0">
                 <p class="text-sm font-medium text-slate-900 dark:text-white">James Wilson</p>
-                <p class="text-sm text-slate-500 dark:text-slate-400">j.wilson@email.com</p>
+                <p class="text-sm text-slate-500 dark:text-slate-400 break-words">j.wilson@email.com</p>
               </div>
             </div>
           </td>
-          <td data-label="Amount" class="px-4 py-4 text-sm text-slate-900 dark:text-white text-right font-medium tabular-nums">$856.50</td>
-          <td data-label="Status" class="px-4 py-4">
-            <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium dt-status-amber">
+          <td data-label="Amount" class="px-4 py-4 text-sm text-slate-900 dark:text-white text-right font-medium tabular-nums max-sm:flex max-sm:w-full max-sm:items-center max-sm:justify-between max-sm:gap-4 max-sm:min-h-11">
+            <span class="hidden max-sm:block text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Amount</span>
+            <span>$856.50</span>
+          </td>
+          <td data-label="Status" class="px-4 py-4 max-sm:flex max-sm:w-full max-sm:items-center max-sm:justify-between max-sm:gap-4 max-sm:min-h-11 max-sm:text-right">
+            <span class="hidden max-sm:block text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Status</span>
+            <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium bg-amber-100 text-amber-900 dark:bg-amber-900/60 dark:text-amber-100">
               <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3"/></svg>
               Pending
             </span>
           </td>
-          <td data-label="Date" class="px-4 py-4 text-sm text-slate-600 dark:text-slate-400">Mar 15, 2026</td>
+          <td data-label="Date" class="px-4 py-4 text-sm text-slate-600 dark:text-slate-400 max-sm:flex max-sm:w-full max-sm:items-center max-sm:justify-between max-sm:gap-4 max-sm:min-h-11 max-sm:text-right">
+            <span class="hidden max-sm:block text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Date</span>
+            <span>Mar 15, 2026</span>
+          </td>
         </tr>
-        <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
-          <td data-label="Order #" class="px-4 py-4 text-sm font-medium text-slate-900 dark:text-white">#4719</td>
-          <td data-label="Customer" class="px-4 py-4">
-            <div class="flex items-center gap-3">
+        <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors max-sm:block max-sm:w-full max-sm:my-3 max-sm:py-2 max-sm:rounded-xl max-sm:border max-sm:border-slate-200 dark:max-sm:border-slate-700">
+          <td data-label="Order #" class="px-4 py-4 text-sm font-medium text-slate-900 dark:text-white max-sm:flex max-sm:w-full max-sm:items-center max-sm:justify-between max-sm:gap-4 max-sm:min-h-11 max-sm:text-right">
+            <span class="hidden max-sm:block text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Order #</span>
+            <span class="min-w-0 break-words">#4719</span>
+          </td>
+          <td data-label="Customer" class="px-4 py-4 max-sm:flex max-sm:w-full max-sm:items-center max-sm:justify-between max-sm:gap-4 max-sm:min-h-11 max-sm:text-right">
+            <span class="hidden max-sm:block text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Customer</span>
+            <div class="flex items-center gap-3 min-w-0">
               <div class="w-8 h-8 rounded-full bg-rose-100 dark:bg-rose-900/40 flex items-center justify-center text-sm font-medium text-rose-700 dark:text-rose-300 shrink-0">MG</div>
-              <div>
+              <div class="min-w-0">
                 <p class="text-sm font-medium text-slate-900 dark:text-white">Maria Garcia</p>
-                <p class="text-sm text-slate-500 dark:text-slate-400">m.garcia@email.com</p>
+                <p class="text-sm text-slate-500 dark:text-slate-400 break-words">m.garcia@email.com</p>
               </div>
             </div>
           </td>
-          <td data-label="Amount" class="px-4 py-4 text-sm text-slate-900 dark:text-white text-right font-medium tabular-nums">$432.00</td>
-          <td data-label="Status" class="px-4 py-4">
-            <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium dt-status-red">
+          <td data-label="Amount" class="px-4 py-4 text-sm text-slate-900 dark:text-white text-right font-medium tabular-nums max-sm:flex max-sm:w-full max-sm:items-center max-sm:justify-between max-sm:gap-4 max-sm:min-h-11">
+            <span class="hidden max-sm:block text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Amount</span>
+            <span>$432.00</span>
+          </td>
+          <td data-label="Status" class="px-4 py-4 max-sm:flex max-sm:w-full max-sm:items-center max-sm:justify-between max-sm:gap-4 max-sm:min-h-11 max-sm:text-right">
+            <span class="hidden max-sm:block text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Status</span>
+            <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-900 dark:bg-red-900/60 dark:text-red-100">
               <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3"/></svg>
               Cancelled
             </span>
           </td>
-          <td data-label="Date" class="px-4 py-4 text-sm text-slate-600 dark:text-slate-400">Mar 14, 2026</td>
+          <td data-label="Date" class="px-4 py-4 text-sm text-slate-600 dark:text-slate-400 max-sm:flex max-sm:w-full max-sm:items-center max-sm:justify-between max-sm:gap-4 max-sm:min-h-11 max-sm:text-right">
+            <span class="hidden max-sm:block text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Date</span>
+            <span>Mar 14, 2026</span>
+          </td>
         </tr>
-        <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
-          <td data-label="Order #" class="px-4 py-4 text-sm font-medium text-slate-900 dark:text-white">#4718</td>
-          <td data-label="Customer" class="px-4 py-4">
-            <div class="flex items-center gap-3">
+        <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors max-sm:block max-sm:w-full max-sm:my-3 max-sm:py-2 max-sm:rounded-xl max-sm:border max-sm:border-slate-200 dark:max-sm:border-slate-700">
+          <td data-label="Order #" class="px-4 py-4 text-sm font-medium text-slate-900 dark:text-white max-sm:flex max-sm:w-full max-sm:items-center max-sm:justify-between max-sm:gap-4 max-sm:min-h-11 max-sm:text-right">
+            <span class="hidden max-sm:block text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Order #</span>
+            <span class="min-w-0 break-words">#4718</span>
+          </td>
+          <td data-label="Customer" class="px-4 py-4 max-sm:flex max-sm:w-full max-sm:items-center max-sm:justify-between max-sm:gap-4 max-sm:min-h-11 max-sm:text-right">
+            <span class="hidden max-sm:block text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Customer</span>
+            <div class="flex items-center gap-3 min-w-0">
               <div class="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center text-sm font-medium text-emerald-700 dark:text-emerald-300 shrink-0">AT</div>
-              <div>
+              <div class="min-w-0">
                 <p class="text-sm font-medium text-slate-900 dark:text-white">Alex Thompson</p>
-                <p class="text-sm text-slate-500 dark:text-slate-400">alex.t@email.com</p>
+                <p class="text-sm text-slate-500 dark:text-slate-400 break-words">alex.t@email.com</p>
               </div>
             </div>
           </td>
-          <td data-label="Amount" class="px-4 py-4 text-sm text-slate-900 dark:text-white text-right font-medium tabular-nums">$189.99</td>
-          <td data-label="Status" class="px-4 py-4">
-            <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium dt-status-green">
+          <td data-label="Amount" class="px-4 py-4 text-sm text-slate-900 dark:text-white text-right font-medium tabular-nums max-sm:flex max-sm:w-full max-sm:items-center max-sm:justify-between max-sm:gap-4 max-sm:min-h-11">
+            <span class="hidden max-sm:block text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Amount</span>
+            <span>$189.99</span>
+          </td>
+          <td data-label="Status" class="px-4 py-4 max-sm:flex max-sm:w-full max-sm:items-center max-sm:justify-between max-sm:gap-4 max-sm:min-h-11 max-sm:text-right">
+            <span class="hidden max-sm:block text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Status</span>
+            <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium bg-emerald-100 text-emerald-900 dark:bg-emerald-900/60 dark:text-emerald-100">
               <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3"/></svg>
               Completed
             </span>
           </td>
-          <td data-label="Date" class="px-4 py-4 text-sm text-slate-600 dark:text-slate-400">Mar 13, 2026</td>
+          <td data-label="Date" class="px-4 py-4 text-sm text-slate-600 dark:text-slate-400 max-sm:flex max-sm:w-full max-sm:items-center max-sm:justify-between max-sm:gap-4 max-sm:min-h-11 max-sm:text-right">
+            <span class="hidden max-sm:block text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Date</span>
+            <span>Mar 13, 2026</span>
+          </td>
         </tr>
-        <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
-          <td data-label="Order #" class="px-4 py-4 text-sm font-medium text-slate-900 dark:text-white">#4717</td>
-          <td data-label="Customer" class="px-4 py-4">
-            <div class="flex items-center gap-3">
+        <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors max-sm:block max-sm:w-full max-sm:my-3 max-sm:py-2 max-sm:rounded-xl max-sm:border max-sm:border-slate-200 dark:max-sm:border-slate-700">
+          <td data-label="Order #" class="px-4 py-4 text-sm font-medium text-slate-900 dark:text-white max-sm:flex max-sm:w-full max-sm:items-center max-sm:justify-between max-sm:gap-4 max-sm:min-h-11 max-sm:text-right">
+            <span class="hidden max-sm:block text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Order #</span>
+            <span class="min-w-0 break-words">#4717</span>
+          </td>
+          <td data-label="Customer" class="px-4 py-4 max-sm:flex max-sm:w-full max-sm:items-center max-sm:justify-between max-sm:gap-4 max-sm:min-h-11 max-sm:text-right">
+            <span class="hidden max-sm:block text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Customer</span>
+            <div class="flex items-center gap-3 min-w-0">
               <div class="w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center text-sm font-medium text-amber-700 dark:text-amber-300 shrink-0">PP</div>
-              <div>
+              <div class="min-w-0">
                 <p class="text-sm font-medium text-slate-900 dark:text-white">Priya Patel</p>
-                <p class="text-sm text-slate-500 dark:text-slate-400">priya.p@email.com</p>
+                <p class="text-sm text-slate-500 dark:text-slate-400 break-words">priya.p@email.com</p>
               </div>
             </div>
           </td>
-          <td data-label="Amount" class="px-4 py-4 text-sm text-slate-900 dark:text-white text-right font-medium tabular-nums">$67.25</td>
-          <td data-label="Status" class="px-4 py-4">
-            <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium dt-status-amber">
+          <td data-label="Amount" class="px-4 py-4 text-sm text-slate-900 dark:text-white text-right font-medium tabular-nums max-sm:flex max-sm:w-full max-sm:items-center max-sm:justify-between max-sm:gap-4 max-sm:min-h-11">
+            <span class="hidden max-sm:block text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Amount</span>
+            <span>$67.25</span>
+          </td>
+          <td data-label="Status" class="px-4 py-4 max-sm:flex max-sm:w-full max-sm:items-center max-sm:justify-between max-sm:gap-4 max-sm:min-h-11 max-sm:text-right">
+            <span class="hidden max-sm:block text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Status</span>
+            <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium bg-amber-100 text-amber-900 dark:bg-amber-900/60 dark:text-amber-100">
               <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3"/></svg>
               Pending
             </span>
           </td>
-          <td data-label="Date" class="px-4 py-4 text-sm text-slate-600 dark:text-slate-400">Mar 12, 2026</td>
+          <td data-label="Date" class="px-4 py-4 text-sm text-slate-600 dark:text-slate-400 max-sm:flex max-sm:w-full max-sm:items-center max-sm:justify-between max-sm:gap-4 max-sm:min-h-11 max-sm:text-right">
+            <span class="hidden max-sm:block text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Date</span>
+            <span>Mar 12, 2026</span>
+          </td>
         </tr>
       </tbody>
     </table>

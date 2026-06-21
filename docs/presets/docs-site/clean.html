@@ -1,54 +1,21 @@
 <!-- Docs Site: Clean | Indigo accents, Inter font, sidebar + TOC, polished code blocks -->
 <!-- Stack: HTML + Tailwind CSS | Dark mode: yes | Responsive: yes -->
-<style>
-  html { scroll-behavior: smooth; }
-  .docs-clean .code-block { background: #1e293b !important; color: #e2e8f0 !important; }
-  .docs-clean .code-keyword { color: #c084fc !important; }
-  .docs-clean .code-string { color: #34d399 !important; }
-  .docs-clean .code-comment { color: #cbd5e1 !important; }
-  .docs-clean .docs-table-wrap { overflow-x: visible; }
-  /* Lock entire docs page against frosted injection — outer wrapper + all bg-white descendants */
-  html:not(.dark) #docsWrap,
-  html:not(.dark) #docsWrap [class*="bg-white"] { background: white !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
-  html:not(.dark) #docsWrap [class*="bg-slate-50"] { background: rgb(248 250 252) !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
-  .dark #docsWrap [class*="bg-slate-950"],
-  .dark #docsWrap [class*="bg-slate-900"],
-  .dark #docsWrap [class*="bg-slate-800"] { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
-  /* Right TOC sidebar — CSS media query so it's never detected as a hidden panel */
-  @media (max-width: 1023px) { #docsRightToc { display: none !important; } }
-  /* Responsive nav elements */
-  @media (min-width: 1024px) { #docsMobileToggle { display: none !important; } }
-  @media (max-width: 639px) { #docsVersionBadge { display: none !important; } }
-  @media (max-width: 767px) { #docsSearchBar { display: none !important; } }
-  @media (max-width: 639px) { #docsMainNav { display: none !important; } }
-  /* Sidebar: always visible at ≥1024px even when hidden class applied by toggle */
-  @media (min-width: 1024px) { #docsCleanSidebar { display: block !important; } }
-  /* Frosted lock: prevent right TOC and form inputs from getting backdrop-filter */
-  html:not(.dark) #docsRightToc { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
-  html:not(.dark) #docsWrap input,
-  html:not(.dark) #docsWrap select,
-  html:not(.dark) #docsWrap textarea { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; background: rgb(248 250 252) !important; border: 1px solid rgb(226 232 240) !important; border-radius: 0.5rem !important; }
-  @media (prefers-reduced-motion: reduce) {
-    .docs-clean * { transition: none !important; animation: none !important; }
-  }
-</style>
-
-<div id="docsWrap" class="docs-clean min-h-screen bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+<div id="docsWrap" class="docs-clean scroll-smooth min-h-screen bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-['Inter',system-ui,sans-serif]">
 
   <!-- Top nav -->
 	  <header class="relative z-40 bg-white dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800">
     <div class="flex items-center justify-between h-16 px-4 lg:px-8">
       <div class="flex items-center gap-6">
         <!-- Mobile sidebar toggle -->
-        <button id="docsMobileToggle" onclick="document.getElementById('docsCleanSidebar').classList.toggle('hidden')" class="min-h-[44px] min-w-[44px] flex items-center justify-center text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 rounded-lg focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none" aria-label="Toggle sidebar">
+        <button id="docsMobileToggle" onclick="var s=document.getElementById('docsCleanSidebar');var h=s.classList.toggle('hidden');s.setAttribute('aria-hidden',h?'true':'false')" class="lg:hidden min-h-[44px] min-w-[44px] flex items-center justify-center text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 rounded-lg focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none" aria-label="Toggle sidebar">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
         </button>
         <a href="#" class="text-lg font-bold text-slate-900 dark:text-white min-h-[44px] flex items-center">DevKit</a>
-        <span id="docsVersionBadge" class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300">v2.4.0</span>
+        <span id="docsVersionBadge" class="hidden sm:inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300">v2.4.0</span>
       </div>
 
       <!-- Search -->
-      <div id="docsSearchBar" class="flex items-center flex-1 max-w-sm mx-8">
+      <div id="docsSearchBar" class="hidden md:flex items-center flex-1 max-w-sm mx-8">
         <div class="relative w-full">
           <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
           <input type="search" autocomplete="off" placeholder="Search docs..." aria-label="Search documentation" class="w-full pl-10 pr-4 py-2 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white placeholder-slate-500 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none min-h-[44px]">
@@ -56,7 +23,7 @@
       </div>
 
       <!-- Nav links -->
-      <nav id="docsMainNav" class="flex items-center gap-1" aria-label="Main navigation">
+      <nav id="docsMainNav" class="hidden sm:flex items-center gap-1" aria-label="Main navigation">
         <a href="#" class="px-3 py-2 text-sm font-medium text-indigo-700 dark:text-indigo-400 bg-indigo-50 dark:bg-slate-800 rounded-lg min-h-[44px] flex items-center">Docs</a>
         <a href="#" class="px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg transition-colors min-h-[44px] flex items-center">API</a>
         <a href="#" class="px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg transition-colors min-h-[44px] flex items-center">Guides</a>
@@ -68,7 +35,7 @@
   <div class="flex">
 
     <!-- Left sidebar -->
-    <aside id="docsCleanSidebar" class="hidden fixed inset-y-16 left-0 w-64 bg-white dark:bg-slate-950 border-r border-slate-200 dark:border-slate-800 overflow-y-auto z-30">
+    <aside id="docsCleanSidebar" aria-hidden="true" class="hidden lg:block fixed inset-y-16 left-0 w-64 bg-white dark:bg-slate-950 border-r border-slate-200 dark:border-slate-800 overflow-y-auto z-30">
       <nav class="p-4 space-y-6" aria-label="Documentation navigation">
         <!-- Getting Started -->
         <div>
@@ -125,18 +92,18 @@
         <!-- Code block -->
         <h2 id="install" class="text-xl font-bold text-slate-900 dark:text-white mb-4 mt-10 scroll-mt-20">Install the package</h2>
         <p class="text-slate-600 dark:text-slate-400 mb-4 leading-relaxed">Install DevKit using your preferred package manager:</p>
-        <div class="code-block rounded-lg overflow-hidden mb-6">
+        <div class="code-block rounded-lg overflow-hidden mb-6 bg-slate-800 text-slate-200">
           <div class="flex items-center justify-between px-4 py-2 bg-slate-800 border-b border-slate-700">
             <span class="dc-code-label text-xs text-slate-200">Terminal</span>
           </div>
-          <pre class="p-4 text-sm leading-relaxed overflow-x-auto font-mono"><code><span class="code-comment"># Using npm</span>
-npm install <span class="code-string">@devkit/core</span>
+          <pre class="p-4 text-sm leading-relaxed overflow-x-auto font-mono"><code><span class="text-slate-300"># Using npm</span>
+npm install <span class="text-emerald-300">@devkit/core</span>
 
-<span class="code-comment"># Using yarn</span>
-yarn add <span class="code-string">@devkit/core</span>
+<span class="text-slate-300"># Using yarn</span>
+yarn add <span class="text-emerald-300">@devkit/core</span>
 
-<span class="code-comment"># Using pnpm</span>
-pnpm add <span class="code-string">@devkit/core</span></code></pre>
+<span class="text-slate-300"># Using pnpm</span>
+pnpm add <span class="text-emerald-300">@devkit/core</span></code></pre>
         </div>
 
         <!-- Callout -->
@@ -151,14 +118,14 @@ pnpm add <span class="code-string">@devkit/core</span></code></pre>
         <!-- Configuration -->
         <h2 id="configuration" class="text-xl font-bold text-slate-900 dark:text-white mb-4 mt-10 scroll-mt-20">Configuration</h2>
         <p class="text-slate-600 dark:text-slate-400 mb-4 leading-relaxed">Create a configuration file in your project root:</p>
-        <div class="code-block rounded-lg overflow-hidden mb-6">
+        <div class="code-block rounded-lg overflow-hidden mb-6 bg-slate-800 text-slate-200">
           <div class="flex items-center justify-between px-4 py-2 bg-slate-800 border-b border-slate-700">
             <span class="dc-code-label text-xs text-slate-200">devkit.config.js</span>
           </div>
-          <pre class="p-4 text-sm leading-relaxed overflow-x-auto font-mono"><code><span class="code-keyword">export default</span> {
-  apiKey: process.env.<span class="code-string">DEVKIT_API_KEY</span>,
-  environment: <span class="code-string">"production"</span>,
-  debug: <span class="code-keyword">false</span>,
+          <pre class="p-4 text-sm leading-relaxed overflow-x-auto font-mono"><code><span class="text-purple-300">export default</span> {
+  apiKey: process.env.<span class="text-emerald-300">DEVKIT_API_KEY</span>,
+  environment: <span class="text-emerald-300">"production"</span>,
+  debug: <span class="text-purple-300">false</span>,
 };</code></pre>
         </div>
 
@@ -192,18 +159,18 @@ pnpm add <span class="code-string">@devkit/core</span></code></pre>
         <!-- Verify -->
         <h2 id="verify" class="text-xl font-bold text-slate-900 dark:text-white mb-4 mt-10 scroll-mt-20">Verify installation</h2>
         <p class="text-slate-600 dark:text-slate-400 mb-4 leading-relaxed">Run the following command to verify everything is working:</p>
-        <div class="code-block rounded-lg overflow-hidden mb-6">
+        <div class="code-block rounded-lg overflow-hidden mb-6 bg-slate-800 text-slate-200">
           <div class="flex items-center justify-between px-4 py-2 bg-slate-800 border-b border-slate-700">
             <span class="dc-code-label text-xs text-slate-200">Terminal</span>
           </div>
           <pre class="p-4 text-sm leading-relaxed overflow-x-auto font-mono"><code>npx devkit doctor
 
-<span class="code-comment"># Expected output:</span>
-<span class="code-string">✓ Node.js version: 20.11.0</span>
-<span class="code-string">✓ DevKit core: 2.4.0</span>
-<span class="code-string">✓ Config file found</span>
-<span class="code-string">✓ API key valid</span>
-<span class="code-string">✓ All checks passed</span></code></pre>
+<span class="text-slate-300"># Expected output:</span>
+<span class="text-emerald-300">✓ Node.js version: 20.11.0</span>
+<span class="text-emerald-300">✓ DevKit core: 2.4.0</span>
+<span class="text-emerald-300">✓ Config file found</span>
+<span class="text-emerald-300">✓ API key valid</span>
+<span class="text-emerald-300">✓ All checks passed</span></code></pre>
         </div>
 
         <!-- Troubleshooting -->
@@ -261,7 +228,7 @@ pnpm add <span class="code-string">@devkit/core</span></code></pre>
     </main>
 
     <!-- Table of contents (right sidebar) -->
-    <aside id="docsRightToc" class="lg:block w-56 shrink-0">
+    <aside id="docsRightToc" class="hidden lg:block w-56 shrink-0">
       <div class="sticky top-24 py-8 pr-4">
         <h4 class="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">On this page</h4>
         <nav class="space-y-1" aria-label="Table of contents">

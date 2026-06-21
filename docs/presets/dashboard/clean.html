@@ -1,48 +1,18 @@
 <!-- Dashboard: Neo-Brutalist | Inspired by Linear, Stripe, neo-brutalist kits -->
 <!-- Stack: HTML + Tailwind CSS | Dark mode: yes | Responsive: yes -->
-<style>
-  /* Frosted lock — prevent frosted effect from making backgrounds transparent */
-  html:not(.dark) #brutDash [class*="bg-white"] { background: white !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
-  html:not(.dark) #brutDash [class*="bg-slate-50"] { background: rgb(248 250 252) !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
-  html:not(.dark) #brutSidebar,
-  html:not(.dark) #brutSidebar nav { background: white !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
-  .dark #brutDash [class*="bg-slate-900"],
-  .dark #brutDash [class*="bg-slate-800"] { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
-  .dark #brutSidebar,
-  .dark #brutSidebar nav { background: rgb(15,23,42) !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
-  /* Responsive sidebar — CSS media query so the sidebar isn't detected as a hidden panel */
-  @media (max-width: 1023px) {
-    #brutSidebar { display: none !important; }
-    #brutSidebar[data-open="true"] { display: flex !important; }
-  }
-  /* Mobile header — hidden at desktop via CSS */
-  @media (min-width: 1024px) { #brutMobileHeader { display: none !important; } }
-  /* Responsive table columns — CSS media query so columns aren't detected as hidden panels */
-  @media (max-width: 767px) { .brut-date-col { display: none !important; } }
-  @media (max-width: 639px) { .brut-action-col { display: none !important; } }
-  /* Fixed table layout at mobile keeps 4 columns within viewport width */
-  @media (max-width: 639px) { .brut-orders-table { table-layout: fixed; } }
-  /* Reduce cell vertical padding at mobile — Tailwind v4 uses padding-block for py-*, so override with padding-block+!important; values kept on 4px grid */
-  @media (max-width: 639px) {
-    .brut-orders-table td { padding-block: 0.25rem !important; }
-    .brut-orders-table th { padding-block: 0.25rem !important; white-space: nowrap; overflow: hidden; }
-  }
-  /* Lock View button font-size to 14px — prevents sub-12px rendering under hushed/serif effects */
-  #brutDash button.brut-view-btn { font-size: 0.875rem !important; }
-</style>
 <div id="brutDash" class="min-h-screen bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
 
   <!-- Mobile header -->
-  <div id="brutMobileHeader" class="flex items-center justify-between px-4 h-14 border-b-2 border-slate-900 dark:border-slate-200">
+  <div id="brutMobileHeader" class="lg:hidden flex items-center justify-between px-4 h-14 border-b-2 border-slate-900 dark:border-slate-200">
     <span class="font-mono font-bold text-base tracking-tight">APPNAME</span>
-    <button onclick="const s=document.getElementById('brutSidebar');s.hasAttribute('data-open')?s.removeAttribute('data-open'):s.setAttribute('data-open','true')" class="min-h-11 min-w-11 flex items-center justify-center border-2 border-slate-900 dark:border-slate-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 dark:focus-visible:outline-slate-100" aria-label="Toggle menu">
+    <button onclick="const s=document.getElementById('brutSidebar');const open=s.classList.toggle('max-lg:hidden')===false;s.setAttribute('aria-hidden', open?'false':'true')" class="min-h-11 min-w-11 flex items-center justify-center border-2 border-slate-900 dark:border-slate-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 dark:focus-visible:outline-slate-100" aria-label="Toggle menu" aria-controls="brutSidebar">
       <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
     </button>
   </div>
 
   <div class="flex">
     <!-- Sidebar -->
-    <aside id="brutSidebar" class="fixed inset-y-0 left-0 w-[200px] bg-white dark:bg-slate-900 border-r-2 border-slate-900 dark:border-slate-200 flex-col z-30 overflow-y-auto lg:flex">
+    <aside id="brutSidebar" class="max-lg:hidden fixed inset-y-0 left-0 w-[200px] bg-white dark:bg-slate-900 border-r-2 border-slate-900 dark:border-slate-200 flex flex-col z-30 overflow-y-auto">
       <div class="h-14 flex items-center px-4 border-b-2 border-slate-900 dark:border-slate-200">
         <span class="font-mono font-bold text-base tracking-tight">APPNAME</span>
       </div>
@@ -83,57 +53,57 @@
           <h2 class="font-mono text-base font-bold uppercase tracking-tight">Recent Orders</h2>
         </div>
         <div class="overflow-x-auto">
-        <table class="brut-orders-table w-full text-sm">
+        <table class="w-full text-sm max-sm:table-fixed">
           <thead>
             <tr class="border-b-2 border-slate-900 dark:border-slate-200">
-              <th scope="col" class="text-left px-3 sm:px-6 py-3 text-xs font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300">Order</th>
-              <th scope="col" class="text-left px-2 sm:px-6 py-3 text-xs font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300">Customer</th>
-              <th scope="col" class="text-right px-2 sm:px-6 py-3 text-xs font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300">Amount</th>
-              <th scope="col" class="text-left px-2 sm:px-6 py-3 text-xs font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300">Status</th>
-              <th scope="col" class="brut-date-col text-left px-2 sm:px-6 py-3 text-xs font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300">Date</th>
-              <th scope="col" class="brut-action-col px-2 sm:px-6 py-3"></th>
+              <th scope="col" class="text-left px-3 sm:px-6 py-3 max-sm:py-1 max-sm:whitespace-nowrap text-xs font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300">Order</th>
+              <th scope="col" class="text-left px-2 sm:px-6 py-3 max-sm:py-1 max-sm:whitespace-nowrap text-xs font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300">Customer</th>
+              <th scope="col" class="text-right px-2 sm:px-6 py-3 max-sm:py-1 max-sm:whitespace-nowrap text-xs font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300">Amount</th>
+              <th scope="col" class="text-left px-2 sm:px-6 py-3 max-sm:py-1 max-sm:whitespace-nowrap text-xs font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300">Status</th>
+              <th scope="col" class="max-md:hidden text-left px-2 sm:px-6 py-3 text-xs font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300">Date</th>
+              <th scope="col" class="max-sm:hidden px-2 sm:px-6 py-3"></th>
             </tr>
           </thead>
           <tbody>
             <tr class="border-b-2 border-slate-900 dark:border-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">
-              <td class="px-2 sm:px-6 py-3 font-mono font-bold">#1042</td>
-              <td class="px-2 sm:px-6 py-3 truncate">Sarah Chen</td>
-              <td class="px-2 sm:px-6 py-3 text-right font-mono tabular-nums font-bold">$240</td>
-              <td class="px-2 sm:px-6 py-3"><span class="font-bold text-green-800 dark:text-green-400 uppercase text-xs">Done</span></td>
-              <td class="brut-date-col px-2 sm:px-6 py-3 text-slate-700 dark:text-slate-300">Mar 15</td>
-              <td class="brut-action-col px-2 sm:px-6 py-3 text-right"><button class="brut-view-btn text-xs font-bold uppercase underline hover:no-underline min-h-11 min-w-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 dark:focus-visible:outline-slate-100 rounded">View</button></td>
+              <td class="px-2 sm:px-6 py-3 max-sm:py-1 font-mono font-bold">#1042</td>
+              <td class="px-2 sm:px-6 py-3 max-sm:py-1 truncate">Sarah Chen</td>
+              <td class="px-2 sm:px-6 py-3 max-sm:py-1 text-right font-mono tabular-nums font-bold">$240</td>
+              <td class="px-2 sm:px-6 py-3 max-sm:py-1"><span class="font-bold text-green-800 dark:text-green-400 uppercase text-xs">Done</span></td>
+              <td class="max-md:hidden px-2 sm:px-6 py-3 text-slate-700 dark:text-slate-300">Mar 15</td>
+              <td class="max-sm:hidden px-2 sm:px-6 py-3 text-right"><button class="text-sm font-bold uppercase underline hover:no-underline min-h-11 min-w-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 dark:focus-visible:outline-slate-100 rounded">View</button></td>
             </tr>
             <tr class="border-b-2 border-slate-900 dark:border-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">
-              <td class="px-2 sm:px-6 py-3 font-mono font-bold">#1041</td>
-              <td class="px-2 sm:px-6 py-3 truncate">James Wilson</td>
-              <td class="px-2 sm:px-6 py-3 text-right font-mono tabular-nums font-bold">$126</td>
-              <td class="px-2 sm:px-6 py-3"><span class="font-bold text-amber-800 dark:text-amber-400 uppercase text-xs">Pending</span></td>
-              <td class="brut-date-col px-2 sm:px-6 py-3 text-slate-700 dark:text-slate-300">Mar 15</td>
-              <td class="brut-action-col px-2 sm:px-6 py-3 text-right"><button class="brut-view-btn text-xs font-bold uppercase underline hover:no-underline min-h-11 min-w-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 dark:focus-visible:outline-slate-100 rounded">View</button></td>
+              <td class="px-2 sm:px-6 py-3 max-sm:py-1 font-mono font-bold">#1041</td>
+              <td class="px-2 sm:px-6 py-3 max-sm:py-1 truncate">James Wilson</td>
+              <td class="px-2 sm:px-6 py-3 max-sm:py-1 text-right font-mono tabular-nums font-bold">$126</td>
+              <td class="px-2 sm:px-6 py-3 max-sm:py-1"><span class="font-bold text-amber-800 dark:text-amber-400 uppercase text-xs">Pending</span></td>
+              <td class="max-md:hidden px-2 sm:px-6 py-3 text-slate-700 dark:text-slate-300">Mar 15</td>
+              <td class="max-sm:hidden px-2 sm:px-6 py-3 text-right"><button class="text-sm font-bold uppercase underline hover:no-underline min-h-11 min-w-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 dark:focus-visible:outline-slate-100 rounded">View</button></td>
             </tr>
             <tr class="border-b-2 border-slate-900 dark:border-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">
-              <td class="px-2 sm:px-6 py-3 font-mono font-bold">#1040</td>
-              <td class="px-2 sm:px-6 py-3 truncate">Maria Garcia</td>
-              <td class="px-2 sm:px-6 py-3 text-right font-mono tabular-nums font-bold">$90</td>
-              <td class="px-2 sm:px-6 py-3"><span class="font-bold text-green-800 dark:text-green-400 uppercase text-xs">Done</span></td>
-              <td class="brut-date-col px-2 sm:px-6 py-3 text-slate-700 dark:text-slate-300">Mar 14</td>
-              <td class="brut-action-col px-2 sm:px-6 py-3 text-right"><button class="brut-view-btn text-xs font-bold uppercase underline hover:no-underline min-h-11 min-w-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 dark:focus-visible:outline-slate-100 rounded">View</button></td>
+              <td class="px-2 sm:px-6 py-3 max-sm:py-1 font-mono font-bold">#1040</td>
+              <td class="px-2 sm:px-6 py-3 max-sm:py-1 truncate">Maria Garcia</td>
+              <td class="px-2 sm:px-6 py-3 max-sm:py-1 text-right font-mono tabular-nums font-bold">$90</td>
+              <td class="px-2 sm:px-6 py-3 max-sm:py-1"><span class="font-bold text-green-800 dark:text-green-400 uppercase text-xs">Done</span></td>
+              <td class="max-md:hidden px-2 sm:px-6 py-3 text-slate-700 dark:text-slate-300">Mar 14</td>
+              <td class="max-sm:hidden px-2 sm:px-6 py-3 text-right"><button class="text-sm font-bold uppercase underline hover:no-underline min-h-11 min-w-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 dark:focus-visible:outline-slate-100 rounded">View</button></td>
             </tr>
             <tr class="border-b-2 border-slate-900 dark:border-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">
-              <td class="px-2 sm:px-6 py-3 font-mono font-bold">#1039</td>
-              <td class="px-2 sm:px-6 py-3 truncate">Alex Thompson</td>
-              <td class="px-2 sm:px-6 py-3 text-right font-mono tabular-nums font-bold">$312</td>
-              <td class="px-2 sm:px-6 py-3"><span class="font-bold text-red-700 dark:text-red-400 uppercase text-xs">Cancel</span></td>
-              <td class="brut-date-col px-2 sm:px-6 py-3 text-slate-700 dark:text-slate-300">Mar 14</td>
-              <td class="brut-action-col px-2 sm:px-6 py-3 text-right"><button class="brut-view-btn text-xs font-bold uppercase underline hover:no-underline min-h-11 min-w-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 dark:focus-visible:outline-slate-100 rounded">View</button></td>
+              <td class="px-2 sm:px-6 py-3 max-sm:py-1 font-mono font-bold">#1039</td>
+              <td class="px-2 sm:px-6 py-3 max-sm:py-1 truncate">Alex Thompson</td>
+              <td class="px-2 sm:px-6 py-3 max-sm:py-1 text-right font-mono tabular-nums font-bold">$312</td>
+              <td class="px-2 sm:px-6 py-3 max-sm:py-1"><span class="font-bold text-red-700 dark:text-red-400 uppercase text-xs">Cancel</span></td>
+              <td class="max-md:hidden px-2 sm:px-6 py-3 text-slate-700 dark:text-slate-300">Mar 14</td>
+              <td class="max-sm:hidden px-2 sm:px-6 py-3 text-right"><button class="text-sm font-bold uppercase underline hover:no-underline min-h-11 min-w-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 dark:focus-visible:outline-slate-100 rounded">View</button></td>
             </tr>
             <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/50">
-              <td class="px-2 sm:px-6 py-3 font-mono font-bold">#1038</td>
-              <td class="px-2 sm:px-6 py-3 truncate">Priya Patel</td>
-              <td class="px-2 sm:px-6 py-3 text-right font-mono tabular-nums font-bold">$67</td>
-              <td class="px-2 sm:px-6 py-3"><span class="font-bold text-green-800 dark:text-green-400 uppercase text-xs">Done</span></td>
-              <td class="brut-date-col px-2 sm:px-6 py-3 text-slate-700 dark:text-slate-300">Mar 13</td>
-              <td class="brut-action-col px-2 sm:px-6 py-3 text-right"><button class="brut-view-btn text-xs font-bold uppercase underline hover:no-underline min-h-11 min-w-11 focus-visible:outline-2 focus-visible:outline-slate-900 dark:focus-visible:outline-slate-100 rounded">View</button></td>
+              <td class="px-2 sm:px-6 py-3 max-sm:py-1 font-mono font-bold">#1038</td>
+              <td class="px-2 sm:px-6 py-3 max-sm:py-1 truncate">Priya Patel</td>
+              <td class="px-2 sm:px-6 py-3 max-sm:py-1 text-right font-mono tabular-nums font-bold">$67</td>
+              <td class="px-2 sm:px-6 py-3 max-sm:py-1"><span class="font-bold text-green-800 dark:text-green-400 uppercase text-xs">Done</span></td>
+              <td class="max-md:hidden px-2 sm:px-6 py-3 text-slate-700 dark:text-slate-300">Mar 13</td>
+              <td class="max-sm:hidden px-2 sm:px-6 py-3 text-right"><button class="text-sm font-bold uppercase underline hover:no-underline min-h-11 min-w-11 focus-visible:outline-2 focus-visible:outline-slate-900 dark:focus-visible:outline-slate-100 rounded">View</button></td>
             </tr>
           </tbody>
         </table>

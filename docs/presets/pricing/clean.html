@@ -1,44 +1,5 @@
-<style type="text/tailwindcss">
-    @theme {
-      --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
-    }
-  </style>
-<style>
-    /* Mobile menu — CSS media query keeps it from being detected as a hidden panel */
-    @media (min-width: 768px) { #pricingMobileMenu { display: none !important; } }
-    #pricingMobileMenu { display: none; }
-    /* Smooth toggle animation */
-    .toggle-slider {
-      transition: transform 200ms ease-in-out;
-    }
-    /* FAQ animation */
-    details summary::-webkit-details-marker { display: none; }
-    details summary::marker { display: none; content: ""; }
-    details[open] .faq-icon { transform: rotate(45deg); }
-    .faq-icon { transition: transform 200ms ease-in-out; }
-    /* Price switch animation */
-    .price-value { transition: opacity 150ms ease-in-out; }
-    /* Sign in link — hide at mobile via CSS so no Tailwind hidden class needed */
-    @media (max-width: 639px) { #pricingSignIn { display: none !important; } }
-    /* Lock entire pricing page against frosted injection — targets outer wrapper + all bg-white descendants */
-    html:not(.dark) #pricingWrap,
-    html:not(.dark) #pricingWrap [class*="bg-white"] { background: white !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
-    .dark #pricingWrap [class*="bg-slate-900"],
-    .dark #pricingWrap [class*="bg-slate-800"] { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
-    /* Mobile menu — CSS-controlled without custom class names */
-    #pricingMobileMenu[data-open="true"] { display: block; }
-    @media (prefers-reduced-motion: reduce) {
-      .pricing-clean *,
-      .pricing-clean *::before,
-      .pricing-clean *::after {
-        animation-duration: 0.01ms !important;
-        animation-iteration-count: 1 !important;
-        transition-duration: 0.01ms !important;
-        scroll-behavior: auto !important;
-      }
-    }
-  </style>
-<div id="pricingWrap" class="pricing-clean min-h-screen bg-white dark:bg-slate-900">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<div id="pricingWrap" class="pricing-clean min-h-screen bg-white dark:bg-slate-900 font-['Inter']">
 <!-- ========== STICKY NAV ========== -->
   <nav class="relative sticky top-0 z-50 bg-white dark:bg-slate-900 border-b border-slate-200/80 dark:border-slate-700/80" aria-label="Main navigation">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16">
@@ -61,15 +22,15 @@
 
       <!-- CTA -->
       <div class="flex items-center gap-3">
-        <button onclick="const m=document.getElementById('pricingMobileMenu');m.hasAttribute('data-open')?m.removeAttribute('data-open'):m.setAttribute('data-open','true')" class="md:hidden min-h-11 min-w-11 flex items-center justify-center text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500" aria-label="Toggle menu">
+        <button onclick="const m=document.getElementById('pricingMobileMenu');const open=m.classList.toggle('hidden')===false;m.setAttribute('aria-hidden',String(!open))" class="md:hidden min-h-11 min-w-11 flex items-center justify-center text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500" aria-label="Toggle menu">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
         </button>
-        <a id="pricingSignIn" href="#" class="sm:inline-flex text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white px-3 py-2 rounded-md transition-colors duration-150 min-h-11 items-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500">Sign in</a>
+        <a id="pricingSignIn" href="#" class="hidden sm:inline-flex text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white px-3 py-2 rounded-md transition-colors duration-150 min-h-11 items-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500">Sign in</a>
         <a href="#" class="inline-flex items-center justify-center bg-indigo-700 hover:bg-indigo-800 text-white text-sm px-4 py-2 rounded-lg transition-colors duration-150 min-h-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500">Start Free Trial</a>
       </div>
     </div>
     <!-- Mobile menu -->
-    <div id="pricingMobileMenu" class="absolute left-0 right-0 top-full z-50 shadow-lg border-t border-slate-200/80 dark:border-slate-700/80 bg-white dark:bg-slate-900">
+    <div id="pricingMobileMenu" class="hidden md:hidden absolute left-0 right-0 top-full z-50 shadow-lg border-t border-slate-200/80 dark:border-slate-700/80 bg-white dark:bg-slate-900" aria-hidden="true">
       <div class="px-4 py-3 flex flex-col gap-1">
         <a href="#" class="py-3 px-3 text-slate-600 dark:text-slate-400 rounded-md hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors min-h-11 flex items-center">Product</a>
         <a href="#" class="py-3 px-3 text-slate-600 dark:text-slate-400 rounded-md hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors min-h-11 flex items-center">Features</a>
@@ -103,7 +64,7 @@
             class="relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-slate-300 transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500"
             onclick="toggleBilling()"
           >
-            <span class="toggle-slider pointer-events-none inline-block h-5.5 w-5.5 translate-x-0 rounded-full bg-white shadow-md ring-0 mt-[1px] ml-[1px]"></span>
+            <span class="toggle-slider pointer-events-none inline-block h-5.5 w-5.5 translate-x-0 rounded-full bg-white shadow-md ring-0 mt-[1px] ml-[1px] transition-transform duration-200 ease-in-out motion-reduce:transition-none"></span>
           </button>
           <span id="label-annual" class="text-sm text-slate-500 dark:text-slate-300">
             Annual
@@ -165,7 +126,7 @@
               <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">For growing teams that need more power</p>
             </div>
             <div class="mt-6">
-              <span class="text-5xl font-bold tracking-tight text-slate-900 dark:text-white price-value" data-monthly="29" data-annual="23">$29</span>
+              <span class="text-5xl font-bold tracking-tight text-slate-900 dark:text-white price-value transition-opacity duration-150 ease-in-out motion-reduce:transition-none" data-monthly="29" data-annual="23">$29</span>
               <span class="text-base text-slate-500 dark:text-slate-400 ml-1">/month</span>
               <div class="mt-1 h-5">
                 <span class="annual-note text-sm text-teal-600 hidden" aria-hidden="true">Billed annually ($276/yr)</span>
@@ -217,7 +178,7 @@
               <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">For organizations that need full control</p>
             </div>
             <div class="mt-6">
-              <span class="text-5xl font-bold tracking-tight text-slate-900 dark:text-white price-value" data-monthly="99" data-annual="79">$99</span>
+              <span class="text-5xl font-bold tracking-tight text-slate-900 dark:text-white price-value transition-opacity duration-150 ease-in-out motion-reduce:transition-none" data-monthly="99" data-annual="79">$99</span>
               <span class="text-base text-slate-500 dark:text-slate-400 ml-1">/month</span>
               <div class="mt-1 h-5">
                 <span class="annual-note text-sm text-teal-600 hidden" aria-hidden="true">Billed annually ($948/yr)</span>
@@ -285,20 +246,20 @@
     if (!isAnnual) {
       btn.classList.remove('bg-slate-300');
       btn.classList.add('bg-indigo-600');
-      slider.style.transform = 'translateX(1.25rem)';
+      slider.classList.add('translate-x-5');
+      slider.classList.remove('translate-x-0');
       labelM.classList.replace('text-slate-900', 'text-slate-500');
-      labelA.querySelector('span').classList.replace('text-slate-500', 'text-slate-900') || (labelA.style.color = '#0f172a');
     } else {
       btn.classList.remove('bg-indigo-600');
       btn.classList.add('bg-slate-300');
-      slider.style.transform = 'translateX(0)';
+      slider.classList.remove('translate-x-5');
+      slider.classList.add('translate-x-0');
       labelM.classList.replace('text-slate-500', 'text-slate-900');
-      labelA.querySelector('span') && labelA.querySelector('span').classList.replace('text-slate-900', 'text-slate-500');
     }
     document.querySelectorAll('.price-value').forEach(el => {
       const price = !isAnnual ? el.dataset.annual : el.dataset.monthly;
-      el.style.opacity = '0';
-      setTimeout(() => { el.textContent = '$' + price; el.style.opacity = '1'; }, 150);
+      el.classList.add('opacity-0');
+      setTimeout(() => { el.textContent = '$' + price; el.classList.remove('opacity-0'); }, 150);
     });
     document.querySelectorAll('.annual-note').forEach(el => {
       el.classList.toggle('hidden', isAnnual);
