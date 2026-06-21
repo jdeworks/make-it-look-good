@@ -53,24 +53,8 @@ function showBadRows(dir, n = 5) {
   if (bad.length > n) log(`  ... and ${bad.length - n} more`);
 }
 
-function waitForPort() {
-  // Wait until port 8788 is free (matrix server fully exited). No timeout.
-  let n = 0;
-  for (;;) {
-    try {
-      execSync('fuser 8788/tcp 2>/dev/null', { cwd: ROOT, stdio: 'pipe' });
-      // Port still in use — log every 60s
-      if (n % 12 === 0) log(`Waiting for port 8788 to free... (${n * 5}s)`);
-      execSync('sleep 5', { cwd: ROOT, stdio: 'inherit' });
-      n++;
-    } catch {
-      return; // fuser exit non-zero = port free
-    }
-  }
-}
-
 function runMatrix(only, outDir, expectedRows) {
-  waitForPort();
+  // Port 8788 shared — EADDRINUSE handler in matrix script allows multiple concurrent runs
   log(`Running matrix: --only ${only} (expect ${expectedRows} rows)`);
   const result = spawnSync('node', [
     'scripts/generate-preset-score-matrix.mjs',
