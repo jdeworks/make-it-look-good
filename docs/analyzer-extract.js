@@ -958,11 +958,12 @@ window.MilgExtract = (function() {
           var hPad = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
           // Check for very tight horizontal padding (<8px total)
           if (hPad < 8 && r.width > 0) cramped++;
-          // Check for wrapped content (cell height > 1.8x line height = multi-line)
+          // Check for wrapped content: (cell height - padding) > 1.8x line height = multi-line
           var lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.4;
           // Skip flex/grid cells — they use intentional min-height for touch targets, not text wrapping
           var isFlex = cs.display === 'flex' || cs.display === 'inline-flex' || cs.display === 'grid';
-          if (!isFlex && r.height > lh * 1.8 && cell.textContent.trim().length > 0) wrappedCells++;
+          var vPad = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+          if (!isFlex && (r.height - vPad) > lh * 1.8 && cell.textContent.trim().length > 0) wrappedCells++;
         });
         if (cramped > 2 || wrappedCells > 2) {
           data.layout.tableCellIssues.push({
@@ -1270,6 +1271,8 @@ window.MilgExtract = (function() {
       if (_iframeHiddenPanels.indexOf(el) !== -1) return;
       // Decorative elements (aria-hidden) are never interactive panels — skip them
       if (el.getAttribute('aria-hidden') === 'true') return;
+      // Table cells are structural layout elements, not interactive panels (e.g. hidden sm:table-cell)
+      if (el.tagName === 'TH' || el.tagName === 'TD') return;
       var cls = typeof el.className === 'string' ? el.className : '';
       var isTwHidden = /\bhidden\b/.test(cls);
       var isTwCollapsed = /\bmax-h-0\b/.test(cls) && el.clientHeight === 0;
