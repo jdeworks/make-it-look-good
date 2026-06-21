@@ -403,7 +403,10 @@ async function prepareWorkerPage(browser) {
 }
 
 async function launchBrowser() {
-  const options = { headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] };
+  // --disable-dev-shm-usage: on WSL2/containers /dev/shm is small; chromium fills it under
+  // sustained load and tabs crash with "Target closed" after a few hundred rows. Route shared
+  // memory to /tmp instead so long full-matrix runs stay stable.
+  const options = { headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'] };
   try {
     const browser = await puppeteer.launch(options);
     return { browser, engine: 'puppeteer' };
