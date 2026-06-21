@@ -965,6 +965,45 @@ function applyColorTheme(html, fromPrimary, toPrimary, fromNeutral, toNeutral, t
     });
   })();
 
+  // --- 1c. Colored solid buttons: guarantee text contrast on the fill ---
+  // bg-{primary}-500/600 with text-white fails 4.5:1 for bright/mid hues. Per-element, 3-way:
+  //   1) white passes on the fill → leave it.
+  //   2) a dark tonal text shade passes on the fill (bright hues, e.g. yellow) → flip text-white to it.
+  //   3) mid-tone "dead zone" (neither white nor dark passes on -600, e.g. orange/cyan) → darken
+  //      the fill to the lightest shade where white passes, keep white.
+  // Only the resting label is touched (bare text-white); hover:/dark:/variant text-white untouched.
+  (function fixColoredButtonContrast() {
+    var rgb = tailwindRGB[toPrimary];
+    if (!rgb) return;
+    function lum(c) { var a = c.map(function(v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return 0.2126 * a[0] + 0.7152 * a[1] + 0.0722 * a[2]; }
+    function cr(a, b) { var L1 = lum(a), L2 = lum(b); return (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05); }
+    var white = [255, 255, 255];
+    // Target 5.0, not 4.5: this static sRGB calc runs slightly higher than the analyzer's
+    // pixel-measured ratio (observed ~0.4 gap), so a margin ensures the chosen shade still
+    // clears 4.5:1 when measured on the rendered button.
+    var TARGET = 5.0;
+    result = result.replace(/class="([^"]*)"/g, function(m, cls) {
+      if (!/(^|\s)text-white(\s|$)/.test(cls)) return m;
+      var fm = cls.match(new RegExp('(?:^|\\s)bg-' + toPrimary + '-(500|600)(?=\\s|$)'));
+      if (!fm) return m;
+      var fill = fm[1];
+      if (!rgb[fill] || cr(white, rgb[fill]) >= TARGET) return m; // white comfortably fine on this fill
+      var dord = ['950', '900', '800'];
+      for (var i = 0; i < dord.length; i++) {
+        if (rgb[dord[i]] && cr(rgb[dord[i]], rgb[fill]) >= TARGET) {
+          return 'class="' + cls.replace(/(^|\s)text-white(?=\s|$)/g, '$1text-' + toPrimary + '-' + dord[i]) + '"';
+        }
+      }
+      var ford = ['700', '800', '900'];
+      for (var j = 0; j < ford.length; j++) {
+        if (rgb[ford[j]] && cr(white, rgb[ford[j]]) >= TARGET) {
+          return 'class="' + cls.replace(new RegExp('(^|\\s)bg-' + toPrimary + '-' + fill + '(?=\\s|$)'), '$1bg-' + toPrimary + '-' + ford[j]) + '"';
+        }
+      }
+      return m;
+    });
+  })();
+
   // --- 2. Replace inline rgba() and hex values in <style> blocks and arbitrary Tailwind values ---
   function replaceInlineColors(from, to) {
     if (from === to) return;
