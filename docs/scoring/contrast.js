@@ -142,6 +142,22 @@ function scoreContrast(data) {
   var failures = failedPairs.filter(function(p) { return !p.isPlaceholder; });
   var nearMisses = profilePairs.filter(function(p) { return p.passes && p.ratio < p.needed + 0.5; });
 
+  // Phase 1 — pixel-verify is ground truth for translucent pairs. The CSS path only
+  // approximates the composited color through frosted/backdrop-filter/opacity surfaces;
+  // when the rendered screenshot pixels actually pass for that selector, drop the
+  // CSS-estimated error. Only applies when verification ran (no-op in the headless
+  // matrix, which has no screenshots) and only for genuinely translucent pairs.
+  var _pixelPass = {};
+  if (data._contrastVerifyResults && data._contrastVerifyResults.length) {
+    data._contrastVerifyResults.forEach(function(vr) {
+      if (vr && vr.selector && vr.pixelPasses && !vr.skipped) _pixelPass[vr.selector] = true;
+    });
+  }
+  function _isTranslucentPair(p) { return !!p.backdropFilter || (p.minBgAlpha !== undefined && p.minBgAlpha < 1); }
+  if (Object.keys(_pixelPass).length) {
+    failures = failures.filter(function(p) { return !(_isTranslucentPair(p) && _pixelPass[p.selector]); });
+  }
+
   // Deduplicate failures with identical ratio + selector
   var failSeen = {};
   failures.forEach(function(p) {
@@ -311,8 +327,16 @@ function scoreContrast(data) {
     }
   }
 
-  // Backdrop-filter + translucent backgrounds — contrast ratio may be unreliable
-  var backdropPairs = profilePairs.filter(function(p) { return p.backdropFilter && p.minBgAlpha < 0.7; });
+  // Backdrop-filter + translucent backgrounds — contrast ratio may be unreliable.
+  // Only flag pairs whose MEASURED contrast is actually near/under threshold (within 30%);
+  // a frosted surface with comfortably-passing text is not a contrast risk. Also skip any
+  // pair the rendered pixels confirm passing. Previously this fired on the entire frosted
+  // UI regardless of contrast, and its fix text recommended the now-forbidden alpha hack.
+  var backdropPairs = profilePairs.filter(function(p) {
+    return p.backdropFilter && p.minBgAlpha < 0.7
+      && p.ratio < (p.needed || 4.5) * 1.3
+      && !_pixelPass[p.selector];
+  });
   if (backdropPairs.length > 0) {
     var bdSamples = backdropPairs.map(function(p) {
       return '"' + p.text + '" (bg alpha: ' + p.minBgAlpha + ')';

@@ -264,9 +264,8 @@ const visualStyles = [
 [class*="rounded-full"]{border-radius:9999px!important}
 h1,h2,h3,h4,h5,h6{font-weight:300!important;letter-spacing:0.02em}
 h1{font-size:2.25em!important}
-p,span,li,td,th{opacity:0.75}
 button:not([class*="bg-"]),[role="button"]:not([class*="bg-"]){font-weight:400!important;letter-spacing:0.06em;text-transform:uppercase;font-size:0.82em!important;border:1px solid rgba(0,0,0,0.1)!important;background:transparent!important;color:inherit!important}
-button[class*="bg-"],[role="button"][class*="bg-"]{font-weight:400!important;letter-spacing:0.06em;text-transform:uppercase;font-size:0.82em!important;opacity:0.85}
+button[class*="bg-"],[role="button"][class*="bg-"]{font-weight:400!important;letter-spacing:0.06em;text-transform:uppercase;font-size:0.82em!important}
 button:hover,a:hover,[role="button"]:hover{opacity:0.5;transition:opacity 250ms ease-out}
 nav,aside,[class*="border-b"],[class*="border-r"]{border-color:rgba(0,0,0,0.04)!important}
 ` },
@@ -944,6 +943,27 @@ function applyColorTheme(html, fromPrimary, toPrimary, fromNeutral, toNeutral, t
       result = result.replace(new RegExp('(\\b|-)' + fromNeutral + '-' + shade + '\\b', 'g'), '$1' + toNeutral + '-' + shade);
     }
   }
+
+  // --- 1b. Bump bright-hue accent TEXT shades for WCAG contrast on light backgrounds ---
+  // text-{primary}-500/600 on white fails 4.5:1 for bright hues (yellow, lime, cyan, sky,
+  // amber, green, emerald, teal, orange). Promote to the lightest shade that still meets
+  // 4.5:1 on white. dark: variants are left untouched — they sit on dark backgrounds and
+  // need lighter shades. Non-bright hues (blue, indigo, …) already pass and are unchanged.
+  (function bumpAccentTextShade() {
+    var rgb = tailwindRGB[toPrimary];
+    if (!rgb) return;
+    function lum(c) { var a = c.map(function(v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return 0.2126 * a[0] + 0.7152 * a[1] + 0.0722 * a[2]; }
+    function crWhite(c) { return 1.05 / (lum(c) + 0.05); }
+    var safe = null;
+    var order = ['600', '700', '800', '900'];
+    for (var i = 0; i < order.length; i++) { if (rgb[order[i]] && crWhite(rgb[order[i]]) >= 4.5) { safe = order[i]; break; } }
+    if (!safe) safe = '900';
+    ['500', '600'].forEach(function(sh) {
+      if (sh === safe) return;
+      if (rgb[sh] && crWhite(rgb[sh]) >= 4.5) return; // this shade already passes
+      result = result.replace(new RegExp('(?<!dark:)\\btext-' + toPrimary + '-' + sh + '\\b', 'g'), 'text-' + toPrimary + '-' + safe);
+    });
+  })();
 
   // --- 2. Replace inline rgba() and hex values in <style> blocks and arbitrary Tailwind values ---
   function replaceInlineColors(from, to) {

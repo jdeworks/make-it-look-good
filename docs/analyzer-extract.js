@@ -30,6 +30,25 @@ window.MilgExtract = (function() {
       var a = c.a;
       return { r: Math.round(c.r * a + 255 * (1 - a)), g: Math.round(c.g * a + 255 * (1 - a)), b: Math.round(c.b * a + 255 * (1 - a)) };
     }
+    // Composite a foreground color onto its ACTUAL background (not white), then apply
+    // the element's effective opacity (CSS `opacity` dims the whole subtree toward its
+    // backdrop). This yields the visible perceived fg color for contrast. Fixes the
+    // frosted/translucent and opacity-dimmed (Hushed) false positives where fg was
+    // previously flattened against white and `effectiveOpacity` was ignored.
+    function blendFgOverBg(fg, bg, effOpacity) {
+      if (!fg) return bg || { r: 255, g: 255, b: 255 };
+      var base = bg || { r: 255, g: 255, b: 255 };
+      var a = fg.a !== undefined ? fg.a : 1;
+      var r1 = fg.r * a + base.r * (1 - a);
+      var g1 = fg.g * a + base.g * (1 - a);
+      var b1 = fg.b * a + base.b * (1 - a);
+      var k = (effOpacity !== undefined && effOpacity < 1) ? effOpacity : 1;
+      return {
+        r: Math.round(r1 * k + base.r * (1 - k)),
+        g: Math.round(g1 * k + base.g * (1 - k)),
+        b: Math.round(b1 * k + base.b * (1 - k))
+      };
+    }
     // Gradient sampler for iframe extractor — handles multiple backgrounds + alpha
     var _gc = document.createElement('canvas'); _gc.width = 100; _gc.height = 100;
     var _gx = _gc.getContext('2d', { willReadFrequently: true });
@@ -105,6 +124,22 @@ window.MilgExtract = (function() {
         if (c && c.a > 0) layers.push(c);
         if (c && c.a >= 1) break;
         node = node.parentElement;
+      }
+      // If no opaque layer was reached (the walk excludes <html>), the real backdrop is
+      // the document element's background — sample its color/gradient instead of assuming
+      // white. The Frosted effect paints its gradient on <body>, but some presets/effects
+      // place it on <html>; either way this prevents compositing translucent surfaces over
+      // a phantom white base.
+      if (!(layers.length && layers[layers.length - 1].a >= 1)) {
+        var htmlEl = document.documentElement;
+        var hc = parseColor(getComputedStyle(htmlEl).backgroundColor);
+        if (!hc || hc.a === 0) {
+          var hRect = htmlEl.getBoundingClientRect();
+          var hRelX = hRect.width > 0 ? (elCenterX - hRect.left) / hRect.width : 0.5;
+          var hRelY = hRect.height > 0 ? (elCenterY - hRect.top) / hRect.height : 0.5;
+          hc = getGradientBg(htmlEl, { x: Math.max(0, Math.min(1, hRelX)), y: Math.max(0, Math.min(1, hRelY)) });
+        }
+        if (hc && hc.a > 0) layers.push(hc);
       }
       var result = { r: 255, g: 255, b: 255 };
       for (var i = layers.length - 1; i >= 0; i--) {
@@ -317,8 +352,18 @@ window.MilgExtract = (function() {
       var _textContent = (el.textContent || '').trim();
       var _noEmoji = _textContent.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1FA00}-\u{1FA9F}\u{200D}]/gu, '').trim();
       if (_noEmoji.length === 0 && _textContent.length > 0) continue;
-      var fgBlended = blendOnWhite(fg);
       var bg = getEffectiveBg(el);
+      // Effective opacity (element × ancestors) — CSS `opacity` dims the whole subtree
+      // toward its backdrop. Computed before the fg blend so it factors into the ratio.
+      var _effOpacity = 1;
+      var _opNode = el;
+      while (_opNode && _opNode !== document.documentElement) {
+        var _opVal = parseFloat(getComputedStyle(_opNode).opacity);
+        if (!isNaN(_opVal) && _opVal < 1) _effOpacity *= _opVal;
+        _opNode = _opNode.parentElement;
+      }
+      // Composite fg over the ACTUAL bg (not white) and apply opacity → visible color.
+      var fgBlended = blendFgOverBg(fg, bg, _effOpacity);
       var ratio = contrastRatio(fgBlended, bg);
       var fontSize = parseFloat(style.fontSize);
       var fontWeight = parseInt(style.fontWeight) || 400;
@@ -340,14 +385,7 @@ window.MilgExtract = (function() {
         filterAncestor = filterAncestor.parentElement;
       }
       var elRect = el.getBoundingClientRect();
-      // Compute effective opacity (element × ancestors)
-      var _effOpacity = 1;
-      var _opNode = el;
-      while (_opNode && _opNode !== document.documentElement) {
-        var _opVal = parseFloat(getComputedStyle(_opNode).opacity);
-        if (!isNaN(_opVal) && _opVal < 1) _effOpacity *= _opVal;
-        _opNode = _opNode.parentElement;
-      }
+      // (_effOpacity computed above, before the fg blend)
       // Does any ancestor up to the first opaque background paint an IMAGE behind
       // this text? (url(...) backgrounds only — gradients are detected pixel-side
       // via bg variance.) Used by the small-text demotion in pixel verify.
@@ -393,8 +431,8 @@ window.MilgExtract = (function() {
         if (inpColor) phColor = { r: inpColor.r, g: inpColor.g, b: inpColor.b, a: Math.min(inpColor.a, 0.5) };
       }
       if (!phColor) return;
-      var phBlended = blendOnWhite(phColor);
       var phBg = getEffectiveBg(inp);
+      var phBlended = blendFgOverBg(phColor, phBg);
       var phRatio = contrastRatio(phBlended, phBg);
       var inpStyle = getComputedStyle(inp);
       var phFontSize = parseFloat(inpStyle.fontSize);
