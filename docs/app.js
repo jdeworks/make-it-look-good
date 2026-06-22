@@ -282,12 +282,12 @@ input,select,textarea{border-radius:14px!important}
 button:active,[role="button"]:active{transform:scale(0.95)!important;transition-duration:80ms!important}
 ` },
   { name: 'Frosted', label: 'Frosted', css: `/* Frosted — Frosted Modern (light + dark) */
-html:not(.dark) body{background:linear-gradient(135deg,#dbeafe 0%,#ede9fe 35%,#fce7f3 65%,#e0f2fe 100%)!important;min-height:100vh}
-.dark body,.dark.min-h-screen,html.dark body{background:linear-gradient(135deg,#0f172a 0%,#1e1b4b 35%,#1e1b4b 65%,#0f172a 100%)!important;min-height:100vh}
-html:not(.dark) [class*="bg-white"]{background:rgba(255,255,255,0.55)!important;-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);border:1px solid rgba(255,255,255,0.4)!important;box-shadow:0 4px 24px rgba(0,0,0,0.04),inset 0 1px 0 rgba(255,255,255,0.6)!important}
-.dark [class*="bg-slate-900"],.dark [class*="bg-slate-950"],.dark [class*="bg-gray-900"],.dark [class*="bg-gray-950"]{background:rgba(15,23,42,0.78)!important;-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);border:1px solid rgba(99,102,241,0.15)!important;box-shadow:0 4px 24px rgba(0,0,0,0.2),inset 0 1px 0 rgba(99,102,241,0.1)!important}
-html:not(.dark) [class*="bg-slate-50"],html:not(.dark) [class*="bg-gray-50"],html:not(.dark) [class*="bg-zinc-50"]{background:rgba(248,250,252,0.4)!important;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
-.dark [class*="bg-slate-800"],.dark [class*="bg-gray-800"],.dark [class*="bg-slate-850"]{background:rgba(30,41,59,0.72)!important;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+html:not(.dark) body{background:linear-gradient(135deg,#c3d9fb 0%,#ddd6f5 35%,#f9d6ec 65%,#c9e8fc 100%)!important;min-height:100vh}
+.dark body,.dark.min-h-screen,html.dark body{background:linear-gradient(135deg,#0d1426 0%,#1e1b4b 50%,#14204a 100%)!important;min-height:100vh}
+html:not(.dark) [class~="bg-white"]{background:rgba(255,255,255,0.50)!important;-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);border:1px solid rgba(255,255,255,0.5)!important;box-shadow:0 6px 28px rgba(31,38,135,0.10),inset 0 1px 0 rgba(255,255,255,0.65)!important}
+.dark [class~="bg-slate-900"],.dark [class~="bg-slate-950"],.dark [class~="bg-gray-900"],.dark [class~="bg-gray-950"],.dark [class~="bg-zinc-900"],.dark [class~="bg-zinc-950"],.dark [class~="bg-neutral-900"],.dark [class~="bg-neutral-950"],.dark [class~="bg-stone-900"],.dark [class~="bg-stone-950"],.dark [class~="bg-red-900"],.dark [class~="bg-red-950"],.dark [class~="bg-orange-900"],.dark [class~="bg-orange-950"],.dark [class~="bg-amber-900"],.dark [class~="bg-amber-950"],.dark [class~="bg-yellow-900"],.dark [class~="bg-yellow-950"],.dark [class~="bg-lime-900"],.dark [class~="bg-lime-950"],.dark [class~="bg-green-900"],.dark [class~="bg-green-950"],.dark [class~="bg-emerald-900"],.dark [class~="bg-emerald-950"],.dark [class~="bg-teal-900"],.dark [class~="bg-teal-950"],.dark [class~="bg-cyan-900"],.dark [class~="bg-cyan-950"],.dark [class~="bg-sky-900"],.dark [class~="bg-sky-950"],.dark [class~="bg-blue-900"],.dark [class~="bg-blue-950"],.dark [class~="bg-indigo-900"],.dark [class~="bg-indigo-950"],.dark [class~="bg-violet-900"],.dark [class~="bg-violet-950"],.dark [class~="bg-purple-900"],.dark [class~="bg-purple-950"],.dark [class~="bg-fuchsia-900"],.dark [class~="bg-fuchsia-950"],.dark [class~="bg-pink-900"],.dark [class~="bg-pink-950"],.dark [class~="bg-rose-900"],.dark [class~="bg-rose-950"]{background:rgba(15,23,42,0.78)!important;-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);border:1px solid rgba(99,102,241,0.15)!important;box-shadow:0 4px 24px rgba(0,0,0,0.2),inset 0 1px 0 rgba(99,102,241,0.1)!important}
+html:not(.dark) [class~="bg-slate-50"],html:not(.dark) [class~="bg-slate-100"],html:not(.dark) [class~="bg-gray-50"],html:not(.dark) [class~="bg-gray-100"],html:not(.dark) [class~="bg-zinc-50"],html:not(.dark) [class~="bg-zinc-100"],html:not(.dark) [class~="bg-neutral-50"],html:not(.dark) [class~="bg-neutral-100"],html:not(.dark) [class~="bg-stone-50"],html:not(.dark) [class~="bg-stone-100"],html:not(.dark) [class~="bg-red-50"],html:not(.dark) [class~="bg-red-100"],html:not(.dark) [class~="bg-orange-50"],html:not(.dark) [class~="bg-orange-100"],html:not(.dark) [class~="bg-amber-50"],html:not(.dark) [class~="bg-amber-100"],html:not(.dark) [class~="bg-yellow-50"],html:not(.dark) [class~="bg-yellow-100"],html:not(.dark) [class~="bg-lime-50"],html:not(.dark) [class~="bg-lime-100"],html:not(.dark) [class~="bg-green-50"],html:not(.dark) [class~="bg-green-100"],html:not(.dark) [class~="bg-emerald-50"],html:not(.dark) [class~="bg-emerald-100"],html:not(.dark) [class~="bg-teal-50"],html:not(.dark) [class~="bg-teal-100"],html:not(.dark) [class~="bg-cyan-50"],html:not(.dark) [class~="bg-cyan-100"],html:not(.dark) [class~="bg-sky-50"],html:not(.dark) [class~="bg-sky-100"],html:not(.dark) [class~="bg-blue-50"],html:not(.dark) [class~="bg-blue-100"],html:not(.dark) [class~="bg-indigo-50"],html:not(.dark) [class~="bg-indigo-100"],html:not(.dark) [class~="bg-violet-50"],html:not(.dark) [class~="bg-violet-100"],html:not(.dark) [class~="bg-purple-50"],html:not(.dark) [class~="bg-purple-100"],html:not(.dark) [class~="bg-fuchsia-50"],html:not(.dark) [class~="bg-fuchsia-100"],html:not(.dark) [class~="bg-pink-50"],html:not(.dark) [class~="bg-pink-100"],html:not(.dark) [class~="bg-rose-50"],html:not(.dark) [class~="bg-rose-100"]{background:rgba(255,255,255,0.35)!important;-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%);border:1px solid rgba(255,255,255,0.4)!important}
+.dark [class~="bg-slate-800"],.dark [class~="bg-gray-800"],.dark [class~="bg-zinc-800"],.dark [class~="bg-neutral-800"],.dark [class~="bg-stone-800"],.dark [class~="bg-red-800"],.dark [class~="bg-orange-800"],.dark [class~="bg-amber-800"],.dark [class~="bg-yellow-800"],.dark [class~="bg-lime-800"],.dark [class~="bg-green-800"],.dark [class~="bg-emerald-800"],.dark [class~="bg-teal-800"],.dark [class~="bg-cyan-800"],.dark [class~="bg-sky-800"],.dark [class~="bg-blue-800"],.dark [class~="bg-indigo-800"],.dark [class~="bg-violet-800"],.dark [class~="bg-purple-800"],.dark [class~="bg-fuchsia-800"],.dark [class~="bg-pink-800"],.dark [class~="bg-rose-800"]{background:rgba(30,41,59,0.72)!important;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
 [class*="shadow-sm"],[class*="shadow-md"],[class*="shadow-lg"],[class*="shadow-xl"]{box-shadow:0 4px 20px rgba(0,0,0,0.05),inset 0 1px 0 rgba(255,255,255,0.5)!important}
 .dark [class*="shadow-sm"],.dark [class*="shadow-md"],.dark [class*="shadow-lg"],.dark [class*="shadow-xl"]{box-shadow:0 4px 20px rgba(0,0,0,0.3),inset 0 1px 0 rgba(99,102,241,0.1)!important}
 [class*="rounded-lg"]{border-radius:14px!important}
@@ -344,6 +344,13 @@ function previewScrollbarCSS(dark) {
     + '::-webkit-scrollbar-corner{background:transparent}';
 }
 
+// Head <style> content shared by the full srcdoc build and the in-place update,
+// so the two paths can never drift. Only the scrollbar colours depend on `dark`.
+function previewHeadStyleContent(dark) {
+  return 'body { margin: 0; }\n' + previewScrollbarCSS(dark) + '\n'
+    + '.milg-tailwind-failed body:before{content:"Tailwind CDN failed to load. Preview may appear unstyled.";display:block;position:sticky;top:0;z-index:2147483647;padding:10px 14px;background:#7f1d1d;color:#fff;font:13px/1.4 system-ui,sans-serif;text-align:center}';
+}
+
 function buildPreviewSrcdoc(html, opts) {
   opts = opts || {};
   const dark = opts.dark !== undefined ? opts.dark : darkMode;
@@ -361,9 +368,8 @@ function buildPreviewSrcdoc(html, opts) {
     '  <script>function __milgTailwindFailed(){document.documentElement.classList.add("milg-tailwind-failed");try{parent.postMessage({type:"milg-tailwind-failed"},"*")}catch(e){}}</' + 'script>\n' +
     '  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4" onerror="__milgTailwindFailed()"></' + 'script>\n' +
       '  <style type="text/tailwindcss">\n' + darkVariantCSS + '\n  </style>\n' +
-    '  <style>\nbody { margin: 0; }\n' + previewScrollbarCSS(dark) + '\n' +
-    '.milg-tailwind-failed body:before{content:"Tailwind CDN failed to load. Preview may appear unstyled.";display:block;position:sticky;top:0;z-index:2147483647;padding:10px 14px;background:#7f1d1d;color:#fff;font:13px/1.4 system-ui,sans-serif;text-align:center}\n  </style>\n' +
-    (effectCSS ? '  <style>' + effectCSS + '</style>\n' : '') +
+    '  <style id="__milg_scrollbar">\n' + previewHeadStyleContent(dark) + '\n  </style>\n' +
+    '  <style id="__milg_effect">' + effectCSS + '</style>\n' +
     '</head>\n<body>\n' +
     processedHtml + '\n' +
     includeInspector + '\n' +
@@ -372,9 +378,7 @@ function buildPreviewSrcdoc(html, opts) {
     '  var a = e.target.closest("a");\n' +
     '  if (a) { e.preventDefault(); }\n' +
     '});\n' +
-    'document.querySelectorAll("form").forEach(function(f) {\n' +
-    '  f.addEventListener("submit", function(e) { e.preventDefault(); });\n' +
-    '});\n' +
+    'document.addEventListener("submit", function(e) { e.preventDefault(); }, true);\n' +
     'document.addEventListener("keydown", function(e) {\n' +
     '  if (e.key === "Escape") parent.postMessage("milg-escape", "*");\n' +
     '});\n' +
@@ -387,16 +391,31 @@ function buildPreviewSrcdoc(html, opts) {
     '</' + 'script>\n' +
     '<script>\n' +
     'window.addEventListener("message", function(e) {\n' +
-    '  if (e.data && e.data.type === "milg-run-analyzer") {\n' +
+    '  var d = e.data;\n' +
+    '  if (d && d.type === "milg-run-analyzer") {\n' +
     '    var s = document.createElement("script");\n' +
     '    s.textContent = ' + JSON.stringify(analyzePreviewScript) + ';\n' +
     '    document.body.appendChild(s);\n' +
     '    s.remove();\n' +
+    '    return;\n' +
+    '  }\n' +
+    '  if (d && d.type === "milg-render") {\n' +
+    '    document.documentElement.classList.toggle("dark", !!d.dark);\n' +
+    '    var sc = document.getElementById("__milg_scrollbar"); if (sc) sc.textContent = d.scrollbarCSS || "";\n' +
+    '    var ef = document.getElementById("__milg_effect"); if (ef) ef.textContent = d.effectCSS || "";\n' +
+    '    document.body.innerHTML = d.body || "";\n' +
     '  }\n' +
     '});\n' +
     '</' + 'script>\n' +
     '</body>\n</html>';
 }
+
+// Tracks whether the preview iframe has finished loading a full srcdoc, so we
+// know its document is ready for in-place updates. `lastDocInspector` remembers
+// whether the currently-loaded doc was built with the inspector agent script.
+let previewReady = false;
+let lastDocInspector = false;
+preview.addEventListener('load', () => { previewReady = true; });
 
 function updatePreview() {
   const html = editor.value;
@@ -412,9 +431,42 @@ function updatePreview() {
     sourceMap = null;
   }
 
-  preview.srcdoc = buildPreviewSrcdoc(bodyHtml, { includeInspector: inspectMode });
+  // Fast path: mutate the already-loaded preview document in place instead of
+  // reassigning srcdoc. A full srcdoc reload re-runs the Tailwind CDN script and
+  // its whole-document compile on every color/effect/dark/template/edit change;
+  // updating in place keeps Tailwind loaded once (its MutationObserver recompiles
+  // incrementally). The full-reload path is kept for the first render and for any
+  // render involving inspector mode, whose agent script must be (re)injected.
+  const canInPlace = previewReady && !inspectMode && !lastDocInspector && preview.contentWindow;
+  if (canInPlace) {
+    applyPreviewUpdateInPlace(bodyHtml);
+  } else {
+    previewReady = false;
+    preview.srcdoc = buildPreviewSrcdoc(bodyHtml, { includeInspector: inspectMode });
+    lastDocInspector = inspectMode;
+  }
   // Remember the content of a clean preset so an edit-then-revert can reattach.
   if (currentElement && !userEdited) lastCleanContent = html;
+}
+
+// Update the live preview without reloading it. The preview iframe is sandboxed
+// (allow-scripts, opaque origin) so the parent can't touch its document directly —
+// we postMessage the new body + effect/scrollbar CSS + dark flag, and a listener
+// inside the iframe applies them to its own document. Tailwind stays loaded once
+// (its MutationObserver recompiles incrementally); the iframe's click/submit/keydown/
+// touch handlers (on document) and analyzer listener (on window) survive the body swap.
+function applyPreviewUpdateInPlace(bodyHtml) {
+  const processed = bodyHtml.replace(
+    /<style type="text\/tailwindcss">/gi,
+    '<style type="text/tailwindcss">\n    ' + darkVariantCSS
+  );
+  preview.contentWindow.postMessage({
+    type: 'milg-render',
+    body: processed,
+    effectCSS: visualStyles[currentStyleIndex].css || '',
+    dark: darkMode,
+    scrollbarCSS: previewHeadStyleContent(darkMode),
+  }, '*');
 }
 
 function debouncedUpdate() {
