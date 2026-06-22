@@ -54,6 +54,9 @@ const DRY_RUN = args.includes('--dry-run');
 const RESUME = args.includes('--resume');
 const COMBINE_ONLY = args.includes('--combine-only');
 const PUBLISH = args.includes('--publish');
+// Score the intentionally-bad `before` variants too (off by default — they're noise for
+// error sweeps, but the published gallery wants them to show the before->after improvement).
+const INCLUDE_BEFORE = args.includes('--include-before');
 const THUMBNAILS = getArg('thumbnails', 'default'); // none | default | all
 const CAPTURE_FORMAT = getArg('thumbnail-format', 'png');
 const BLOCKER_THRESHOLD = parseInt(getArg('blocker-threshold', '95'), 10) || 95;
@@ -306,7 +309,7 @@ function allPresetVariants(manifest) {
   const variants = [];
   for (const [element, info] of Object.entries(manifest.elements || {})) {
     for (const personality of Object.keys(info.personalities || {})) {
-      if (personality === 'before') continue;
+      if (personality === 'before' && !INCLUDE_BEFORE) continue;
       const presetKey = `${element}/${personality}`;
       if (ONLY && element !== ONLY && presetKey !== ONLY && !element.includes(ONLY)) continue;
       const file = join(PRESETS_DIR, element, `${personality}.html`);
@@ -320,7 +323,7 @@ function allManifestPresetVariants(manifest) {
   const variants = [];
   for (const [element, info] of Object.entries(manifest.elements || {})) {
     for (const personality of Object.keys(info.personalities || {})) {
-      if (personality === 'before') continue;
+      if (personality === 'before' && !INCLUDE_BEFORE) continue;
       const file = join(PRESETS_DIR, element, `${personality}.html`);
       if (fileExists(file)) variants.push({ element, personality });
     }

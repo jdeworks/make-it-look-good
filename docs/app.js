@@ -844,18 +844,64 @@ function getPresetScore(element, personality) {
   return null;
 }
 
-// Refresh card score badges in place when the mode changes (scores are mode-dependent).
+// Thumbnail path for a preset/personality in the CURRENT mode (dark thumbnails carry a
+// -dark suffix). Generated for both modes by tmp/gen-thumbs.mjs.
+function presetThumbSrc(element, personality, dark) {
+  return 'presets/thumbnails/' + encodeURIComponent(element) + '/' + encodeURIComponent(personality) + (dark ? '-dark' : '') + '.webp';
+}
+
+// Refresh card score badges AND thumbnails in place when the mode changes — both the
+// design score and the preview image are dark/light-mode dependent.
 function updatePresetCardScores() {
   document.querySelectorAll('.preset-card').forEach(card => {
     const el = card.dataset.element, pers = card.dataset.personality;
     if (!el) return;
     const span = card.querySelector('.preset-score');
-    if (!span) return;
-    const score = getPresetScore(el, pers);
-    if (score === null) { span.className = 'preset-score pending'; span.textContent = 'No score'; }
-    else { span.className = 'preset-score ' + (score >= 90 ? 'good' : score >= 85 ? 'review' : 'fail'); span.textContent = score; }
+    if (span) {
+      const score = getPresetScore(el, pers);
+      if (score === null) { span.className = 'preset-score pending'; span.textContent = 'No score'; }
+      else { span.className = 'preset-score ' + (score >= 90 ? 'good' : score >= 85 ? 'review' : 'fail'); span.textContent = score; }
+    }
+    const img = card.querySelector('.preset-thumb-img');
+    if (img) { const next = presetThumbSrc(el, pers, darkMode); if (img.getAttribute('src') !== next) { img.style.display = ''; img.src = next; } }
   });
+  if (thumbPreviewEl && thumbPreviewEl.dataset.el) {
+    thumbPreviewEl.querySelector('img').src = presetThumbSrc(thumbPreviewEl.dataset.el, thumbPreviewEl.dataset.pers, darkMode);
+  }
 }
+
+// --- Hover zoom: a large floating preview of the card's thumbnail (the 48px card image is
+// too small to read; this shows a ~360px version positioned beside the hovered card). ---
+let thumbPreviewEl = null;
+function ensureThumbPreview() {
+  if (thumbPreviewEl) return thumbPreviewEl;
+  thumbPreviewEl = document.createElement('div');
+  thumbPreviewEl.id = 'thumbPreview';
+  thumbPreviewEl.style.display = 'none';
+  thumbPreviewEl.innerHTML = '<img alt="">';
+  document.body.appendChild(thumbPreviewEl);
+  return thumbPreviewEl;
+}
+function showThumbPreview(card) {
+  const el = card.dataset.element, pers = card.dataset.personality;
+  if (!el) return;
+  const img = card.querySelector('.preset-thumb-img');
+  if (!img) return; // no thumbnail for this card (e.g. failed to load) -> no preview
+  const p = ensureThumbPreview();
+  p.dataset.el = el; p.dataset.pers = pers;
+  p.querySelector('img').src = presetThumbSrc(el, pers, darkMode);
+  p.style.display = 'block';
+  // Position: prefer to the right of the card, flip to the left if it would overflow.
+  const r = card.getBoundingClientRect();
+  const w = 360, h = 253, gap = 12;
+  let left = r.right + gap;
+  if (left + w > window.innerWidth - 8) left = r.left - gap - w;
+  if (left < 8) left = 8;
+  let top = Math.min(Math.max(8, r.top + r.height / 2 - h / 2), window.innerHeight - h - 8);
+  p.style.left = left + 'px';
+  p.style.top = top + 'px';
+}
+function hideThumbPreview() { if (thumbPreviewEl) { thumbPreviewEl.style.display = 'none'; thumbPreviewEl.dataset.el = ''; } }
 
 // Hue (0-360) of a Tailwind accent's -500 shade, or null for grays. Lets the
 // gallery pick the nearest tested hue when the selected color wasn't measured.
@@ -1008,6 +1054,8 @@ function createPresetCard(element, personality, suffix) {
   card.dataset.personality = personality;
   card.dataset.search = tags.concat([bestFor, personality, suffix || '']).join(' ').toLowerCase();
   card.onclick = () => loadPreset(element, personality);
+  card.onmouseenter = () => showThumbPreview(card);
+  card.onmouseleave = hideThumbPreview;
 
   const title = info.label + (suffix ? ' - ' + suffix : personality === 'before' ? ' - Before' : '');
   const variants = persNames.filter(p => p !== 'before').map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(', ');
@@ -1017,7 +1065,7 @@ function createPresetCard(element, personality, suffix) {
 
   card.innerHTML = ''
     + '<span class="preset-thumb" aria-hidden="true"><span class="preset-thumb-fallback">' + escapeHtml((info.label || element).slice(0, 2).toUpperCase()) + '</span>'
-    + (personality === 'before' ? '' : '<img class="preset-thumb-img" loading="lazy" alt="" src="presets/thumbnails/' + encodeURIComponent(element) + '/' + encodeURIComponent(personality) + '.webp" onerror="this.remove()">')
+    + '<img class="preset-thumb-img" loading="lazy" alt="" src="' + presetThumbSrc(element, personality, darkMode) + '" onerror="this.remove()">'
     + '</span>'
     + '<span class="preset-card-body">'
     + '  <span class="preset-card-top"><span class="preset-card-title">' + escapeHtml(title) + '</span>' + scoreHtml + '</span>'
@@ -1047,6 +1095,7 @@ async function togglePresets() {
   const menu = document.getElementById('presetsMenu');
   const isOpening = !menu.classList.contains('open');
   menu.classList.toggle('open');
+  if (!isOpening) hideThumbPreview();
   if (isOpening) {
     await buildPresetsMenu();
     const input = document.getElementById('presetSearch');
@@ -1477,6 +1526,7 @@ async function loadPreset(element, personality) {
   originalPresetHtml = html;
   editor.value = html;
   document.getElementById('presetsMenu').classList.remove('open');
+  hideThumbPreview();
   updateTemplateName();
   if (personality === 'before') {
     document.getElementById('personalityButtons').style.display = 'none';
