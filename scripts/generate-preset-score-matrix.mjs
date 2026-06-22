@@ -195,6 +195,36 @@ function presetNeutral(element) {
   return element === 'restaurant' ? 'stone' : 'slate';
 }
 
+// Complementary accent for a template's base color: convert the base hue's -500 RGB
+// to an HSL hue and pick the accent sitting ~180° opposite (e.g. blue→amber, rose→teal).
+// Grays (no stable hue) fall back to a warm accent. Used by `publish` mode to score each
+// preset at its own palette plus one clearly-contrasting hue.
+function rgbToHue(rgb) {
+  if (!rgb) return null;
+  let [r, g, b] = rgb; r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  if (d < 1e-6) return null; // achromatic (gray)
+  let h;
+  if (max === r) h = ((g - b) / d) % 6;
+  else if (max === g) h = (b - r) / d + 2;
+  else h = (r - g) / d + 4;
+  h *= 60; if (h < 0) h += 360;
+  return h;
+}
+function complementaryColor(base) {
+  const hues = gallery.accentColorNames().filter(c => !['slate', 'gray', 'zinc', 'neutral', 'stone'].includes(c));
+  const baseHue = rgbToHue((gallery.tailwindRGB[base] || gallery.tailwindRGB.blue)[500]);
+  const target = baseHue == null ? 40 : (baseHue + 180) % 360; // gray -> warm amber-ish
+  let best = null, bestDiff = Infinity;
+  for (const name of hues) {
+    const h = rgbToHue(gallery.tailwindRGB[name][500]);
+    if (h == null) continue;
+    let diff = Math.abs(h - target); diff = Math.min(diff, 360 - diff);
+    if (diff < bestDiff) { bestDiff = diff; best = name; }
+  }
+  return best;
+}
+
 function transformHtml(html, manifest, job) {
   if (!html || job.personality === 'before') return html || '';
   const fromPrimary = manifestPrimary(manifest, job.element, job.personality);
@@ -334,6 +364,24 @@ function dimensionsForMode(manifest) {
       effects: ALL_EFFECTS,
     };
   }
+  // Publish: lean matrix for the live scores.json — each preset at its own palette
+  // ('primary') plus one per-template complementary hue, 3 viewports (phone/tablet/
+  // desktop), light+dark, base effect only. The platform shows any requested combo's
+  // score from the nearest computed cell. ~1,440 rows total. Thumbnails (1 per preset×
+  // personality at desktop/primary/light/none) are captured from this run too.
+  if (MODE === 'publish') {
+    return {
+      variants: allPresetVariants(manifest),
+      viewports: [VIEWPORTS.mobile, VIEWPORTS.tablet, VIEWPORTS.desktop],
+      colorsForVariant: (v) => {
+        const base = manifestPrimary(manifest, v.element, v.personality);
+        const opp = complementaryColor(base);
+        return opp && opp !== base ? ['primary', opp] : ['primary'];
+      },
+      darks: [false, true],
+      effects: ['none'],
+    };
+  }
   return {
     variants: allPresetVariants(manifest),
     viewports: [VIEWPORTS.mobile, VIEWPORTS.tablet, VIEWPORTS.desktop, VIEWPORTS.wide],
@@ -366,8 +414,9 @@ function buildJobs(manifest) {
   const dims = dimensionsForMode(manifest);
   const jobs = [];
   for (const variant of dims.variants) {
+    const colors = dims.colorsForVariant ? dims.colorsForVariant(variant) : dims.colors;
     for (const viewport of dims.viewports) {
-      for (const color of dims.colors) {
+      for (const color of colors) {
         for (const dark of dims.darks) {
           for (const effect of dims.effects) {
             const job = { ...variant, viewport, color, dark, effect };
