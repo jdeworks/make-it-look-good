@@ -662,6 +662,7 @@ function toggleDarkMode() {
   localStorage.setItem('milg-dark', darkMode);
   applyDarkMode();
   updatePreview();
+  updatePresetCardScores();
 }
 
 // --- Fullscreen preview ---
@@ -822,14 +823,38 @@ function getPresetFrameworks(element, info) {
   return ['html'];
 }
 
+// Score shown on a preset card in the template browser. Dark/light-mode dependent: scores
+// differ between modes, so reflect the CURRENT mode by reading the representative tested cell
+// (desktop / primary palette / no effect) for that mode from cells[]. Falls back to the
+// mode-agnostic default when cells aren't present.
 function getPresetScore(element, personality) {
   const key = element + '/' + personality;
   const row = presetScores && presetScores.matrix ? presetScores.matrix[key] : null;
   if (!row) return null;
+  const dark = !!darkMode;
+  const cells = row.cells;
+  if (cells && cells.length) {
+    const cell = cells.find(c => c.viewport === 'desktop' && c.color === 'primary' && c.effect === 'none' && !!c.dark === dark)
+      || cells.find(c => !!c.dark === dark);
+    if (cell && typeof cell.score === 'number') return cell.score;
+  }
   if (row.default && typeof row.default.score === 'number') return row.default.score;
   if (typeof row.avg === 'number') return Math.round(row.avg);
   if (typeof row.min === 'number') return row.min;
   return null;
+}
+
+// Refresh card score badges in place when the mode changes (scores are mode-dependent).
+function updatePresetCardScores() {
+  document.querySelectorAll('.preset-card').forEach(card => {
+    const el = card.dataset.element, pers = card.dataset.personality;
+    if (!el) return;
+    const span = card.querySelector('.preset-score');
+    if (!span) return;
+    const score = getPresetScore(el, pers);
+    if (score === null) { span.className = 'preset-score pending'; span.textContent = 'No score'; }
+    else { span.className = 'preset-score ' + (score >= 90 ? 'good' : score >= 85 ? 'review' : 'fail'); span.textContent = score; }
+  });
 }
 
 // Hue (0-360) of a Tailwind accent's -500 shade, or null for grays. Lets the
@@ -979,6 +1004,8 @@ function createPresetCard(element, personality, suffix) {
   const card = document.createElement('button');
   card.className = 'preset-card';
   card.dataset.kind = kind;
+  card.dataset.element = element;
+  card.dataset.personality = personality;
   card.dataset.search = tags.concat([bestFor, personality, suffix || '']).join(' ').toLowerCase();
   card.onclick = () => loadPreset(element, personality);
 
@@ -989,7 +1016,9 @@ function createPresetCard(element, personality, suffix) {
     : '<span class="preset-score ' + (score >= 90 ? 'good' : score >= 85 ? 'review' : 'fail') + '">' + score + '</span>';
 
   card.innerHTML = ''
-    + '<span class="preset-thumb" aria-hidden="true"><span>' + escapeHtml((info.label || element).slice(0, 2).toUpperCase()) + '</span></span>'
+    + '<span class="preset-thumb" aria-hidden="true"><span class="preset-thumb-fallback">' + escapeHtml((info.label || element).slice(0, 2).toUpperCase()) + '</span>'
+    + (personality === 'before' ? '' : '<img class="preset-thumb-img" loading="lazy" alt="" src="presets/thumbnails/' + encodeURIComponent(element) + '/' + encodeURIComponent(personality) + '.webp" onerror="this.remove()">')
+    + '</span>'
     + '<span class="preset-card-body">'
     + '  <span class="preset-card-top"><span class="preset-card-title">' + escapeHtml(title) + '</span>' + scoreHtml + '</span>'
     + '  <span class="preset-card-meta">' + escapeHtml(category || kind) + ' / ' + escapeHtml(kind.replace('-', ' ')) + '</span>'
