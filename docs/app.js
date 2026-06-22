@@ -447,6 +447,7 @@ function updatePreview() {
   }
   // Remember the content of a clean preset so an edit-then-revert can reattach.
   if (currentElement && !userEdited) lastCleanContent = html;
+  updateTemplateScore();
 }
 
 // Update the live preview without reloading it. The preview iframe is sandboxed
@@ -566,6 +567,29 @@ function updateTemplateName() {
   updateTemplateNav();
 }
 
+// Header score readout for the active preset, reflecting the selected viewport/color/
+// effect/dark via nearest-cell lookup. Approximated combos get a trailing * + a tooltip
+// explaining the scaling and pointing at the Analyze button for an exact measurement.
+function updateTemplateScore() {
+  const el = document.getElementById('templateScore');
+  if (!el) return;
+  if (!currentElement || !currentPersonality) { el.style.display = 'none'; return; }
+  if (!presetScores) {
+    el.style.display = 'none';
+    if (!window.__milgScoresReq) { window.__milgScoresReq = true; loadPresetScores().then(updateTemplateScore); }
+    return;
+  }
+  const info = getPresetScoreInfo(currentElement, currentPersonality);
+  if (!info || typeof info.score !== 'number') { el.style.display = 'none'; return; }
+  const cls = info.score >= 90 ? 'good' : info.score >= 85 ? 'review' : 'fail';
+  el.className = 'template-score ' + cls + (info.exact ? '' : ' approx');
+  el.textContent = info.score + ' ' + (info.grade || '') + (info.exact ? '' : '*');
+  el.title = info.exact
+    ? 'Design score for this exact configuration (viewport, colour, effect, mode), measured by the analyzer.'
+    : 'Approximate score (*). We thoroughly tested a representative matrix of configurations, but multiplying out every viewport × colour × effect × mode combination would take days of continuous runtime — so this is scaled from the closest tested configuration. To measure THIS exact setup, click the Analyze button (top right).';
+  el.style.display = '';
+}
+
 // Re-attach to the preset stashed in `d` without re-fetching: restores the editor
 // state vars + sidebar controls. Caller guarantees the editor already holds the clean
 // HTML (auto-revert) or sets it first (restore button).
@@ -621,6 +645,7 @@ function setViewport(size, e) {
     preview.style.width = size + 'px';
     viewportLabel.textContent = size + 'px';
   }
+  updateTemplateScore();
 }
 
 // --- Dark mode ---
@@ -803,6 +828,75 @@ function getPresetScore(element, personality) {
   if (typeof row.avg === 'number') return Math.round(row.avg);
   if (typeof row.min === 'number') return row.min;
   return null;
+}
+
+// Hue (0-360) of a Tailwind accent's -500 shade, or null for grays. Lets the
+// gallery pick the nearest tested hue when the selected color wasn't measured.
+function accentHue(name) {
+  const rgb = (tailwindRGB[name] || {})[500];
+  if (!rgb) return null;
+  let r = rgb[0] / 255, g = rgb[1] / 255, b = rgb[2] / 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+  if (d < 1e-6) return null;
+  let h;
+  if (mx === r) h = ((g - b) / d) % 6;
+  else if (mx === g) h = (b - r) / d + 2;
+  else h = (r - g) / d + 4;
+  h *= 60; if (h < 0) h += 360;
+  return h;
+}
+function hueDistance(a, b) {
+  if (a == null || b == null) return 999;
+  const d = Math.abs(a - b);
+  return Math.min(d, 360 - d);
+}
+
+// Resolve the score for the CURRENTLY selected (viewport, color, dark, effect) of an
+// active preset to the nearest tested cell in scores.json. Returns {score, grade, exact}
+// where exact === false means the combo wasn't measured directly (the gallery shows a *).
+// Falls back to the legacy default-only score (always exact) if no cells are present.
+function getPresetScoreInfo(element, personality) {
+  const key = element + '/' + personality;
+  const row = presetScores && presetScores.matrix ? presetScores.matrix[key] : null;
+  if (!row) return null;
+  const cells = row.cells;
+  if (!cells || !cells.length) {
+    if (row.default && typeof row.default.score === 'number') {
+      return { score: row.default.score, grade: row.default.grade, exact: true };
+    }
+    return null;
+  }
+  const dark = !!darkMode;
+  // Viewport: the three discrete breakpoints are exact; 'full' approximates desktop.
+  const vpMap = { '320': 'mobile', '768': 'tablet', '1024': 'desktop' };
+  const liveVp = String(currentViewport);
+  const exactVp = Object.prototype.hasOwnProperty.call(vpMap, liveVp);
+  const targetVp = exactVp ? vpMap[liveVp] : 'desktop';
+  // Effect: only the base effect ('none') is tested; any visual style approximates it.
+  const exactEff = (currentStyleIndex === 0);
+  // Color: primary (template's own palette) + one complement were tested. Pick the
+  // nearest by hue when the selected color is neither.
+  const computedColors = cells.reduce((acc, c) => (acc.indexOf(c.color) === -1 ? acc.concat(c.color) : acc), []);
+  const complement = computedColors.find(c => c !== 'primary');
+  const nativePrimary = getElementPrimary(element, personality);
+  const selColor = currentColorName || nativePrimary;
+  let targetColor, exactColor;
+  if (selColor === nativePrimary) { targetColor = 'primary'; exactColor = true; }
+  else if (selColor === complement) { targetColor = complement; exactColor = true; }
+  else {
+    const dPrimary = hueDistance(accentHue(selColor), accentHue(nativePrimary));
+    const dComplement = hueDistance(accentHue(selColor), accentHue(complement));
+    targetColor = (complement && dComplement < dPrimary) ? complement : 'primary';
+    exactColor = false;
+  }
+  const pick = (vp, color) => cells.find(c => c.viewport === vp && c.color === color && !!c.dark === dark && c.effect === 'none');
+  const cell = pick(targetVp, targetColor)
+    || cells.find(c => c.viewport === targetVp && c.color === targetColor)
+    || cells.find(c => c.color === targetColor && !!c.dark === dark)
+    || cells.find(c => !!c.dark === dark)
+    || cells[0];
+  if (!cell) return null;
+  return { score: cell.score, grade: cell.grade, exact: exactVp && exactEff && exactColor };
 }
 
 function getElementPrimary(element, personality) {

@@ -629,6 +629,20 @@ function combineReports() {
         .slice(0, 5)
         .map(compactResult),
     };
+    // Publish mode emits every computed cell so the live gallery can resolve a
+    // requested (viewport, color, dark, effect) combo to its nearest tested cell
+    // and flag approximations. Only in publish mode — full mode would bloat the
+    // artifact with 1,200 cells/preset.
+    if (MODE === 'publish') {
+      matrix[preset].cells = presetRows.map(r => ({
+        viewport: r.viewport.name,
+        color: r.color,
+        dark: !!r.dark,
+        effect: r.effect,
+        score: r.overall,
+        grade: r.grade,
+      }));
+    }
   }
 
   const artifact = {
