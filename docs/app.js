@@ -287,6 +287,7 @@ html:not(.dark) body{background:linear-gradient(135deg,#c3d9fb 0%,#ddd6f5 35%,#f
 html:not(.dark) [class~="bg-white"]{background:rgba(255,255,255,0.50)!important;-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);border:1px solid rgba(255,255,255,0.5)!important;box-shadow:0 6px 28px rgba(31,38,135,0.10),inset 0 1px 0 rgba(255,255,255,0.65)!important}
 .dark [class~="bg-slate-900"],.dark [class~="bg-slate-950"],.dark [class~="bg-gray-900"],.dark [class~="bg-gray-950"],.dark [class~="bg-zinc-900"],.dark [class~="bg-zinc-950"],.dark [class~="bg-neutral-900"],.dark [class~="bg-neutral-950"],.dark [class~="bg-stone-900"],.dark [class~="bg-stone-950"],.dark [class~="bg-red-900"],.dark [class~="bg-red-950"],.dark [class~="bg-orange-900"],.dark [class~="bg-orange-950"],.dark [class~="bg-amber-900"],.dark [class~="bg-amber-950"],.dark [class~="bg-yellow-900"],.dark [class~="bg-yellow-950"],.dark [class~="bg-lime-900"],.dark [class~="bg-lime-950"],.dark [class~="bg-green-900"],.dark [class~="bg-green-950"],.dark [class~="bg-emerald-900"],.dark [class~="bg-emerald-950"],.dark [class~="bg-teal-900"],.dark [class~="bg-teal-950"],.dark [class~="bg-cyan-900"],.dark [class~="bg-cyan-950"],.dark [class~="bg-sky-900"],.dark [class~="bg-sky-950"],.dark [class~="bg-blue-900"],.dark [class~="bg-blue-950"],.dark [class~="bg-indigo-900"],.dark [class~="bg-indigo-950"],.dark [class~="bg-violet-900"],.dark [class~="bg-violet-950"],.dark [class~="bg-purple-900"],.dark [class~="bg-purple-950"],.dark [class~="bg-fuchsia-900"],.dark [class~="bg-fuchsia-950"],.dark [class~="bg-pink-900"],.dark [class~="bg-pink-950"],.dark [class~="bg-rose-900"],.dark [class~="bg-rose-950"]{background:rgba(15,23,42,0.78)!important;-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);border:1px solid rgba(99,102,241,0.15)!important;box-shadow:0 4px 24px rgba(0,0,0,0.2),inset 0 1px 0 rgba(99,102,241,0.1)!important}
 html:not(.dark) [class~="bg-slate-50"],html:not(.dark) [class~="bg-slate-100"],html:not(.dark) [class~="bg-gray-50"],html:not(.dark) [class~="bg-gray-100"],html:not(.dark) [class~="bg-zinc-50"],html:not(.dark) [class~="bg-zinc-100"],html:not(.dark) [class~="bg-neutral-50"],html:not(.dark) [class~="bg-neutral-100"],html:not(.dark) [class~="bg-stone-50"],html:not(.dark) [class~="bg-stone-100"],html:not(.dark) [class~="bg-red-50"],html:not(.dark) [class~="bg-red-100"],html:not(.dark) [class~="bg-orange-50"],html:not(.dark) [class~="bg-orange-100"],html:not(.dark) [class~="bg-amber-50"],html:not(.dark) [class~="bg-amber-100"],html:not(.dark) [class~="bg-yellow-50"],html:not(.dark) [class~="bg-yellow-100"],html:not(.dark) [class~="bg-lime-50"],html:not(.dark) [class~="bg-lime-100"],html:not(.dark) [class~="bg-green-50"],html:not(.dark) [class~="bg-green-100"],html:not(.dark) [class~="bg-emerald-50"],html:not(.dark) [class~="bg-emerald-100"],html:not(.dark) [class~="bg-teal-50"],html:not(.dark) [class~="bg-teal-100"],html:not(.dark) [class~="bg-cyan-50"],html:not(.dark) [class~="bg-cyan-100"],html:not(.dark) [class~="bg-sky-50"],html:not(.dark) [class~="bg-sky-100"],html:not(.dark) [class~="bg-blue-50"],html:not(.dark) [class~="bg-blue-100"],html:not(.dark) [class~="bg-indigo-50"],html:not(.dark) [class~="bg-indigo-100"],html:not(.dark) [class~="bg-violet-50"],html:not(.dark) [class~="bg-violet-100"],html:not(.dark) [class~="bg-purple-50"],html:not(.dark) [class~="bg-purple-100"],html:not(.dark) [class~="bg-fuchsia-50"],html:not(.dark) [class~="bg-fuchsia-100"],html:not(.dark) [class~="bg-pink-50"],html:not(.dark) [class~="bg-pink-100"],html:not(.dark) [class~="bg-rose-50"],html:not(.dark) [class~="bg-rose-100"]{background:rgba(255,255,255,0.35)!important;-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%);border:1px solid rgba(255,255,255,0.4)!important}
+html:not(.dark) [class~="bg-slate-800"],html:not(.dark) [class~="bg-slate-900"],html:not(.dark) [class~="bg-slate-950"],html:not(.dark) [class~="bg-gray-800"],html:not(.dark) [class~="bg-gray-900"],html:not(.dark) [class~="bg-gray-950"],html:not(.dark) [class~="bg-zinc-800"],html:not(.dark) [class~="bg-zinc-900"],html:not(.dark) [class~="bg-zinc-950"],html:not(.dark) [class~="bg-neutral-800"],html:not(.dark) [class~="bg-neutral-900"],html:not(.dark) [class~="bg-neutral-950"],html:not(.dark) [class~="bg-stone-800"],html:not(.dark) [class~="bg-stone-900"],html:not(.dark) [class~="bg-stone-950"],html:not(.dark) [class~="bg-red-800"],html:not(.dark) [class~="bg-red-900"],html:not(.dark) [class~="bg-red-950"],html:not(.dark) [class~="bg-orange-800"],html:not(.dark) [class~="bg-orange-900"],html:not(.dark) [class~="bg-orange-950"],html:not(.dark) [class~="bg-amber-800"],html:not(.dark) [class~="bg-amber-900"],html:not(.dark) [class~="bg-amber-950"],html:not(.dark) [class~="bg-yellow-800"],html:not(.dark) [class~="bg-yellow-900"],html:not(.dark) [class~="bg-yellow-950"],html:not(.dark) [class~="bg-lime-800"],html:not(.dark) [class~="bg-lime-900"],html:not(.dark) [class~="bg-lime-950"],html:not(.dark) [class~="bg-green-800"],html:not(.dark) [class~="bg-green-900"],html:not(.dark) [class~="bg-green-950"],html:not(.dark) [class~="bg-emerald-800"],html:not(.dark) [class~="bg-emerald-900"],html:not(.dark) [class~="bg-emerald-950"],html:not(.dark) [class~="bg-teal-800"],html:not(.dark) [class~="bg-teal-900"],html:not(.dark) [class~="bg-teal-950"],html:not(.dark) [class~="bg-cyan-800"],html:not(.dark) [class~="bg-cyan-900"],html:not(.dark) [class~="bg-cyan-950"],html:not(.dark) [class~="bg-sky-800"],html:not(.dark) [class~="bg-sky-900"],html:not(.dark) [class~="bg-sky-950"],html:not(.dark) [class~="bg-blue-800"],html:not(.dark) [class~="bg-blue-900"],html:not(.dark) [class~="bg-blue-950"],html:not(.dark) [class~="bg-indigo-800"],html:not(.dark) [class~="bg-indigo-900"],html:not(.dark) [class~="bg-indigo-950"],html:not(.dark) [class~="bg-violet-800"],html:not(.dark) [class~="bg-violet-900"],html:not(.dark) [class~="bg-violet-950"],html:not(.dark) [class~="bg-purple-800"],html:not(.dark) [class~="bg-purple-900"],html:not(.dark) [class~="bg-purple-950"],html:not(.dark) [class~="bg-fuchsia-800"],html:not(.dark) [class~="bg-fuchsia-900"],html:not(.dark) [class~="bg-fuchsia-950"],html:not(.dark) [class~="bg-pink-800"],html:not(.dark) [class~="bg-pink-900"],html:not(.dark) [class~="bg-pink-950"],html:not(.dark) [class~="bg-rose-800"],html:not(.dark) [class~="bg-rose-900"],html:not(.dark) [class~="bg-rose-950"]{background:rgba(15,23,42,0.9)!important;-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);border-color:rgba(99,102,241,0.15)!important}
 .dark [class~="bg-slate-800"],.dark [class~="bg-gray-800"],.dark [class~="bg-zinc-800"],.dark [class~="bg-neutral-800"],.dark [class~="bg-stone-800"],.dark [class~="bg-red-800"],.dark [class~="bg-orange-800"],.dark [class~="bg-amber-800"],.dark [class~="bg-yellow-800"],.dark [class~="bg-lime-800"],.dark [class~="bg-green-800"],.dark [class~="bg-emerald-800"],.dark [class~="bg-teal-800"],.dark [class~="bg-cyan-800"],.dark [class~="bg-sky-800"],.dark [class~="bg-blue-800"],.dark [class~="bg-indigo-800"],.dark [class~="bg-violet-800"],.dark [class~="bg-purple-800"],.dark [class~="bg-fuchsia-800"],.dark [class~="bg-pink-800"],.dark [class~="bg-rose-800"]{background:rgba(30,41,59,0.72)!important;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
 [class*="shadow-sm"],[class*="shadow-md"],[class*="shadow-lg"],[class*="shadow-xl"]{box-shadow:0 4px 20px rgba(0,0,0,0.05),inset 0 1px 0 rgba(255,255,255,0.5)!important}
 .dark [class*="shadow-sm"],.dark [class*="shadow-md"],.dark [class*="shadow-lg"],.dark [class*="shadow-xl"]{box-shadow:0 4px 20px rgba(0,0,0,0.3),inset 0 1px 0 rgba(99,102,241,0.1)!important}
@@ -305,7 +306,8 @@ input,select,textarea{-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px
 html:not(.dark) input,html:not(.dark) select,html:not(.dark) textarea{background:rgba(255,255,255,0.45)!important;border:1px solid rgba(255,255,255,0.4)!important}
 .dark input,.dark select,.dark textarea{background:rgba(15,23,42,0.45)!important;border:1px solid rgba(99,102,241,0.2)!important}
 button:hover,[role="button"]:hover{box-shadow:0 0 24px rgba(99,102,241,0.18),0 6px 20px rgba(0,0,0,0.06)!important;transition:box-shadow 250ms ease-out,transform 250ms ease-out;transform:translateY(-1px)}
-html:not(.dark) nav,html:not(.dark) aside,html:not(.dark) header{-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);background:rgba(255,255,255,0.65)!important}
+html:not(.dark) nav[class~="bg-white"],html:not(.dark) aside[class~="bg-white"],html:not(.dark) header[class~="bg-white"],html:not(.dark) nav:not([class*="bg-"]),html:not(.dark) aside:not([class*="bg-"]),html:not(.dark) header:not([class*="bg-"]){background:rgba(255,255,255,0.65)!important}
+html:not(.dark) nav,html:not(.dark) aside,html:not(.dark) header{-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%)}
 .dark nav,.dark aside,.dark header{-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);background:rgba(15,23,42,0.65)!important}
 ` },
   { name: 'Serif', label: 'Serif', css: `/* Serif — Refined Type */
@@ -1337,6 +1339,24 @@ function selectTheme(colorName) {
   syncMobileToolbar();
 }
 
+// A "dark-design" preset paints a dark background via BASE (non-`dark:`) classes — it is
+// dark in BOTH light and dark mode (e.g. `bg-slate-950 text-slate-200`, or a literal `dark`
+// class on the wrap). The Frosted effect is a LIGHT-mode glass aesthetic: in light mode it
+// forces a light body gradient and darkens light-gray text shades, which clashes with a
+// dark template (light text on a lightened surface, or dark-on-dark). We can't make Frosted
+// look right on these without abandoning its identity, so we flag it in the UI instead.
+function isDarkDesignPreset(html) {
+  if (!html) return false;
+  const m = String(html).match(/<[a-z][^>]*\sclass="([^"]*)"/i);
+  if (!m) return false;
+  const tokens = m[1].split(/\s+/);
+  return tokens.some(t => t === 'dark' || t === 'bg-black' || /^bg-(slate|gray|zinc|neutral|stone)-9(00|50)$/.test(t));
+}
+
+function frostedStyleIndex() {
+  return visualStyles.findIndex(s => s.name === 'Frosted');
+}
+
 function renderStyleButtons(presetName) {
   const container = document.getElementById('styleButtons');
   // Keep the "Style" label span, clear only buttons
@@ -1348,14 +1368,38 @@ function renderStyleButtons(presetName) {
     return;
   }
   container.style.display = 'flex';
+  const darkDesign = isDarkDesignPreset(originalPresetHtml);
   visualStyles.forEach((style, index) => {
     const btn = document.createElement('button');
     btn.className = 'style-btn' + (index === 0 ? ' active' : '');
     btn.textContent = style.label;
     btn.title = style.name;
+    if (darkDesign && style.name === 'Frosted') {
+      btn.classList.add('style-btn-caution');
+      btn.title = 'Frosted is a light-mode glass effect — this is a dark template, so it can reduce text contrast. Not recommended here.';
+    }
     btn.onclick = () => selectStyle(index);
     container.appendChild(btn);
   });
+  updateStyleCaution();
+}
+
+// Inline note shown under the preview when Frosted is active on a dark-design template.
+function updateStyleCaution() {
+  let note = document.getElementById('styleCaution');
+  const darkDesign = isDarkDesignPreset(originalPresetHtml);
+  const fi = frostedStyleIndex();
+  const show = darkDesign && fi !== -1 && currentStyleIndex === fi;
+  if (!note) {
+    if (!show) return;
+    note = document.createElement('div');
+    note.id = 'styleCaution';
+    note.className = 'style-caution';
+    const container = document.getElementById('styleButtons');
+    if (container && container.parentNode) container.parentNode.insertBefore(note, container.nextSibling);
+  }
+  note.textContent = '⚠ Frosted is a light-mode glass effect; this template uses a dark design, so contrast may be reduced. Use “None” or pick a light template for Frosted.';
+  note.style.display = show ? 'block' : 'none';
 }
 
 function selectStyle(index) {
@@ -1364,6 +1408,7 @@ function selectStyle(index) {
   document.querySelectorAll('.style-btn').forEach((btn, i) => {
     btn.classList.toggle('active', i === index);
   });
+  updateStyleCaution();
   syncMobileToolbar();
 }
 

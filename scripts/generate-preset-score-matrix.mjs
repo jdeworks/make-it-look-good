@@ -443,8 +443,60 @@ function readCompletedIds(resultsFile) {
   return ids;
 }
 
-async function prepareWorkerPage(browser) {
+// Several presets reference external images (picsum.photos, unsplash, …). Under N parallel
+// workers those cross-origin fetches saturate / get rate-limited and stall the renderer,
+// pushing a cell past the 30s scoring timeout (this is what made product-page/minimalist
+// flake on ~1/3 of its cells). The images are irrelevant to scoring, so on the SCORING page
+// we fulfill every external image request with an SVG placeholder sized from the URL — the
+// intrinsic aspect ratio is preserved so layout (object-cover, w-full, etc.) is unchanged,
+// and there is no network dependency. Thumbnails use a separate page and keep real images.
+function placeholderDims(url) {
+  let w, h;
+  const qw = url.match(/[?&]w(?:idth)?=(\d+)/i);
+  const qh = url.match(/[?&]h(?:eight)?=(\d+)/i);
+  if (qw) w = +qw[1];
+  if (qh) h = +qh[1];
+  if (!w || !h) {
+    const seg = url.split(/[?#]/)[0].match(/\/(\d{2,5})\/(\d{2,5})\/?$/);
+    if (seg) { w = +seg[1]; h = +seg[2]; }
+  }
+  if (!w || !h) { w = 1200; h = 800; }
+  return { w, h };
+}
+
+function placeholderSvg(url) {
+  const { w, h } = placeholderDims(url);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="100%" height="100%" fill="#cbd5e1"/></svg>`;
+}
+
+function isExternalImageUrl(url) {
+  if (!url || url.startsWith('data:') || url.startsWith('blob:')) return false;
+  return !url.includes('localhost') && !url.includes('127.0.0.1');
+}
+
+async function installImageStub(page, engine) {
+  if (engine === 'playwright') {
+    await page.route('**/*', route => {
+      const req = route.request();
+      if (req.resourceType() === 'image' && isExternalImageUrl(req.url())) {
+        return route.fulfill({ status: 200, contentType: 'image/svg+xml', body: placeholderSvg(req.url()) });
+      }
+      return route.continue();
+    });
+    return;
+  }
+  await page.setRequestInterception(true);
+  page.on('request', req => {
+    if (req.resourceType() === 'image' && isExternalImageUrl(req.url())) {
+      return req.respond({ status: 200, contentType: 'image/svg+xml', body: placeholderSvg(req.url()) });
+    }
+    return req.continue();
+  });
+}
+
+async function prepareWorkerPage(browser, engine) {
   const page = await browser.newPage();
+  await installImageStub(page, engine);
   await page.goto(`http://localhost:${PORT}/tests/preset-score-harness.html`, { waitUntil: 'networkidle0', timeout: 15000 });
   const ok = await page.evaluate(() => !!window.MilgScoring);
   if (!ok) throw new Error('MilgScoring did not load in harness');
@@ -792,7 +844,7 @@ async function runMatrix() {
   let done = completed.size;
 
   async function worker(workerId) {
-    const scorePage = await prepareWorkerPage(browser);
+    const scorePage = await prepareWorkerPage(browser, launched.engine);
     const thumbPage = await browser.newPage();
     while (cursor < pending.length) {
       const job = pending[cursor++];
