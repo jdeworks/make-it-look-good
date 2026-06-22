@@ -328,6 +328,9 @@ window.MilgExtract = (function() {
         continue;
       }
       if (isDecorative(el)) { _contrastStats.decorative++; continue; }
+      // WCAG 1.4.3 exempts text in INACTIVE/disabled UI components (a disabled control is
+      // meant to look muted). Skip elements that are, or are inside, a disabled control.
+      if (el.closest && el.closest('[disabled],[aria-disabled="true"],fieldset[disabled]')) { _contrastStats.disabled = (_contrastStats.disabled || 0) + 1; continue; }
       if (seenForContrast.has(el)) { _contrastStats.seen++; continue; }
       seenForContrast.add(el);
       var style = getComputedStyle(el);

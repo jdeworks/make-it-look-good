@@ -846,12 +846,26 @@ async function runMatrix() {
   async function worker(workerId) {
     const scorePage = await prepareWorkerPage(browser, launched.engine);
     const thumbPage = await browser.newPage();
+    // Stub external images here too: picsum/unsplash URLs are random placeholders (not the
+    // template's real content) and under load they stall `networkidle`, which previously
+    // timed out thumbnail capture for image-heavy presets. Placeholders keep capture
+    // deterministic and still showcase each template's real layout/colour/type.
+    await installImageStub(thumbPage, launched.engine);
     while (cursor < pending.length) {
       const job = pending[cursor++];
       const startedAt = Date.now();
       try {
         const result = await scoreJob(scorePage, manifest, extractFn, job);
-        const thumb = shouldCaptureThumbnail(job, manifest) ? await captureThumbnail(thumbPage, manifest, job) : null;
+        // Thumbnail capture must NEVER lose the score: a setContent/networkidle timeout on
+        // a thumbnail (e.g. a heavy preset) is non-fatal — record the score, skip the thumb.
+        let thumb = null;
+        if (shouldCaptureThumbnail(job, manifest)) {
+          try {
+            thumb = await captureThumbnail(thumbPage, manifest, job);
+          } catch (thumbErr) {
+            process.stdout.write(`  thumb skipped for ${job.id}: ${thumbErr.message.split('\n')[0]}\n`);
+          }
+        }
         const row = {
           ...job,
           id: job.id,
