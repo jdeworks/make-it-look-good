@@ -439,7 +439,13 @@ function updatePreview() {
   // updating in place keeps Tailwind loaded once (its MutationObserver recompiles
   // incrementally). The full-reload path is kept for the first render and for any
   // render involving inspector mode, whose agent script must be (re)injected.
-  const canInPlace = previewReady && !inspectMode && !lastDocInspector && preview.contentWindow;
+  // Templates that drive their own behavior with <script> (app-showcase auto-scroll,
+  // scroll-story, scroll-reveal) MUST go through a full srcdoc reload: scripts assigned
+  // via document.body.innerHTML (the in-place path) never execute, and re-running them on
+  // every in-place update would also stack duplicate listeners/intervals. A full reload
+  // gives a fresh document where the template's script runs exactly once.
+  const hasScript = /<script[\s>]/i.test(bodyHtml);
+  const canInPlace = previewReady && !inspectMode && !lastDocInspector && preview.contentWindow && !hasScript;
   if (canInPlace) {
     applyPreviewUpdateInPlace(bodyHtml);
   } else {
@@ -882,16 +888,27 @@ function ensureThumbPreview() {
   document.body.appendChild(thumbPreviewEl);
   return thumbPreviewEl;
 }
-// In-memory thumbnail cache: holding an Image reference per URL keeps it decoded so
-// re-hovering a card is instant (no refetch/flicker). The browser HTTP-caches the WebP,
-// but re-assigning img.src still triggers a decode cycle — the guard below avoids that
-// when the same thumbnail is already shown.
-const thumbImgCache = new Map();
-function preloadThumb(url) {
-  if (thumbImgCache.has(url)) return;
-  const im = new Image();
-  im.src = url;
-  thumbImgCache.set(url, im);
+// In-memory thumbnail cache: each WebP is fetched ONCE and stored as a data URL, so every
+// later hover is served purely from memory — no repeat network request to GitHub Pages and
+// no decode flicker. Map value: a data: string once loaded, the in-flight Promise while
+// loading, or null if the fetch failed.
+const thumbDataCache = new Map();
+function loadThumbData(url) {
+  const cached = thumbDataCache.get(url);
+  if (cached !== undefined) return Promise.resolve(cached); // string | null, or a pending Promise resolves to those
+  const promise = fetch(url)
+    .then(function(r) { return r.ok ? r.blob() : Promise.reject(new Error('thumb ' + r.status)); })
+    .then(function(blob) {
+      return new Promise(function(resolve) {
+        const fr = new FileReader();
+        fr.onload = function() { thumbDataCache.set(url, fr.result); resolve(fr.result); };
+        fr.onerror = function() { thumbDataCache.set(url, null); resolve(null); };
+        fr.readAsDataURL(blob);
+      });
+    })
+    .catch(function() { thumbDataCache.set(url, null); return null; });
+  thumbDataCache.set(url, promise);
+  return promise;
 }
 function showThumbPreview(card) {
   const el = card.dataset.element, pers = card.dataset.personality;
@@ -903,10 +920,12 @@ function showThumbPreview(card) {
   if (!inlineImg && card.dataset.thumb !== '1') return;
   const url = presetThumbSrc(el, pers, darkMode);
   const p = ensureThumbPreview();
-  p.dataset.el = el; p.dataset.pers = pers;
+  p.dataset.el = el; p.dataset.pers = pers; p.dataset.url = url;
   const pimg = p.querySelector('img');
-  if (pimg.getAttribute('src') !== url) pimg.src = url; // guard: no redundant re-decode
-  preloadThumb(url);
+  Promise.resolve(loadThumbData(url)).then(function(dataUrl) {
+    // Only apply if the pointer is still on this same thumbnail (hover may have moved on).
+    if (dataUrl && p.dataset.url === url && pimg.getAttribute('src') !== dataUrl) pimg.src = dataUrl;
+  });
   p.style.display = 'block';
   // Position: prefer to the right of the card, flip to the left if it would overflow.
   const r = card.getBoundingClientRect();
@@ -1703,7 +1722,7 @@ function renderTemplateChooser() {
     + '  </div>'
     + '  <div class="chooser-grid">'
     + chooserQuestion('what', 'What are you building?', [['landing','Landing page'], ['app','App / dashboard'], ['form','Form / onboarding'], ['content','Docs / content'], ['portfolio','Portfolio'], ['product','Product page'], ['component','Component']])
-    + chooserQuestion('audience', 'Who is it for?', audienceOptionsWithState())
+    + (function() { const a = audienceOptionsWithState(); return chooserQuestion('audience', 'Who is it for?', a.options, a.allRedundant); })()
     // Personality + Framework questions removed — neither changed the ranking (personality
     // was only a preselection with non-universal options; framework converts via LLM).
     + '  </div>'
@@ -1714,14 +1733,15 @@ function renderTemplateChooser() {
   updateChooserResults();
 }
 
-function chooserQuestion(key, label, options) {
+function chooserQuestion(key, label, options, suppressActive) {
   let html = '<div class="chooser-question"><div class="chooser-label">' + escapeHtml(label) + '</div><div class="chooser-options">';
   options.forEach(function(opt) {
-    const active = chooserState[key] === opt[0] ? ' active' : '';
+    const active = (!suppressActive && chooserState[key] === opt[0]) ? ' active' : '';
     // opt[2] === true → this choice yields the same recommendation as the current
-    // selection, so it's disabled (clicking it would change nothing).
+    // selection (or, when suppressActive, no choice changes it), so it's disabled.
     if (opt[2]) {
-      html += '<button class="chooser-chip' + active + ' disabled" disabled title="Same recommendation as the current selection">' + escapeHtml(opt[1]) + '</button>';
+      const why = suppressActive ? 'Audience does not change the recommendation for this type' : 'Same recommendation as the current selection';
+      html += '<button class="chooser-chip' + active + ' disabled" disabled title="' + why + '">' + escapeHtml(opt[1]) + '</button>';
     } else {
       html += '<button class="chooser-chip' + active + '" onclick="setChooserAnswer(\'' + opt[0] + '\',\'' + key + '\')">' + escapeHtml(opt[1]) + '</button>';
     }
@@ -1729,16 +1749,20 @@ function chooserQuestion(key, label, options) {
   return html + '</div></div>';
 }
 
-// Audience options for the current `what`, with each option flagged disabled when it would
-// produce the SAME top-3 recommendation as the currently-selected audience (e.g. for
-// Components, audience rarely changes the result — those buttons go inert).
+// Audience options for the current `what`. An option is flagged disabled when it would
+// produce the SAME top-3 recommendation as the currently-selected audience. When EVERY
+// audience yields the same recommendation (audience is irrelevant for this `what`, e.g.
+// Components), all options are disabled and none is highlighted (allRedundant).
 function audienceOptionsWithState() {
   const base = [['developers','Developers'], ['business','Business users'], ['public','General public'], ['mobile','Mobile-first consumers']];
+  const keys = base.map(function(opt) { return topThreeFor(chooserState.what, opt[0]); });
+  const allRedundant = keys.every(function(k) { return k === keys[0]; });
   const activeKey = topThreeFor(chooserState.what, chooserState.audience);
-  return base.map(function(opt) {
-    const redundant = opt[0] !== chooserState.audience && topThreeFor(chooserState.what, opt[0]) === activeKey;
+  const options = base.map(function(opt, i) {
+    const redundant = allRedundant || (opt[0] !== chooserState.audience && keys[i] === activeKey);
     return [opt[0], opt[1], redundant];
   });
+  return { options: options, allRedundant: allRedundant };
 }
 
 function setChooserAnswer(value, key) {
