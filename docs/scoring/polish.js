@@ -187,6 +187,48 @@
       });
     }
 
+    // --- S7. Problematic horizontal scroll on mobile --------------------------------
+    // On a small screen a horizontal scrollbar is only OK for a SINGLE wide element (a
+    // table, code block, image) that genuinely needs to scroll, or for a real carousel /
+    // tab strip. Two cases ARE problems, penalized only at mobile/tablet widths:
+    //   (a) MULTI-BLOCK — multiple content blocks (cards/sections) laid in a row that
+    //       should wrap or stack instead of scrolling sideways.
+    //   (b) MICRO-SCROLL — content overflows by only a few px (<50px). An almost-fits
+    //       sideways nudge is awkward to grab and signals the content should simply fit;
+    //       a genuine wide table (>=50px overflow) is fine. Carousels / tab strips exempt.
+    var vpw = (data.meta && data.meta.viewportWidth) || 9999;
+    if (vpw <= 768) {
+      var scrollers = ((data.layout && data.layout.horizontalScrollContainers) || [])
+        .filter(function(c) { return !c.isCarousel && !c.isControlStrip; });
+      var multi = scrollers.filter(function(c) { return c.multiBlock; });
+      var micro = scrollers.filter(function(c) { return !c.multiBlock && c.overflow > 0 && c.overflow < 50; });
+      if (multi.length > 0) {
+        checks++;
+        deduct += 20;
+        findings.push({
+          severity: 'warning',
+          title: 'Horizontal scroll of multi-block content on mobile',
+          detail: multi.length + ' container(s) scroll multiple content blocks sideways instead of wrapping. A horizontal scrollbar is acceptable for a single wide element, not a row of cards/sections on a small screen.',
+          fix: 'Let the row wrap or stack on mobile: flex-wrap, or grid-cols-1 sm:grid-cols-2 lg:grid-cols-3. Reserve overflow-x-auto for a single wide element.',
+          presetRef: 'Polished presets wrap/stack their content on mobile instead of scrolling sideways.',
+          source: 'NNGroup mobile — https://www.nngroup.com/articles/glanceable-mobile/'
+        });
+      }
+      if (micro.length > 0) {
+        checks++;
+        deduct += 12;
+        var worst = micro.reduce(function(a, b) { return b.overflow > a.overflow ? b : a; });
+        findings.push({
+          severity: 'warning',
+          title: 'Awkward micro horizontal scroll on mobile (overflows by only ' + worst.overflow + 'px)',
+          detail: micro.length + ' element(s) overflow sideways by under 50px — an almost-fits nudge that is hard to scroll and reads as unpolished. (A genuinely wide element that needs real scrolling is fine.)',
+          fix: 'Make it fit: reduce padding, shrink/relayout the content (e.g. stack the cell), or wrap. Only keep overflow-x-auto when the element is meaningfully wider than the screen.',
+          presetRef: 'Polished presets either fit the viewport or scroll a clearly wide element — not a few stray pixels.',
+          source: 'NNGroup mobile — https://www.nngroup.com/articles/glanceable-mobile/'
+        });
+      }
+    }
+
     var score = Math.max(0, 100 - deduct);
     return { score: score, findings: findings, checks: checks, passed: passed, weight: 24, label: 'Design Polish', icon: 'consistency' };
   }

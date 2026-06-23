@@ -1175,10 +1175,49 @@ window.MilgExtract = (function() {
           var cr = ch.getBoundingClientRect();
           if (cr.width > _widestW) { _widestW = cr.width; _widestChild = ch; }
         });
+        // MULTI-BLOCK test (polish): is the sideways overflow caused by MULTIPLE block
+        // children laid in a horizontal row — content that should wrap/stack on small
+        // screens — or by a SINGLE wide element (one table/image/code block), which is an
+        // acceptable thing to scroll? We look at how many DISTINCT horizontal start
+        // positions the visible direct children occupy: stacked block content shares one
+        // left edge (1 column), a non-wrapping row spreads across several. Genuine
+        // carousels (scroll-snap) and single-dominant-child scrollers are exempt.
+        var _visKids = Array.from(oel.children).filter(function(ch) {
+          var cr = ch.getBoundingClientRect();
+          return cr.width > 0 && cr.height > 0 && getComputedStyle(ch).display !== 'none';
+        });
+        // A "control strip" (tab bar / pill nav) is a row of small interactive controls,
+        // NOT multiple content BLOCKS — horizontal scrolling such a strip is a legitimate
+        // mobile pattern, so it must not be flagged. A control = a short button/link/tab
+        // with no block-level descendants (a card, even if it's an <a>, has inner structure
+        // or real height and is NOT a control).
+        function _isControl(ch) {
+          if (ch.getAttribute && ch.getAttribute('role') === 'tab') return true;
+          var t = ch.tagName;
+          if (t !== 'BUTTON' && t !== 'A') return false;
+          if (ch.getBoundingClientRect().height >= 56) return false;
+          return ch.querySelectorAll('div,section,article,p,img,h1,h2,h3,h4,table,ul,ol').length === 0;
+        }
+        var _controlKids = _visKids.filter(_isControl).length;
+        var _isControlStrip = _visKids.length >= 2 && _controlKids >= _visKids.length * 0.6;
+        // Content blocks = children that are real blocks (exclude the small controls above).
+        var _contentKids = _visKids.filter(function(ch) { return !_isControl(ch); });
+        var _leftSet = {};
+        _contentKids.forEach(function(ch) { _leftSet[Math.round(ch.getBoundingClientRect().left / 8) * 8] = 1; });
+        var _distinctCols = Object.keys(_leftSet).length;
+        var _isCarousel = (oelStyle.scrollSnapType && oelStyle.scrollSnapType !== 'none') ||
+          _visKids.some(function(ch) { var sa = getComputedStyle(ch).scrollSnapAlign; return sa && sa !== 'none'; });
+        var _singleDominant = !!_widestChild && _widestChild.getBoundingClientRect().width >= (oel.scrollWidth - 1) * 0.9;
+        // Multi-block: 2+ content blocks laid side-by-side that should wrap/stack instead.
+        var _multiBlock = _distinctCols >= 2 && !_isCarousel && !_isControlStrip && !_singleDominant && !isDataContent;
         var _hscEntry = {
           selector: cssSelector(oel),
           intentional: classification === 'intentional',
           classification: classification,
+          multiBlock: _multiBlock,
+          childColumns: _distinctCols,
+          isCarousel: _isCarousel,
+          isControlStrip: _isControlStrip,
           reason: !hasOverflowCSS ? 'no-overflow-css' :
                   hasStructuralChildren ? 'structural-children-in-scroll' :
                   isWideContainer ? 'wide-container-scrolls' :
