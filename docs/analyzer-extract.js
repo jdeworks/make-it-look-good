@@ -1218,6 +1218,9 @@ window.MilgExtract = (function() {
           childColumns: _distinctCols,
           isCarousel: _isCarousel,
           isControlStrip: _isControlStrip,
+          // A <pre>/<code> block that micro-overflows is awkward either way but scrolling
+          // code is a normal expectation, so polish.js penalizes it less than other content.
+          isCodeBlock: tag === 'pre' || tag === 'code' || !!oel.closest('pre,code'),
           reason: !hasOverflowCSS ? 'no-overflow-css' :
                   hasStructuralChildren ? 'structural-children-in-scroll' :
                   isWideContainer ? 'wide-container-scrolls' :

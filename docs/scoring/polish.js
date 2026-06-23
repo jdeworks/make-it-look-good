@@ -201,7 +201,11 @@
       var scrollers = ((data.layout && data.layout.horizontalScrollContainers) || [])
         .filter(function(c) { return !c.isCarousel && !c.isControlStrip; });
       var multi = scrollers.filter(function(c) { return c.multiBlock; });
-      var micro = scrollers.filter(function(c) { return !c.multiBlock && c.overflow > 0 && c.overflow < 50; });
+      var microAll = scrollers.filter(function(c) { return !c.multiBlock && c.overflow > 0 && c.overflow < 50; });
+      // Code blocks (<pre>/<code>) are awkward either way but are EXPECTED to scroll, so a
+      // micro-overflow there is a lighter touch than on a table/other content.
+      var microCode = microAll.filter(function(c) { return c.isCodeBlock; });
+      var microOther = microAll.filter(function(c) { return !c.isCodeBlock; });
       if (multi.length > 0) {
         checks++;
         deduct += 20;
@@ -214,16 +218,29 @@
           source: 'NNGroup mobile — https://www.nngroup.com/articles/glanceable-mobile/'
         });
       }
-      if (micro.length > 0) {
+      if (microOther.length > 0) {
         checks++;
         deduct += 12;
-        var worst = micro.reduce(function(a, b) { return b.overflow > a.overflow ? b : a; });
+        var worstO = microOther.reduce(function(a, b) { return b.overflow > a.overflow ? b : a; });
         findings.push({
           severity: 'warning',
-          title: 'Awkward micro horizontal scroll on mobile (overflows by only ' + worst.overflow + 'px)',
-          detail: micro.length + ' element(s) overflow sideways by under 50px — an almost-fits nudge that is hard to scroll and reads as unpolished. (A genuinely wide element that needs real scrolling is fine.)',
+          title: 'Awkward micro horizontal scroll on mobile (overflows by only ' + worstO.overflow + 'px)',
+          detail: microOther.length + ' element(s) overflow sideways by under 50px — an almost-fits nudge that is hard to scroll and reads as unpolished. (A genuinely wide element that needs real scrolling is fine.)',
           fix: 'Make it fit: reduce padding, shrink/relayout the content (e.g. stack the cell), or wrap. Only keep overflow-x-auto when the element is meaningfully wider than the screen.',
           presetRef: 'Polished presets either fit the viewport or scroll a clearly wide element — not a few stray pixels.',
+          source: 'NNGroup mobile — https://www.nngroup.com/articles/glanceable-mobile/'
+        });
+      }
+      if (microCode.length > 0) {
+        checks++;
+        deduct += 4; // lighter: a code block scrolling is a normal expectation
+        var worstC = microCode.reduce(function(a, b) { return b.overflow > a.overflow ? b : a; });
+        findings.push({
+          severity: 'info',
+          title: 'Code block micro-scrolls on mobile (overflows by ' + worstC.overflow + 'px)',
+          detail: microCode.length + ' code block(s) overflow sideways by under 50px. Scrolling code is expected, so this is a minor nit — but an almost-fits overflow still feels awkward.',
+          fix: 'If practical, allow the code to wrap (white-space: pre-wrap) or trim long lines so it fits; otherwise this is acceptable.',
+          presetRef: null,
           source: 'NNGroup mobile — https://www.nngroup.com/articles/glanceable-mobile/'
         });
       }
