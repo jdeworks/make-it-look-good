@@ -1421,6 +1421,93 @@ window.MilgExtract = (function() {
       if (tel.scrollWidth > tel.clientWidth + 2) data.structure.truncatedElements++;
     });
 
+    // --- Design-craft signals (read by scoring/polish.js) -------------------
+    // These capture POLISH/CRAFT, not accessibility: signals that separate a
+    // careless browser-default layout from an intentionally-crafted one. Gating
+    // (page size, dark-design, interactivity) lives in polish.js. NOTE: the score
+    // matrix sets window.__milgIsFragment=true for EVERY preset, so isFragment is
+    // useless as a "component vs full page" discriminator here — polish.js gates on
+    // totalElements + structure instead.
+    (function() {
+      var craft = { inlineStyleCount: 0, unstyledControls: 0, siblingPaddingGroups: [], maxSiblingPaddingSpread: 0, interactiveCount: 0, hasTransitions: false };
+      // Inline style attributes. Presets are Tailwind-only by prime directive, so an
+      // inline style that sets a DESIGN property (font/color/background/spacing/border) is
+      // a sloppiness signal (e.g. before/dashboard uses style="font-size:10px"). We count
+      // ONLY design-property inline styles — NOT transform/opacity/transition/display/
+      // visibility/top-left-width-height, which are routinely set by legitimate JS (scroll
+      // reveals, accordions, carousels) on polished presets and must not be penalized. The
+      // image stub fulfills network requests only — it never adds inline styles.
+      var DESIGN_PROP = /\b(font-size|font-family|font-weight|font-style|color|background|padding|margin|border(?!-box)|border-radius|box-shadow|text-align|text-transform|letter-spacing|line-height)\s*:/i;
+      try {
+        var styled = document.querySelectorAll('[style]');
+        for (var si = 0; si < styled.length; si++) {
+          var sel = styled[si];
+          if (sel.hasAttribute('data-milg-iframe-ph') || sel.hasAttribute('data-milg-overlay') || sel.hasAttribute('data-decorative')) continue;
+          if (DESIGN_PROP.test(sel.getAttribute('style') || '')) craft.inlineStyleCount++;
+        }
+      } catch (e) {}
+      // Interactive element count (gate for the interaction-affordance check) +
+      // unstyled native controls (button/input/select with no class at all).
+      try {
+        var interactives = document.querySelectorAll('button, a[href], input:not([type=hidden]), select, textarea, [role="button"], [onclick]');
+        for (var ii = 0; ii < interactives.length; ii++) { if (isVisible(interactives[ii])) craft.interactiveCount++; }
+        var ctrls = document.querySelectorAll('button, input:not([type=hidden]), select, textarea');
+        for (var kc = 0; kc < ctrls.length; kc++) {
+          var c = ctrls[kc];
+          var ccls = (c.className && typeof c.className === 'string') ? c.className.trim() : '';
+          if (!ccls && isVisible(c)) craft.unstyledControls++;
+        }
+      } catch (e) {}
+      craft.hasTransitions = !!(data.interaction.transitions && data.interaction.transitions.length > 0);
+      // Sibling padding-rhythm inconsistency. A flex/grid container whose card-like
+      // direct children (own background or border) use >=3 DISTINCT padding values is a
+      // careless-spacing tell (before/dashboard stats: p-2/p-3/p-2/p-4). Crafted designs
+      // — including intentional minimalism — keep sibling padding uniform, so this rewards
+      // consistency without punishing restraint. We compare PADDING (not size) so bento /
+      // asymmetric grids that vary card SIZE are not flagged.
+      try {
+        var all = document.querySelectorAll('*');
+        var groupsChecked = 0;
+        for (var ai = 0; ai < all.length && groupsChecked < 400; ai++) {
+          var cont = all[ai];
+          var cd = getComputedStyle(cont).display;
+          if (cd !== 'flex' && cd !== 'grid' && cd !== 'inline-flex' && cd !== 'inline-grid') continue;
+          if (!isVisible(cont)) continue;
+          var kids = cont.children;
+          if (kids.length < 3) continue;
+          groupsChecked++;
+          // Group card-like children BY TAG NAME so we only compare HOMOGENEOUS siblings
+          // (same component role). Comparing padding across different component types — a
+          // toolbar's input + button + dropdown — is meaningless and a false positive on
+          // real apps. A row of same-tag cards with mismatched padding is the real tell.
+          var byTag = {};
+          for (var ci2 = 0; ci2 < kids.length; ci2++) {
+            var kid = kids[ci2];
+            if (kid.nodeType !== 1) continue;
+            var ks = getComputedStyle(kid);
+            var hasBg = ks.backgroundColor && ks.backgroundColor !== 'rgba(0, 0, 0, 0)' && ks.backgroundColor !== 'transparent';
+            var hasBorder = parseFloat(ks.borderTopWidth) > 0 || parseFloat(ks.borderLeftWidth) > 0;
+            if (!hasBg && !hasBorder) continue;
+            var pad = ks.paddingTop + '|' + ks.paddingRight + '|' + ks.paddingBottom + '|' + ks.paddingLeft;
+            if (pad === '0px|0px|0px|0px') continue;
+            var tg = kid.tagName;
+            (byTag[tg] = byTag[tg] || { pads: {}, count: 0 });
+            byTag[tg].pads[pad] = (byTag[tg].pads[pad] || 0) + 1;
+            byTag[tg].count++;
+          }
+          Object.keys(byTag).forEach(function(tg) {
+            var g = byTag[tg];
+            var distinct = Object.keys(g.pads).length;
+            if (g.count >= 3 && distinct >= 3) {
+              if (craft.siblingPaddingGroups.length < 10) craft.siblingPaddingGroups.push({ selector: cssSelector(cont) + ' > ' + tg.toLowerCase(), distinct: distinct, childCount: g.count });
+              if (distinct > craft.maxSiblingPaddingSpread) craft.maxSiblingPaddingSpread = distinct;
+            }
+          });
+        }
+      } catch (e) {}
+      data.craft = craft;
+    })();
+
     // Export bbox tracking for screenshot pipeline to re-read after scroll-reset
     window.__milgBboxRefs = _bboxRefs;
     window.__milgData = data;
