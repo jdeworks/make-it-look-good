@@ -1312,6 +1312,43 @@ function applyColorTheme(html, fromPrimary, toPrimary, fromNeutral, toNeutral, t
     if (comp !== fromPrimary) replaceInlineColors(comp, toCompanion);
   }
 
+  // --- 2b. Arbitrary hsl() values — rotate HUE toward the new accent ---
+  // Some expressive templates (app-showcase) build their palette from bespoke hsl()
+  // arbitrary values instead of Tailwind color classes, so the class/rgb remap above never
+  // touches them and the accent did nothing. Rotate the hue from the source primary's hue
+  // to the target's, preserving saturation/lightness. GATED to hues near the source primary
+  // so semantic colors (e.g. a green success hsl) are left untouched. (Only app-showcase
+  // uses arbitrary hsl today, so the blast radius is effectively one preset.)
+  // NOTE: helpers are inlined via tailwindRGB (not accentHue/hueDistance) because the score
+  // matrix extracts applyColorTheme into a context where those globals don't exist.
+  (function rotateHslHues() {
+    function hueOf(name) {
+      const rgb = (tailwindRGB[name] || {})[500];
+      if (!rgb) return null;
+      const r = rgb[0] / 255, g = rgb[1] / 255, b = rgb[2] / 255;
+      const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+      if (d < 1e-6) return null; // gray
+      let h;
+      if (mx === r) h = ((g - b) / d) % 6;
+      else if (mx === g) h = (b - r) / d + 2;
+      else h = (r - g) / d + 4;
+      h *= 60; if (h < 0) h += 360;
+      return h;
+    }
+    const srcHue = hueOf(fromPrimary), dstHue = hueOf(toPrimary);
+    if (srcHue == null || dstHue == null) return;          // gray accent → don't rotate
+    const delta = (((dstHue - srcHue) % 360) + 360) % 360;
+    if (delta < 1 || delta > 359) return;                   // no-op
+    const TOL = 40; // the accent cluster spans ~20–33° for orange; keep it, exclude others
+    result = result.replace(/hsl\(\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)%\s*,\s*(\d+(?:\.\d+)?)%\s*\)/gi, function(m, h, s, l) {
+      const hv = parseFloat(h);
+      const dist = Math.min(Math.abs(hv - srcHue), 360 - Math.abs(hv - srcHue));
+      if (dist > TOL) return m;
+      const nh = Math.round((((hv + delta) % 360) + 360) % 360 * 10) / 10;
+      return 'hsl(' + nh + ',' + s + '%,' + l + '%)';
+    });
+  })();
+
   // --- 3. Semantic colors — remap to avoid clashes with new primary ---
   if (theme) {
     const semanticMap = [
