@@ -606,7 +606,7 @@ function reattachPreset(d) {
   detachedFrom = null;
   lastCleanContent = editor.value;
   if (d.personality === 'before') {
-    document.getElementById('personalityButtons').style.display = 'none';
+    try { renderPersonalityButtons(d.element, d.personality); } catch (e) { console.error('[milg] personality render failed:', e); }
     document.getElementById('themeSwatches').style.display = 'none';
     document.getElementById('styleButtons').style.display = 'none';
   } else {
@@ -882,14 +882,31 @@ function ensureThumbPreview() {
   document.body.appendChild(thumbPreviewEl);
   return thumbPreviewEl;
 }
+// In-memory thumbnail cache: holding an Image reference per URL keeps it decoded so
+// re-hovering a card is instant (no refetch/flicker). The browser HTTP-caches the WebP,
+// but re-assigning img.src still triggers a decode cycle — the guard below avoids that
+// when the same thumbnail is already shown.
+const thumbImgCache = new Map();
+function preloadThumb(url) {
+  if (thumbImgCache.has(url)) return;
+  const im = new Image();
+  im.src = url;
+  thumbImgCache.set(url, im);
+}
 function showThumbPreview(card) {
   const el = card.dataset.element, pers = card.dataset.personality;
   if (!el) return;
-  const img = card.querySelector('.preset-thumb-img');
-  if (!img) return; // no thumbnail for this card (e.g. failed to load) -> no preview
+  // Preset cards carry their own thumb img; if it failed to load there's no preview.
+  // Other callers (e.g. the chooser results) have no inline img — they opt in via
+  // data-thumb="1" and rely on the same WebP path.
+  const inlineImg = card.querySelector('.preset-thumb-img');
+  if (!inlineImg && card.dataset.thumb !== '1') return;
+  const url = presetThumbSrc(el, pers, darkMode);
   const p = ensureThumbPreview();
   p.dataset.el = el; p.dataset.pers = pers;
-  p.querySelector('img').src = presetThumbSrc(el, pers, darkMode);
+  const pimg = p.querySelector('img');
+  if (pimg.getAttribute('src') !== url) pimg.src = url; // guard: no redundant re-decode
+  preloadThumb(url);
   p.style.display = 'block';
   // Position: prefer to the right of the card, flip to the left if it would overflow.
   const r = card.getBoundingClientRect();
@@ -1497,7 +1514,12 @@ function renderPersonalityButtons(element, activePersonality) {
     container.style.display = 'none';
     return;
   }
-  const personalities = Object.keys(manifestData.elements[element].personalities).filter(p => p !== 'before');
+  // Include 'before' for the Before→After elements so users can toggle between the
+  // unpolished and polished versions from the toolbar (the menu lists them separately,
+  // but once a 'before' is loaded there was no in-toolbar way back to the 'after').
+  const allPers = Object.keys(manifestData.elements[element].personalities);
+  const hasBefore = allPers.includes('before');
+  const personalities = allPers;
   if (personalities.length <= 1) {
     container.style.display = 'none';
     return;
@@ -1506,7 +1528,11 @@ function renderPersonalityButtons(element, activePersonality) {
   for (const pers of personalities) {
     const btn = document.createElement('button');
     btn.className = 'pers-btn' + (pers === activePersonality ? ' active' : '');
-    btn.textContent = pers.charAt(0).toUpperCase() + pers.slice(1);
+    // For Before→After elements, label the baseline polished variant "After" so the
+    // before/after relationship reads clearly alongside the Before toggle.
+    btn.textContent = pers === 'before' ? 'Before'
+      : (hasBefore && pers === 'clean') ? 'After'
+      : pers.charAt(0).toUpperCase() + pers.slice(1);
     btn.onclick = () => loadPreset(element, pers);
     container.appendChild(btn);
   }
@@ -1529,7 +1555,9 @@ async function loadPreset(element, personality) {
   hideThumbPreview();
   updateTemplateName();
   if (personality === 'before') {
-    document.getElementById('personalityButtons').style.display = 'none';
+    // Keep the personality buttons (so the user can flip to After/Minimalist/Playful);
+    // before has no theming/effects, so hide swatches + style buttons.
+    try { renderPersonalityButtons(element, personality); } catch (e) { console.error('[milg] personality render failed:', e); }
     document.getElementById('themeSwatches').style.display = 'none';
     document.getElementById('styleButtons').style.display = 'none';
     currentStyleIndex = 0;
@@ -1663,7 +1691,7 @@ function closeTemplateChooser() {
 
 function renderTemplateChooser() {
   closeTemplateChooser();
-  chooserState = chooserState || { what: 'landing', audience: 'developers', personality: 'clean', framework: 'html' };
+  chooserState = chooserState || { what: 'landing', audience: 'developers' };
   const overlay = document.createElement('div');
   overlay.id = 'templateChooserOverlay';
   overlay.className = 'chooser-overlay';
@@ -1675,9 +1703,9 @@ function renderTemplateChooser() {
     + '  </div>'
     + '  <div class="chooser-grid">'
     + chooserQuestion('what', 'What are you building?', [['landing','Landing page'], ['app','App / dashboard'], ['form','Form / onboarding'], ['content','Docs / content'], ['portfolio','Portfolio'], ['product','Product page'], ['component','Component']])
-    + chooserQuestion('audience', 'Who is it for?', [['developers','Developers'], ['business','Business users'], ['public','General public'], ['mobile','Mobile-first consumers']])
-    + chooserQuestion('personality', 'Personality?', [['clean','Clean'], ['minimalist','Minimalist'], ['playful','Playful'], ['editorial','Editorial'], ['dark','Dark technical']])
-    // Framework question removed — all presets convert to any framework via LLM; filter added noise
+    + chooserQuestion('audience', 'Who is it for?', audienceOptionsWithState())
+    // Personality + Framework questions removed — neither changed the ranking (personality
+    // was only a preselection with non-universal options; framework converts via LLM).
     + '  </div>'
     + '  <div class="chooser-results" id="chooserResults"></div>'
     + '</div>';
@@ -1690,24 +1718,43 @@ function chooserQuestion(key, label, options) {
   let html = '<div class="chooser-question"><div class="chooser-label">' + escapeHtml(label) + '</div><div class="chooser-options">';
   options.forEach(function(opt) {
     const active = chooserState[key] === opt[0] ? ' active' : '';
-    html += '<button class="chooser-chip' + active + '" onclick="setChooserAnswer(\'' + opt[0] + '\',\'' + key + '\')">' + escapeHtml(opt[1]) + '</button>';
+    // opt[2] === true → this choice yields the same recommendation as the current
+    // selection, so it's disabled (clicking it would change nothing).
+    if (opt[2]) {
+      html += '<button class="chooser-chip' + active + ' disabled" disabled title="Same recommendation as the current selection">' + escapeHtml(opt[1]) + '</button>';
+    } else {
+      html += '<button class="chooser-chip' + active + '" onclick="setChooserAnswer(\'' + opt[0] + '\',\'' + key + '\')">' + escapeHtml(opt[1]) + '</button>';
+    }
   });
   return html + '</div></div>';
+}
+
+// Audience options for the current `what`, with each option flagged disabled when it would
+// produce the SAME top-3 recommendation as the currently-selected audience (e.g. for
+// Components, audience rarely changes the result — those buttons go inert).
+function audienceOptionsWithState() {
+  const base = [['developers','Developers'], ['business','Business users'], ['public','General public'], ['mobile','Mobile-first consumers']];
+  const activeKey = topThreeFor(chooserState.what, chooserState.audience);
+  return base.map(function(opt) {
+    const redundant = opt[0] !== chooserState.audience && topThreeFor(chooserState.what, opt[0]) === activeKey;
+    return [opt[0], opt[1], redundant];
+  });
 }
 
 function setChooserAnswer(value, key) {
   chooserState[key] = value;
   renderTemplateChooser();
-  const hash = 'recommend:' + [chooserState.what, chooserState.audience, chooserState.personality, chooserState.framework].join(',');
+  const hash = 'recommend:' + [chooserState.what, chooserState.audience].join(',');
   history.replaceState(null, '', '#' + hash);
 }
 
-function scorePresetRecommendation(element, info) {
+function scorePresetRecommendation(element, info, state) {
+  state = state || chooserState;
   const tags = getPresetTags(element, info).join(' ').toLowerCase();
   const kind = inferPresetKind(element, info);
   const label = ((info && info.label) || element).toLowerCase();
   let score = 0;
-  const what = chooserState.what;
+  const what = state.what;
   if (what === 'landing' && (/landing|marketing|agency/.test(element + ' ' + tags))) score += 5;
   if (what === 'app' && (/dashboard|shell|table|status|deploy|app/.test(element + ' ' + tags))) score += 5;
   if (what === 'form' && (/form|onboarding/.test(element + ' ' + tags))) score += 5;
@@ -1715,14 +1762,28 @@ function scorePresetRecommendation(element, info) {
   if (what === 'portfolio' && (/portfolio|personal|agency/.test(element + ' ' + tags))) score += 5;
   if (what === 'product' && (/product|pricing|showcase|launch/.test(element + ' ' + tags))) score += 5;
   if (what === 'component' && kind === 'component') score += 5;
-  if (chooserState.audience === 'developers' && /dev|docs|oss|deploy|technical/.test(element + ' ' + tags)) score += 3;
-  if (chooserState.audience === 'business' && /dashboard|table|pricing|status|business|app/.test(element + ' ' + tags)) score += 3;
-  if (chooserState.audience === 'public' && /landing|restaurant|event|portfolio|product/.test(element + ' ' + tags + ' ' + label)) score += 3;
-  if (chooserState.audience === 'mobile' && /form|landing|product|event/.test(element + ' ' + tags)) score += 2;
-  if (info.personalities && info.personalities[chooserState.personality]) score += 2;
-  if (chooserState.personality === 'dark' && /dev|docs|status|dashboard|oss/.test(element + ' ' + tags)) score += 2;
-  // Framework scoring removed — filter caused noise since most presets are HTML-only
+  if (state.audience === 'developers' && /dev|docs|oss|deploy|technical/.test(element + ' ' + tags)) score += 3;
+  if (state.audience === 'business' && /dashboard|table|pricing|status|business|app/.test(element + ' ' + tags)) score += 3;
+  if (state.audience === 'public' && /landing|restaurant|event|portfolio|product/.test(element + ' ' + tags + ' ' + label)) score += 3;
+  if (state.audience === 'mobile' && /form|landing|product|event/.test(element + ' ' + tags)) score += 2;
+  // Personality removed as a factor — it was only a preselection, offered options that
+  // don't exist on every preset, and didn't change the ranking. Recommended variant
+  // defaults to clean. Framework scoring also removed (all presets convert via LLM).
   return score;
+}
+
+// Top-3 recommended element keys for a given (what, audience), independent of chooserState.
+// Used both to render results and to detect when an audience option would not change the
+// recommendation (so we can disable redundant buttons).
+function topThreeFor(what, audience) {
+  if (!manifestData) return [];
+  const state = { what: what, audience: audience };
+  return Object.entries(manifestData.elements)
+    .map(function(e) { return { element: e[0], score: scorePresetRecommendation(e[0], e[1], state) }; })
+    .sort(function(a, b) { return b.score - a.score; })
+    .slice(0, 3)
+    .map(function(r) { return r.element; })
+    .join('|');
 }
 
 function updateChooserResults() {
@@ -1734,11 +1795,14 @@ function updateChooserResults() {
 
   results.innerHTML = '<div class="chooser-results-title">Recommended presets</div>' + ranked.map(function(item) {
     const personalities = Object.keys(item.info.personalities || {});
-    let personality = personalities.indexOf(chooserState.personality) !== -1 ? chooserState.personality : (personalities.indexOf('clean') !== -1 ? 'clean' : personalities[0]);
-    if (personality === 'before' && personalities.length > 1) personality = personalities.find(p => p !== 'before');
+    // Default to the polished 'clean' variant (personality is no longer a wizard factor).
+    let personality = personalities.indexOf('clean') !== -1 ? 'clean' : personalities.find(p => p !== 'before') || personalities[0];
     const reason = getBestFor(item.element, item.info);
-    return '<div class="chooser-result">'
-      + '<div><strong>' + escapeHtml(item.info.label || item.element) + '</strong><span>' + escapeHtml(reason) + '</span></div>'
+    const thumb = presetThumbSrc(item.element, personality, darkMode);
+    // data-thumb + hover handlers reuse the card hover-zoom (cached, loads once).
+    return '<div class="chooser-result" data-element="' + escapeHtml(item.element) + '" data-personality="' + escapeHtml(personality) + '" data-thumb="1" onmouseenter="showThumbPreview(this)" onmouseleave="hideThumbPreview()">'
+      + '<img class="chooser-result-thumb" loading="lazy" alt="" src="' + thumb + '" onerror="this.style.visibility=\'hidden\'">'
+      + '<div class="chooser-result-text"><strong>' + escapeHtml(item.info.label || item.element) + '</strong><span>' + escapeHtml(reason) + '</span></div>'
       + '<button class="btn btn-primary" onclick="chooseRecommendedPreset(\'' + item.element + '\',\'' + personality + '\')">Load</button>'
       + '</div>';
   }).join('');
@@ -1832,7 +1896,7 @@ function buildAgentPack(format) {
   const effectName = (visualStyles[currentStyleIndex] && visualStyles[currentStyleIndex].name) || 'None';
   const colorName = currentColorName || getElementPrimary(element, personality) || 'blue';
   const useDescription = chooserState && chooserState.what !== undefined
-    ? 'Use case: ' + chooserState.what + ', audience: ' + chooserState.audience + ', personality: ' + chooserState.personality + (chooserState.framework !== 'html' ? ', convert to: ' + chooserState.framework : '')
+    ? 'Use case: ' + chooserState.what + ', audience: ' + chooserState.audience
     : '';
   const knowledge = [
     'layout/visual-hierarchy.md',
@@ -2025,9 +2089,7 @@ async function loadFromHash() {
     const parts = hash.slice(10).split(',');
     chooserState = {
       what: parts[0] || 'landing',
-      audience: parts[1] || 'developers',
-      personality: parts[2] || 'clean',
-      framework: parts[3] || 'html'
+      audience: parts[1] || 'developers'
     };
     setTimeout(openTemplateChooser, 50);
     return;
