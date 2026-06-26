@@ -4,7 +4,7 @@
      requires: tailwindcss
 -->
 <script setup>
-import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 
 const props = defineProps({
   items: {
@@ -21,6 +21,7 @@ const props = defineProps({
     ],
   },
   label: { type: String, default: 'Options' },
+  triggerId: { type: String, default: 'dropdown-trigger' },
 })
 
 const emit = defineEmits(['select'])
@@ -28,6 +29,18 @@ const emit = defineEmits(['select'])
 const open = ref(false)
 const wrapperRef = ref(null)
 const menuRef = ref(null)
+
+// Group items between separators so each group gets a py-1 wrapper
+const groups = computed(() =>
+  props.items.reduce((acc, item) => {
+    if (item.type === 'separator') { acc.push([]); }
+    else {
+      if (!acc.length) acc.push([]);
+      acc[acc.length - 1].push(item);
+    }
+    return acc;
+  }, [])
+)
 
 function toggle() {
   open.value = !open.value
@@ -76,41 +89,45 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="relative inline-block text-left" ref="wrapperRef">
+  <div class="static sm:relative inline-block text-left" ref="wrapperRef">
     <button
       type="button"
+      :id="triggerId"
       class="inline-flex items-center gap-2 min-h-11 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
       aria-haspopup="true"
       :aria-expanded="open"
       @click="toggle"
     >
       {{ label }}
-      <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7"/></svg>
+      <svg class="w-4 h-4 text-blue-700 dark:text-blue-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7"/></svg>
     </button>
 
     <div
       v-if="open"
       ref="menuRef"
-      class="absolute left-0 z-50 mt-2 w-56 origin-top-left rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-lg ring-1 ring-black/5"
+      class="absolute left-4 right-4 sm:left-auto sm:right-0 z-50 mt-2 sm:w-56 origin-top-left sm:origin-top-right rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-lg ring-1 ring-blue-500/10"
       role="menu"
       aria-orientation="vertical"
+      :aria-labelledby="triggerId"
       @keydown="handleMenuKeyDown"
     >
-      <template v-for="(item, i) in items" :key="i">
-        <div v-if="item.type === 'separator'" class="border-t border-slate-200 dark:border-slate-700" />
-        <div v-else class="py-0.5">
+      <template v-for="(group, gi) in groups" :key="gi">
+        <div v-if="gi > 0" class="border-t border-slate-200 dark:border-slate-700" />
+        <div class="py-1">
           <button
+            v-for="item in group"
+            :key="item.id"
             role="menuitem"
             tabindex="-1"
             :class="[
-              'flex items-center gap-3 w-full min-h-11 px-4 py-2.5 text-sm text-left transition-colors',
+              'flex items-center gap-3 w-full min-h-11 px-4 py-2.5 text-sm text-left focus:outline-none transition-colors',
               item.destructive
-                ? 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'
-                : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50'
+                ? 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 focus:bg-red-50 dark:focus:bg-red-900/20'
+                : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 focus:bg-blue-50 dark:focus:bg-blue-900/30 focus:[&>svg]:text-blue-600 dark:focus:[&>svg]:text-blue-400'
             ]"
             @click="handleSelect(item.id)"
           >
-            <svg :class="['w-4 h-4', item.destructive ? '' : 'text-slate-400']" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <svg :class="['w-4 h-4', item.destructive ? '' : 'text-slate-600']" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
               <path :d="item.icon" />
             </svg>
             {{ item.label }}

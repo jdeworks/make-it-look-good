@@ -3,7 +3,7 @@
 // rationale: components/navigation.md
 // requires: tailwindcss
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, Fragment } from 'react';
 
 const defaultItems = [
   { id: 'edit', label: 'Edit', icon: 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z' },
@@ -16,7 +16,7 @@ const defaultItems = [
   { id: 'delete', label: 'Delete', icon: 'M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16', destructive: true },
 ];
 
-export function DropdownMenu({ items = defaultItems, label = 'Options', onSelect }) {
+export function DropdownMenu({ items = defaultItems, label = 'Options', onSelect, triggerId = 'dropdown-trigger' }) {
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef(null);
   const menuRef = useRef(null);
@@ -52,53 +52,49 @@ export function DropdownMenu({ items = defaultItems, label = 'Options', onSelect
     if (e.key === 'ArrowUp') { e.preventDefault(); menuItems[(idx - 1 + menuItems.length) % menuItems.length]?.focus(); }
   };
 
+  // Group items between separators so each group gets a py-1 wrapper
+  const groups = items.reduce((acc, item) => {
+    if (item.type === 'separator') { acc.push([]); }
+    else {
+      if (!acc.length) acc.push([]);
+      acc[acc.length - 1].push(item);
+    }
+    return acc;
+  }, []);
+
   return (
-    <div className="relative inline-block text-left" ref={wrapperRef}>
+    <div className="static sm:relative inline-block text-left" ref={wrapperRef}>
       <button
         type="button"
+        id={triggerId}
         className="inline-flex items-center gap-2 min-h-11 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
         aria-haspopup="true"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
       >
         {label}
-        <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" /></svg>
+        <svg className="w-4 h-4 text-blue-700 dark:text-blue-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" /></svg>
       </button>
 
       {open && (
         <div
-          className="absolute left-0 z-50 mt-2 w-56 origin-top-left rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-lg ring-1 ring-black/5"
+          className="absolute left-4 right-4 sm:left-auto sm:right-0 z-50 mt-2 sm:w-56 origin-top-left sm:origin-top-right rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-lg ring-1 ring-blue-500/10"
           role="menu"
           aria-orientation="vertical"
+          aria-labelledby={triggerId}
           ref={menuRef}
           onKeyDown={handleMenuKeyDown}
         >
-          {items.reduce((acc, item, i) => {
-            if (item.type === 'separator') {
-              acc.push(<div key={`sep-${i}`} className="border-t border-slate-200 dark:border-slate-700" />);
-            } else {
-              // Group items between separators in py-1 divs
-              const lastEl = acc[acc.length - 1];
-              const needsWrapper = !lastEl || lastEl.key?.startsWith('sep');
-              if (needsWrapper) {
-                acc.push(
-                  <div key={`group-${i}`} className="py-1">
-                    <MenuItem item={item} onSelect={onSelect} close={close} />
-                  </div>
-                );
-              } else {
-                // Clone last wrapper to append child
-                const prevGroup = acc[acc.length - 1];
-                acc[acc.length - 1] = (
-                  <div key={prevGroup.key} className="py-1">
-                    {prevGroup.props.children}
-                    <MenuItem item={item} onSelect={onSelect} close={close} />
-                  </div>
-                );
-              }
-            }
-            return acc;
-          }, [])}
+          {groups.map((group, gi) => (
+            <Fragment key={gi}>
+              {gi > 0 && <div className="border-t border-slate-200 dark:border-slate-700" />}
+              <div className="py-1">
+                {group.map(item => (
+                  <MenuItem key={item.id} item={item} onSelect={onSelect} close={close} />
+                ))}
+              </div>
+            </Fragment>
+          ))}
         </div>
       )}
     </div>
@@ -110,14 +106,14 @@ function MenuItem({ item, onSelect, close }) {
     <button
       role="menuitem"
       tabIndex={-1}
-      className={`flex items-center gap-3 w-full min-h-11 px-4 py-2.5 text-sm text-left transition-colors ${
+      className={`flex items-center gap-3 w-full min-h-11 px-4 py-2.5 text-sm text-left focus:outline-none transition-colors ${
         item.destructive
-          ? 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'
-          : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50'
+          ? 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 focus:bg-red-50 dark:focus:bg-red-900/20'
+          : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 focus:bg-blue-50 dark:focus:bg-blue-900/30 focus:[&>svg]:text-blue-600 dark:focus:[&>svg]:text-blue-400'
       }`}
       onClick={() => { onSelect?.(item.id); close(); }}
     >
-      <svg className={`w-4 h-4 ${item.destructive ? '' : 'text-slate-400'}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+      <svg className={`w-4 h-4 ${item.destructive ? '' : 'text-slate-600'}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
         <path d={item.icon} />
       </svg>
       {item.label}

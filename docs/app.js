@@ -818,10 +818,32 @@ function getBestFor(element, info) {
   return 'Focused UI components and reusable sections';
 }
 
-function hasFrameworkFile(element, personality, framework) {
-  // The current gallery can only test committed framework variants if they are
-  // mirrored beside the HTML preset. This keeps badges truthful without network work.
-  return false;
+function hasFrameworkFile(element, framework) {
+  // Truthful, network-free: driven by the frameworkFiles metadata in index.json,
+  // which the sync guard (scripts/test-framework-sync.mjs) keeps matched to disk.
+  return getFrameworkFiles(element, framework).length > 0;
+}
+
+function getFrameworkFiles(element, framework) {
+  const info = manifestData && manifestData.elements ? manifestData.elements[element] : null;
+  if (!info || !info.frameworkFiles) return [];
+  return info.frameworkFiles[framework] || [];
+}
+
+const frameworkFileCache = {};
+async function fetchFrameworkFile(element, file) {
+  const key = element + '/' + file;
+  if (frameworkFileCache[key] != null) return frameworkFileCache[key];
+  try {
+    const resp = await fetch('presets/' + element + '/' + file);
+    if (!resp.ok) throw new Error('Not found: ' + key);
+    const text = await resp.text();
+    frameworkFileCache[key] = text;
+    return text;
+  } catch (e) {
+    console.error('Failed to load framework file:', key);
+    return '';
+  }
 }
 
 function getPresetFrameworks(element, info) {
@@ -1884,12 +1906,40 @@ function openAgentPackMenu() {
   menu.className = 'agent-pack-menu';
   menu.style.top = (rect.bottom + 6) + 'px';
   menu.style.right = Math.max(12, window.innerWidth - rect.right) + 'px';
-  menu.innerHTML = ''
+
+  const element = currentElement || 'custom';
+  let html = ''
     + '<button onclick="copyAgentPack(\'prompt\')">Copy Agent Prompt</button>'
     + '<button onclick="copyAgentPack(\'markdown\')">Copy Markdown</button>'
     + '<button onclick="copyCurrentHtml()">Copy HTML</button>'
     + '<button onclick="downloadCurrentHtml()">Download .html</button>'
-    + '<button onclick="copyFrameworkPrompt()">Copy Framework Prompt</button>';
+    + '<div class="apm-divider"></div><div class="apm-label">Framework</div>';
+
+  // Per language: copy the ACTUAL component file when one exists for this element,
+  // otherwise copy a targeted conversion prompt. Angular is always prompt-only.
+  const downloads = [];
+  ['react', 'vue', 'svelte', 'angular'].forEach(function(lang) {
+    const files = getFrameworkFiles(element, lang);
+    if (files.length) {
+      files.forEach(function(f) {
+        html += '<button onclick="exportFramework(\'' + lang + '\',\'' + f.file + '\')">Copy ' + escapeHtml(f.label) + '</button>';
+        downloads.push(f);
+      });
+    } else {
+      const label = lang.charAt(0).toUpperCase() + lang.slice(1);
+      html += '<button onclick="exportFramework(\'' + lang + '\')">Copy ' + label + ' prompt</button>';
+    }
+  });
+
+  if (downloads.length) {
+    html += '<div class="apm-divider"></div><div class="apm-label">Download component</div>';
+    downloads.forEach(function(f) {
+      const ext = f.file.slice(f.file.lastIndexOf('.'));
+      html += '<button onclick="downloadFrameworkFile(\'' + element + '\',\'' + f.file + '\')">' + escapeHtml(f.label) + ' (' + ext + ')</button>';
+    });
+  }
+
+  menu.innerHTML = html;
   document.body.appendChild(menu);
   setTimeout(function() {
     document.addEventListener('click', closeAgentPackMenu, { once: true });
@@ -1903,11 +1953,15 @@ function closeAgentPackMenu(e) {
   menu.remove();
 }
 
+function copyText(text, toastMsg) {
+  navigator.clipboard.writeText(text)
+    .then(() => showToast(toastMsg))
+    .catch(() => prompt('Copy this:', text));
+}
+
 function copyAgentPack(format) {
   const pack = buildAgentPack(format || 'prompt');
-  navigator.clipboard.writeText(pack)
-    .then(() => showToast((format === 'markdown' ? 'Markdown' : 'Agent prompt') + ' copied'))
-    .catch(() => prompt('Copy this Agent Pack:', pack));
+  copyText(pack, (format === 'markdown' ? 'Markdown handoff' : 'Agent prompt') + ' copied');
   closeAgentPackMenu();
 }
 
@@ -1935,13 +1989,78 @@ function downloadCurrentHtml() {
   closeAgentPackMenu();
 }
 
-function copyFrameworkPrompt() {
-  const target = chooserState && chooserState.framework && chooserState.framework !== 'html' ? chooserState.framework : 'React';
-  const promptText = buildAgentPack('prompt') + '\n\n## Framework conversion\nConvert the preset to ' + target + '. Preserve the rendered structure, responsive behavior, accessible semantics, spacing rhythm, contrast, and visual hierarchy. Keep content editable through ordinary component props or local data objects.';
-  navigator.clipboard.writeText(promptText)
-    .then(() => showToast('Framework prompt copied'))
-    .catch(() => prompt('Copy this framework prompt:', promptText));
+// Language label + the FRAMEWORKS.md section to point an LLM at for the full mapping.
+const FRAMEWORK_META = {
+  react:   { label: 'React',   section: 'React / Next.js',         essentials: '`class`→`className`, `for`→`htmlFor`, `onclick`→`onClick={...}`; SVG attrs camelCase; lists via `.map` with a `key`; conditional classes via template strings.' },
+  vue:     { label: 'Vue',     section: 'Vue 3 (Composition API)', essentials: 'Use `<template>` + `<script setup>`; `:class`, `@click`, `v-for="x in items" :key`, `v-if`/`v-show`; keep the `class` attribute name.' },
+  svelte:  { label: 'Svelte',  section: 'Svelte 5 / SvelteKit',    essentials: 'Use `<script>` + markup; `on:click`, `{#each items as x (x.id)}`, `{#if}`; `class:active={cond}`; keep `class`.' },
+  angular: { label: 'Angular', section: 'Angular',                 essentials: 'Standalone component; `(click)`, `[class.x]`, `@for (x of items; track x.id)`, `@if`; `[ngClass]` for dynamic classes.' }
+};
+
+// Element -> the FRAMEWORKS.md interactive-behavior recipe most relevant to it.
+const FRAMEWORK_RECIPE = {
+  accordion: 'Single-open accordion', tabs: 'Keyboard navigation', dropdown: 'Outside-click close',
+  pagination: 'Pagination range with ellipsis', form: 'Form validation', 'shell-form': 'Form validation',
+  'shell-sidebar': 'Toggle (sidebar, mobile menu, accordion)', 'shell-marketing': 'Toggle (sidebar, mobile menu, accordion)',
+  'shell-dashboard': 'Toggle (sidebar, mobile menu, accordion)', hero: 'Debounced search input'
+};
+
+// Copy a framework export: the ACTUAL component file when one exists for this
+// element, otherwise a targeted conversion prompt grounded in FRAMEWORKS.md.
+async function exportFramework(lang, file) {
   closeAgentPackMenu();
+  const element = currentElement || 'custom';
+  const meta = FRAMEWORK_META[lang] || { label: lang };
+  const files = getFrameworkFiles(element, lang);
+  if (file || files.length) {
+    const target = file ? (files.find(f => f.file === file) || files[0]) : files[0];
+    const code = await fetchFrameworkFile(element, target.file);
+    if (code) {
+      const fence = target.file.endsWith('.jsx') ? 'jsx' : target.file.endsWith('.vue') ? 'vue' : 'svelte';
+      const info = manifestData && manifestData.elements[element];
+      const rawUrl = 'https://raw.githubusercontent.com/jdeworks/make-it-look-good/dev/docs/presets/' + element + '/' + target.file;
+      const out = '# ' + ((info && info.label) || element) + ' — ' + target.label + '\n'
+        + 'Production component, faithful to the `clean` preset. Source: ' + rawUrl + '\n'
+        + 'Swap the placeholder copy/data for your own; styling is Tailwind utility classes.\n\n'
+        + '```' + fence + '\n' + code + '\n```';
+      copyText(out, target.label + ' component copied');
+      return;
+    }
+  }
+  copyText(buildFrameworkPrompt(lang), meta.label + ' conversion prompt copied');
+}
+
+async function downloadFrameworkFile(element, file) {
+  closeAgentPackMenu();
+  const code = await fetchFrameworkFile(element, file);
+  if (!code) { showToast('Could not load ' + file); return; }
+  const blob = new Blob([code], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = element + '-' + file;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  showToast('Component download started');
+}
+
+// Conversion prompt for languages/elements without a pre-built component file
+// (Angular always; svelte for avatars/stats-row; the 36 HTML-only presets).
+function buildFrameworkPrompt(lang) {
+  const meta = FRAMEWORK_META[lang] || { label: lang, section: lang, essentials: '' };
+  const repoBase = 'https://raw.githubusercontent.com/jdeworks/make-it-look-good/dev/';
+  const recipe = FRAMEWORK_RECIPE[currentElement];
+  let out = buildAgentPack('prompt')
+    + '\n\n## Convert to ' + meta.label + '\n'
+    + 'Port the HTML above to ' + meta.label + '. Preserve the rendered structure, responsive behavior, '
+    + 'accessible semantics, spacing rhythm, contrast, and visual hierarchy. Keep content editable via props or local data objects.\n';
+  if (meta.essentials) out += '\n**' + meta.label + ' essentials:** ' + meta.essentials + '\n';
+  out += '\nFull mapping + behavior recipes: ' + repoBase + 'docs/presets/FRAMEWORKS.md — read the "' + meta.section + '" section';
+  if (recipe) out += ' and the "' + recipe + '" recipe';
+  out += '.\n';
+  return out;
 }
 
 function buildAgentPack(format) {
@@ -1949,46 +2068,77 @@ function buildAgentPack(format) {
   const personality = currentPersonality || (detachedFrom && detachedFrom.personality) || 'custom';
   const info = manifestData && manifestData.elements[element] ? manifestData.elements[element] : null;
   const variants = info ? Object.keys(info.personalities || {}).filter(p => p !== 'before').map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(', ') : 'custom';
-  const sourcePath = element !== 'custom' ? 'docs/presets/' + element + '/' + personality + '.html' : 'custom editor HTML';
   const repoBase = 'https://raw.githubusercontent.com/jdeworks/make-it-look-good/dev/';
-  const rawUrl = element !== 'custom' ? repoBase + sourcePath : 'n/a';
-  const componentFile = inferKnowledgeFile(element);
-  const title = format === 'markdown' ? '# Preset Handoff' : '# make-it-look-good Agent Pack';
   const effectName = (visualStyles[currentStyleIndex] && visualStyles[currentStyleIndex].name) || 'None';
   const colorName = currentColorName || getElementPrimary(element, personality) || 'blue';
-  const useDescription = chooserState && chooserState.what !== undefined
-    ? 'Use case: ' + chooserState.what + ', audience: ' + chooserState.audience
-    : '';
+  const currentHtml = editor.value || '';
+
+  const presetLines = [
+    '## Preset',
+    '- Template: **' + (info && info.label ? info.label : element) + '** — ' + personality,
+    '- Available variants: ' + variants,
+    '- Accent color: ' + colorName + (effectName !== 'None' ? ' + ' + effectName + ' effect' : '') + (darkMode ? ' (dark mode)' : '')
+  ];
+  if (chooserState && chooserState.what !== undefined) {
+    presetLines.push('- Use case: ' + chooserState.what + ', audience: ' + chooserState.audience);
+  }
+
+  // Markdown = lightweight designer handoff: tokens + notes + the HTML, no agent
+  // instructions or repo-fetch URLs. (Distinct from the agent prompt below.)
+  if (format === 'markdown') {
+    return ['# Design Handoff', ''].concat(presetLines).concat([
+      '',
+      '## Notes',
+      '- Preserve the spacing rhythm, contrast ratios, ≥44px touch targets, and responsive structure.',
+      '- Replace placeholder copy, links, and avatars with real brand content before shipping.',
+      '',
+      '## HTML',
+      '```html',
+      currentHtml,
+      '```'
+    ]).join('\n');
+  }
+
+  // Agent prompt (default): full handoff with knowledge URLs, gotcha audit, and
+  // the component's decision points. Knowledge files live at the repo ROOT.
+  const componentFile = inferKnowledgeFile(element);
   const knowledge = [
     'layout/visual-hierarchy.md',
     'layout/spacing-system.md',
     'typography/type-scale.md',
     'color/contrast-and-accessibility.md',
     'interaction/touch-targets.md',
-    'responsive/mobile-first.md'
+    'responsive/mobile-first.md',
+    'heuristics/llm-design-gotchas.md'
   ];
   if (componentFile) knowledge.push(componentFile);
-  const knowledgeUrls = knowledge.map(function(k) { return '- ' + repoBase + 'knowledge/' + k; });
-  const currentHtml = editor.value || '';
-  const lines = [
-    title,
-    '',
-    '## Preset',
-    '- Template: **' + (info && info.label ? info.label : element) + '** — ' + personality,
-    '- Available variants: ' + variants,
-    '- Accent color: ' + colorName + (effectName !== 'None' ? ' + ' + effectName + ' effect' : '') + (darkMode ? ' (dark mode)' : ''),
-    useDescription,
+  const knowledgeUrls = knowledge.map(function(k) { return '- ' + repoBase + k; });
+  const decisionUrl = element !== 'custom' ? repoBase + 'workflows/component-decision-points.md#' + element : null;
+
+  let lines = ['# make-it-look-good Agent Pack', ''].concat(presetLines).concat([
     '',
     '## Design knowledge',
-    'Read these files from the make-it-look-good repo for design guidance:',
-  ].concat(knowledgeUrls).concat([
+    'Read these files from the make-it-look-good repo for design guidance:'
+  ]).concat(knowledgeUrls);
+
+  if (decisionUrl) {
+    lines = lines.concat([
+      '',
+      '## Decision points (resolve before generating)',
+      'This component has behavior choices that change the implementation. Answer them for the user (or pick + state a sensible default):',
+      '- ' + decisionUrl
+    ]);
+  }
+
+  lines = lines.concat([
     '',
     '## Instructions',
-    '1. Use the HTML below as your starting point — it has the current color and edits applied.',
-    '2. Replace placeholder content with real brand content.',
-    '3. Preserve the spacing rhythm, contrast ratios, touch targets, and responsive structure.',
-    '4. Match the target project stack (convert classes/structure as needed).',
-    '5. Generate Design Review Notes listing issues found and decisions made.',
+    (decisionUrl ? '1. Resolve the decision-point questions above first.' : '1. Confirm any ambiguous behavior with the user first.'),
+    '2. Use the HTML below as your starting point — it has the current color and edits applied.',
+    '3. Replace placeholder content with real brand content.',
+    '4. Preserve the spacing rhythm, contrast ratios, touch targets, and responsive structure.',
+    '5. Match the target project stack (convert classes/structure as needed).',
+    '6. Run the gotcha self-audit in heuristics/llm-design-gotchas.md, then write Design Review Notes listing issues found and decisions made.',
     '',
     '## Current HTML',
     '```html',
@@ -2002,8 +2152,10 @@ function inferKnowledgeFile(element) {
   if (/form/.test(element)) return 'components/forms.md';
   if (/button/.test(element)) return 'components/buttons.md';
   if (/card|pricing/.test(element)) return 'components/cards.md';
-  if (/table/.test(element)) return 'components/tables.md';
-  if (/dropdown|tabs|accordion|pagination/.test(element)) return 'components/navigation.md';
+  if (/table/.test(element)) return 'components/tables-and-lists.md';
+  if (/modal|dialog/.test(element)) return 'components/modals-and-dialogs.md';
+  if (/dropdown|tabs|accordion|pagination|nav|sidebar|shell/.test(element)) return 'components/navigation.md';
+  if (/toast|alert|stats|feedback/.test(element)) return 'components/feedback.md';
   return null;
 }
 

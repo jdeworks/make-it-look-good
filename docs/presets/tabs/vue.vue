@@ -54,9 +54,9 @@ function handleKeyDown(e) {
           :id="`tab-${tab.id}`"
           :tabindex="tab.id === activeTab ? 0 : -1"
           :class="[
-            'relative min-h-11 px-4 py-3 text-sm font-medium whitespace-nowrap focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-800 rounded-t-md',
+            'relative min-h-11 px-4 py-3 text-sm font-semibold whitespace-nowrap focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-800 rounded-t-md',
             tab.id === activeTab
-              ? 'text-blue-600 dark:text-blue-400 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-blue-600 dark:after:bg-blue-400'
+              ? 'text-blue-700 dark:text-blue-400 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-blue-700 dark:after:bg-blue-400'
               : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors'
           ]"
           @click="activeTab = tab.id"
@@ -66,19 +66,19 @@ function handleKeyDown(e) {
       </nav>
     </div>
 
-    <!-- Tab panel -->
-    <template v-for="tab in tabs" :key="tab.id">
-      <div
-        v-if="tab.id === activeTab"
-        :id="`panel-${tab.id}`"
-        role="tabpanel"
-        :aria-labelledby="`tab-${tab.id}`"
-        tabindex="0"
-        class="p-4 sm:p-6"
-      >
-        <h3 class="text-lg font-semibold text-slate-900 dark:text-white mb-2">{{ tab.label }}</h3>
-        <p class="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">{{ tab.content }}</p>
-      </div>
-    </template>
+    <!-- Tab panels -->
+    <div
+      v-for="tab in tabs"
+      :key="tab.id"
+      :id="`panel-${tab.id}`"
+      role="tabpanel"
+      :aria-labelledby="`tab-${tab.id}`"
+      tabindex="0"
+      :aria-hidden="tab.id !== activeTab"
+      :class="['p-4 sm:p-6', { hidden: tab.id !== activeTab }]"
+    >
+      <h3 class="text-lg font-semibold text-slate-900 dark:text-white mb-2">{{ tab.label }}</h3>
+      <p class="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">{{ tab.content }}</p>
+    </div>
   </div>
 </template>

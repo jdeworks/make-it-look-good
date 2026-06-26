@@ -80,7 +80,7 @@ function handleNavigate(id) {
             :href="item.href"
             @click.prevent="handleNavigate(item.id)"
             :class="[
-              'flex items-center px-3 py-2.5 text-sm font-medium rounded-lg transition-colors min-h-11',
+              'flex items-center px-3 py-2.5 text-sm font-semibold rounded-lg transition-colors min-h-11',
               collapsed ? 'justify-center' : 'gap-3',
               activeItem === item.id
                 ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
@@ -120,7 +120,7 @@ function handleNavigate(id) {
       <a
         href="#"
         :class="[
-          'flex items-center px-3 py-2.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white rounded-lg transition-colors min-h-11',
+          'flex items-center px-3 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white rounded-lg transition-colors min-h-11',
           collapsed ? 'justify-center' : 'gap-3'
         ]"
         :title="collapsed ? 'Settings' : undefined"
@@ -137,7 +137,7 @@ function handleNavigate(id) {
           collapsed ? 'justify-center' : 'gap-3'
         ]"
       >
-        <div class="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white text-sm font-medium shrink-0">
+        <div class="w-8 h-8 bg-blue-700 rounded-full flex items-center justify-center text-white text-sm font-semibold shrink-0">
           JD
         </div>
         <div v-if="!collapsed" class="min-w-0">

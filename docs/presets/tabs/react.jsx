@@ -35,8 +35,6 @@ export function Tabs({ tabs = defaultTabs }) {
     }
   }, []);
 
-  const activePanel = tabs.find((t) => t.id === activeTab);
-
   return (
     <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
       {/* Tab list */}
@@ -60,9 +58,9 @@ export function Tabs({ tabs = defaultTabs }) {
                 id={`tab-${tab.id}`}
                 tabIndex={isActive ? 0 : -1}
                 onClick={() => setActiveTab(tab.id)}
-                className={`relative min-h-11 px-4 py-3 text-sm font-medium whitespace-nowrap focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-800 rounded-t-md ${
+                className={`relative min-h-11 px-4 py-3 text-sm font-semibold whitespace-nowrap focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-800 rounded-t-md ${
                   isActive
-                    ? 'text-blue-600 dark:text-blue-400 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-blue-600 dark:after:bg-blue-400'
+                    ? 'text-blue-700 dark:text-blue-400 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-blue-700 dark:after:bg-blue-400'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors'
                 }`}
               >
@@ -73,19 +71,24 @@ export function Tabs({ tabs = defaultTabs }) {
         </nav>
       </div>
 
-      {/* Tab panel */}
-      {activePanel && (
-        <div
-          id={`panel-${activePanel.id}`}
-          role="tabpanel"
-          aria-labelledby={`tab-${activePanel.id}`}
-          tabIndex={0}
-          className="p-4 sm:p-6"
-        >
-          <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">{activePanel.label}</h3>
-          <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">{activePanel.content}</p>
-        </div>
-      )}
+      {/* Tab panels */}
+      {tabs.map((tab) => {
+        const isActive = tab.id === activeTab;
+        return (
+          <div
+            key={tab.id}
+            id={`panel-${tab.id}`}
+            role="tabpanel"
+            aria-labelledby={`tab-${tab.id}`}
+            tabIndex={0}
+            aria-hidden={!isActive}
+            className={`p-4 sm:p-6${isActive ? '' : ' hidden'}`}
+          >
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">{tab.label}</h3>
+            <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">{tab.content}</p>
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -74,7 +74,7 @@
               onclick={(e) => handleNav(e, item.id)}
               class={`flex items-center ${
                 collapsed ? 'justify-center' : 'gap-3'
-              } px-3 py-2.5 text-sm font-medium rounded-lg transition-colors min-h-11 ${
+              } px-3 py-2.5 text-sm font-semibold rounded-lg transition-colors min-h-11 ${
                 isActive
                   ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
                   : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white'
@@ -107,7 +107,7 @@
       href="#"
       class={`flex items-center ${
         collapsed ? 'justify-center' : 'gap-3'
-      } px-3 py-2.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white rounded-lg transition-colors min-h-11`}
+      } px-3 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white rounded-lg transition-colors min-h-11`}
       title={collapsed ? 'Settings' : undefined}
     >
       <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
@@ -115,7 +115,7 @@
     </a>
     <!-- User -->
     <div class={`flex items-center ${collapsed ? 'justify-center' : 'gap-3'} px-3 py-2.5 mt-1`}>
-      <div class="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white text-sm font-medium shrink-0">JD</div>
+      <div class="w-8 h-8 bg-blue-700 rounded-full flex items-center justify-center text-white text-sm font-semibold shrink-0">JD</div>
       {#if !collapsed}
         <div class="min-w-0">
           <p class="text-sm font-medium text-slate-900 dark:text-white truncate">Jane Doe</p>

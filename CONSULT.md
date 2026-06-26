@@ -116,6 +116,8 @@ Run through this checklist against their code. Note every issue you find.
 - [ ] Forms: single column, labels above, grouped into logical sections, `autocomplete` attributes?
 - [ ] Modals: max ~600px wide, trap focus, clear dismiss action?
 
+For interactive components, also resolve the behavior choices in [`workflows/component-decision-points.md`](workflows/component-decision-points.md) (e.g. accordion single- vs multi-open, table sort/pagination, form validation timing) before recommending changes.
+
 ### Output the Design Review Notes
 
 After auditing, generate a **Design Review Notes** document (see Step 4 for the full template). This is the most important output — it gives the user a persistent record of what to fix and why.
@@ -248,7 +250,7 @@ Before diving into design questions, gauge how much guidance the user wants. **A
 
    *Affects:* Spacing system (4px compact vs 8px generous), base font size (14px for dense, 16px for standard), line height, card padding. Dense UIs can use `text-sm` for data; light UIs should use `text-base` or larger.
 
-10. **What components do you need?** (List the specific ones)
+10. **What components do you need?** (List the specific ones) — for interactive ones, see [`workflows/component-decision-points.md`](workflows/component-decision-points.md) for the behavior questions to resolve per component.
 
 11. **Existing brand constraints beyond colors?** (Fonts, logo, existing design system)
 
@@ -392,6 +394,7 @@ Based on what you learned in Step 1, read the relevant files. **Read the minimum
 ### Always Read (Every Consultation)
 
 - `workflows/quick-reference.md` — critical numbers at a glance
+- `heuristics/llm-design-gotchas.md` — the gotcha self-audit; run it before writing any UI and again before you ship
 
 ---
 
@@ -478,6 +481,18 @@ If the user's stack is **React**, **Vue**, or **Svelte**, check if a framework v
 2. Drop **component presets** into the shell's content area
 3. Customize colors, content, and branding for the user's project
 4. Add interactivity (state, events) if using a framework variant
+
+---
+
+## Step 2.6: Confirm Component Behavior
+
+Before generating any **interactive** component, resolve its behavior choices — they change the implementation and are cheap to ask but expensive to redo. Open [`workflows/component-decision-points.md`](workflows/component-decision-points.md) and read the section for each interactive preset you'll build (the heading slug matches the element id, e.g. `#accordion`, `#data-table`, `#shell-sidebar`).
+
+For each listed question:
+- **Guided / Thorough:** ask the user — batch these with the intake questions.
+- **Quick start:** pick the preset's stated default AND record the choice in the Design Review Notes.
+
+Resolve these **before** writing code. Example: an accordion needs *"force only one open at a time, or allow multiple open?"* answered first — the preset ships both, and the choice changes the state model.
 
 ---
 

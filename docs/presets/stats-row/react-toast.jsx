@@ -5,7 +5,17 @@
 
 import { useState, useEffect, useCallback } from 'react';
 
-const variants = {
+const STATS = [
+  { label: 'Total Revenue',   value: '$48,295', delta: '12.5%', positive: true },
+  { label: 'Active Users',    value: '2,847',   delta: '8.2%',  positive: true },
+  { label: 'Bounce Rate',     value: '24.3%',   delta: '3.1%',  positive: false },
+  { label: 'Conversion Rate', value: '3.24%',   delta: '1.8%',  positive: true },
+];
+
+const UP_PATH   = 'M10 17a.75.75 0 0 1-.75-.75V5.612L5.29 9.77a.75.75 0 0 1-1.08-1.04l5.25-5.5a.75.75 0 0 1 1.08 0l5.25 5.5a.75.75 0 1 1-1.08 1.04l-3.96-4.158V16.25A.75.75 0 0 1 10 17Z';
+const DOWN_PATH = 'M10 3a.75.75 0 0 1 .75.75v10.638l3.96-4.158a.75.75 0 1 1 1.08 1.04l-5.25 5.5a.75.75 0 0 1-1.08 0l-5.25-5.5a.75.75 0 1 1 1.08-1.04l3.96 4.158V3.75A.75.75 0 0 1 10 3Z';
+
+const TOAST_VARIANTS = {
   success: {
     bg: 'bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-800',
     icon: 'text-green-600 dark:text-green-400',
@@ -58,7 +68,7 @@ export function ToastContainer({ toasts, onDismiss }) {
 }
 
 function Toast({ id, message, variant = 'info', duration = 5000, onDismiss }) {
-  const v = variants[variant] || variants.info;
+  const v = TOAST_VARIANTS[variant] || TOAST_VARIANTS.info;
 
   useEffect(() => {
     if (duration <= 0) return;
@@ -79,6 +89,42 @@ function Toast({ id, message, variant = 'info', duration = 5000, onDismiss }) {
       >
         <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12" /></svg>
       </button>
+    </div>
+  );
+}
+
+export default function StatsRow() {
+  const { toasts, addToast, removeToast } = useToast();
+
+  return (
+    <div id="statsRowWrap" className="min-h-screen flex items-center justify-center p-8 bg-slate-50 dark:bg-slate-900">
+      <main className="py-12 md:py-16 lg:py-20 bg-white dark:bg-slate-900">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {STATS.map((stat) => (
+              <button
+                key={stat.label}
+                type="button"
+                onClick={() => addToast(`${stat.label}: ${stat.value}`, stat.positive ? 'success' : 'warning')}
+                className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 shadow-sm text-left hover:shadow-md transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              >
+                <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">{stat.label}</p>
+                <p className="mt-2 text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-white">{stat.value}</p>
+                <div className="mt-3 flex items-center gap-1.5">
+                  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${stat.positive ? 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400'}`}>
+                    <svg className="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                      <path fillRule="evenodd" d={stat.positive ? UP_PATH : DOWN_PATH} clipRule="evenodd" />
+                    </svg>
+                    {stat.delta}
+                  </span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">vs last month</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </main>
+      <ToastContainer toasts={toasts} onDismiss={removeToast} />
     </div>
   );
 }

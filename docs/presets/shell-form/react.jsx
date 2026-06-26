@@ -5,10 +5,9 @@
 
 import { useState } from 'react';
 
-export function LoginForm({ onSubmit }) {
+export function LoginShell({ onSubmit }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [remember, setRemember] = useState(false);
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
 
@@ -29,85 +28,93 @@ export function LoginForm({ onSubmit }) {
 
     setLoading(true);
     try {
-      await onSubmit?.({ email, password, remember });
+      await onSubmit?.({ email, password });
     } finally {
       setLoading(false);
     }
   };
 
   const inputClass = (field) =>
-    `w-full border rounded-lg px-3 py-2.5 text-base bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none min-h-11 ${
+    `w-full border rounded-lg px-3 py-2.5 text-base bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-600 dark:placeholder-slate-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none min-h-11 ${
       errors[field] ? 'border-red-500 dark:border-red-400' : 'border-slate-300 dark:border-slate-600'
     }`;
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-      <div>
-        <label htmlFor="login-email" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-          Email
-        </label>
-        <input
-          id="login-email"
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="you@example.com"
-          className={inputClass('email')}
-          autoComplete="email"
-        />
-        {errors.email && <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">{errors.email}</p>}
-      </div>
-
-      <div>
-        <div className="flex items-center justify-between mb-1.5">
-          <label htmlFor="login-password" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-            Password
-          </label>
-          <a href="#" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">Forgot password?</a>
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col">
+      {/* Minimal header */}
+      <header className="py-6 px-4 sm:px-6">
+        <div className="max-w-7xl mx-auto">
+          <a href="#" className="focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none text-lg font-bold text-slate-900 dark:text-white">BrandName</a>
         </div>
-        <input
-          id="login-password"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Enter your password"
-          className={inputClass('password')}
-          autoComplete="current-password"
-        />
-        {errors.password && <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">{errors.password}</p>}
-      </div>
+      </header>
 
-      <div className="flex items-center gap-2">
-        <input
-          id="login-remember"
-          type="checkbox"
-          checked={remember}
-          onChange={(e) => setRemember(e.target.checked)}
-          className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-2 focus:ring-blue-500"
-        />
-        <label htmlFor="login-remember" className="text-sm text-slate-600 dark:text-slate-400">
-          Remember me
-        </label>
-      </div>
+      {/* Centered content */}
+      <main className="flex-1 flex items-center justify-center px-4 pb-12">
+        <div className="w-full max-w-md">
+          {/* Card */}
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6 sm:p-8">
+            {/* Form header */}
+            <div className="text-center mb-8">
+              <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">Welcome back</h1>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">Sign in to your account to continue</p>
+            </div>
 
-      <button
-        type="submit"
-        disabled={loading}
-        className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-2.5 rounded-lg text-base transition-colors min-h-11 flex items-center justify-center gap-2"
-      >
-        {loading && (
-          <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-          </svg>
-        )}
-        {loading ? 'Signing in...' : 'Sign In'}
-      </button>
+            <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+              <div>
+                <label htmlFor="login-email" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                  Email
+                </label>
+                <input
+                  id="login-email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  className={inputClass('email')}
+                  autoComplete="email"
+                />
+                {errors.email && <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">{errors.email}</p>}
+              </div>
 
-      <p className="text-center text-sm text-slate-600 dark:text-slate-400">
-        Don't have an account?{' '}
-        <a href="#" className="text-blue-600 dark:text-blue-400 hover:underline font-medium">Sign up</a>
-      </p>
-    </form>
+              <div>
+                <label htmlFor="login-password" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                  Password
+                </label>
+                <input
+                  id="login-password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter your password"
+                  className={inputClass('password')}
+                  autoComplete="current-password"
+                />
+                {errors.password && <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">{errors.password}</p>}
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-blue-700 hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-lg text-base transition-colors min-h-11 flex items-center justify-center gap-2"
+              >
+                {loading && (
+                  <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                )}
+                {loading ? 'Signing in...' : 'Sign In'}
+              </button>
+            </form>
+
+            {/* Footer link */}
+            <p className="mt-6 text-center text-sm text-slate-600 dark:text-slate-400">
+              Don't have an account?{' '}
+              <a href="#" className="focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none text-blue-700 dark:text-blue-400 hover:underline font-semibold">Sign up</a>
+            </p>
+          </div>
+        </div>
+      </main>
+    </div>
   );
 }

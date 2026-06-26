@@ -252,7 +252,7 @@ The consultation flow is tested across 12 real-world scenarios — all pass all 
 
 All presets: dark mode, WCAG AA contrast, 44px touch targets, responsive. [Composition recipes](docs/presets/_index.md#composition-recipes) show how to combine them into full pages.
 
-### Knowledge Files — 45 topics
+### Knowledge Files — 46 topics
 
 | Area | Topics |
 |------|--------|
@@ -264,7 +264,7 @@ All presets: dark mode, WCAG AA contrast, 44px touch targets, responsive. [Compo
 | **Responsive** | [Mobile-first](responsive/mobile-first.md), [Breakpoints](responsive/breakpoints.md), [Fluid typography](responsive/fluid-typography.md), [Patterns](responsive/responsive-patterns.md) |
 | **Systems** | [Design tokens](systems/design-tokens.md), [Material Design 3](systems/material-design-3.md), [Apple HIG](systems/apple-hig.md), [Building a system](systems/building-a-system.md) |
 | **Expressive** | [Visual identity](expressive/visual-identity.md), [Hero patterns](expressive/hero-patterns.md), [Scroll storytelling](expressive/scroll-storytelling.md), [Purposeful motion](expressive/purposeful-motion.md), [Scroll effect patterns](expressive/scroll-effect-patterns.md), [Curated examples](expressive/curated-examples.md) |
-| **Heuristics** | [Nielsen's 10](heuristics/nielsen-10.md), [UX frameworks](heuristics/ux-frameworks.md) |
+| **Heuristics** | [Nielsen's 10](heuristics/nielsen-10.md), [UX frameworks](heuristics/ux-frameworks.md), [LLM design gotchas](heuristics/llm-design-gotchas.md) |
 | **Components** | [Buttons](components/buttons.md), [Forms](components/forms.md), [Cards](components/cards.md), [Navigation](components/navigation.md), [Modals](components/modals-and-dialogs.md), [Tables](components/tables-and-lists.md), [Feedback](components/feedback.md) |
 
 Each file: 200–400 lines, concrete rules with numbers, CSS/Tailwind patterns, decision trees, sources.
@@ -276,6 +276,7 @@ Each file: 200–400 lines, concrete rules with numbers, CSS/Tailwind patterns, 
 | [Quick Reference](workflows/quick-reference.md) | Need a number fast (contrast ratio, spacing value, timing) |
 | [New Project Checklist](workflows/new-project-checklist.md) | Starting from scratch |
 | [Design Review Checklist](workflows/design-review-checklist.md) | Auditing an existing design |
+| [Component Decision Points](workflows/component-decision-points.md) | Before building an interactive component — questions to resolve first |
 
 ### Critical Numbers
 

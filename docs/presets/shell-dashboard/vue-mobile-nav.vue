@@ -4,73 +4,318 @@
      requires: tailwindcss
 -->
 <script setup>
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 
-const props = defineProps({
-  activeTab: { type: String, default: null },
-})
+const sidebarOpen = ref(false)
+const activePage = ref('overview')
 
-const emit = defineEmits(['tabChange'])
-
-const internalTab = ref('home')
-
-const currentTab = computed(() => props.activeTab ?? internalTab.value)
-
-const tabs = [
-  { id: 'home', label: 'Home', icon: 'home' },
-  { id: 'search', label: 'Search', icon: 'search' },
-  { id: 'notifications', label: 'Alerts', icon: 'notifications' },
-  { id: 'messages', label: 'Messages', icon: 'messages' },
-  { id: 'profile', label: 'Profile', icon: 'profile' },
+const navItems = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'reports', label: 'Reports' },
+  { id: 'customers', label: 'Customers' },
+  { id: 'products', label: 'Products' },
+  { id: 'settings', label: 'Settings' },
 ]
 
-function handleTabChange(id) {
-  internalTab.value = id
-  emit('tabChange', id)
-}
+function openSidebar() { sidebarOpen.value = true }
+function closeSidebar() { sidebarOpen.value = false }
+function navigate(id) { activePage.value = id; closeSidebar() }
 </script>
 
 <template>
-  <nav
-    class="fixed bottom-0 inset-x-0 z-40 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700"
-    aria-label="Bottom navigation"
-  >
-    <div class="flex items-center justify-around">
-      <button
-        v-for="tab in tabs"
-        :key="tab.id"
-        @click="handleTabChange(tab.id)"
-        :class="[
-          'flex flex-col items-center justify-center gap-1 py-2 px-1 min-h-14 min-w-14 flex-1 transition-colors',
-          currentTab === tab.id
-            ? 'text-blue-600 dark:text-blue-400'
-            : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
-        ]"
-        :aria-current="currentTab === tab.id ? 'page' : undefined"
-        :aria-label="tab.label"
-      >
-        <!-- Home icon -->
-        <svg v-if="tab.icon === 'home'" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-          <path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 0 0 1 1h3m10-11l2 2m-2-2v10a1 1 0 0 1-1 1h-3m-4 0a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-2z" />
-        </svg>
-        <!-- Search icon -->
-        <svg v-else-if="tab.icon === 'search'" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-          <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
-        </svg>
-        <!-- Notifications icon -->
-        <svg v-else-if="tab.icon === 'notifications'" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" />
-        </svg>
-        <!-- Messages icon -->
-        <svg v-else-if="tab.icon === 'messages'" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-        </svg>
-        <!-- Profile icon -->
-        <svg v-else-if="tab.icon === 'profile'" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
-        </svg>
-        <span class="text-[10px] font-medium leading-tight">{{ tab.label }}</span>
-      </button>
+  <div class="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100">
+
+    <!-- Sidebar overlay (mobile) -->
+    <div
+      :class="['fixed inset-0 bg-slate-900/50 z-20 lg:hidden', sidebarOpen ? '' : 'hidden']"
+      @click="closeSidebar"
+      :aria-hidden="!sidebarOpen"
+    />
+
+    <div class="flex min-h-screen">
+      <!-- Sidebar -->
+      <aside :class="['fixed inset-y-0 left-0 lg:static w-60 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 flex-col z-30 lg:flex', sidebarOpen ? 'flex' : 'hidden']">
+        <div class="h-16 flex items-center px-6 border-b border-slate-200 dark:border-slate-700 shrink-0">
+          <span class="text-xl font-semibold text-slate-900 dark:text-white">Analytics</span>
+        </div>
+        <nav class="flex-1 overflow-y-auto p-4 space-y-1" aria-label="Main navigation">
+          <a
+            v-for="item in navItems"
+            :key="item.id"
+            href="#"
+            :class="[
+              'flex min-h-11 items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none',
+              activePage === item.id
+                ? 'bg-blue-50 dark:bg-blue-950 text-blue-800 dark:text-blue-200'
+                : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white transition-colors'
+            ]"
+            :aria-current="activePage === item.id ? 'page' : undefined"
+            @click.prevent="navigate(item.id)"
+          >
+            <!-- Overview icon -->
+            <svg v-if="item.id === 'overview'" class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+              <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+              <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+            </svg>
+            <!-- Reports icon -->
+            <svg v-else-if="item.id === 'reports'" class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+              <path d="M9 19v-6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6m6 0h6m-6 0V9a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v10m6 0v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4"/>
+            </svg>
+            <!-- Customers icon -->
+            <svg v-else-if="item.id === 'customers'" class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+            </svg>
+            <!-- Products icon -->
+            <svg v-else-if="item.id === 'products'" class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+              <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+            </svg>
+            <!-- Settings icon -->
+            <svg v-else-if="item.id === 'settings'" class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+            </svg>
+            {{ item.label }}
+          </a>
+        </nav>
+      </aside>
+
+      <!-- Main wrapper -->
+      <div class="flex-1 flex flex-col min-h-screen min-w-0">
+
+        <!-- Top bar -->
+        <header class="h-16 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between px-4 lg:px-8 sticky top-0 z-10">
+          <button
+            class="lg:hidden p-2 -ml-2 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg min-h-11 min-w-11 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
+            @click="openSidebar"
+            aria-label="Open menu"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+          </button>
+          <div class="hidden sm:flex items-center flex-1 max-w-md">
+            <div class="relative w-full">
+              <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-700 dark:text-slate-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+              <input type="search" autocomplete="off" aria-label="Search" placeholder="Search..." class="w-full pl-10 pr-4 py-2 text-sm bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white placeholder-slate-600 dark:placeholder-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none min-h-11" />
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button class="p-2 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg min-h-11 min-w-11 relative focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none" aria-label="Notifications">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+              <span class="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" aria-hidden="true"></span>
+            </button>
+            <div class="w-8 h-8 bg-blue-700 rounded-full flex items-center justify-center text-white text-sm font-medium" aria-label="User: JD">JD</div>
+          </div>
+        </header>
+
+        <!-- Dashboard content -->
+        <main class="flex-1 p-4 pb-20 lg:p-8">
+          <div class="max-w-7xl">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8">
+              <div>
+                <h1 class="text-2xl font-semibold text-slate-900 dark:text-white">Overview</h1>
+                <p class="text-base text-slate-700 dark:text-slate-300 mt-1">Your business at a glance</p>
+              </div>
+              <button class="mt-4 sm:mt-0 bg-blue-700 hover:bg-blue-800 text-white font-medium px-4 py-2 rounded-lg text-sm transition-colors min-h-11 inline-flex items-center gap-2 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14m-7-7h14"/></svg>
+                New Report
+              </button>
+            </div>
+
+            <!-- Stats Row -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+              <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
+                <p class="text-sm font-medium text-slate-700 dark:text-slate-300">Revenue</p>
+                <p class="text-2xl font-semibold text-slate-900 dark:text-white mt-1">$48,352</p>
+                <p class="text-sm mt-2 flex items-center gap-1">
+                  <span class="text-green-700 dark:text-green-300 flex items-center gap-0.5">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M7 17l5-5 5 5"/></svg>
+                    +12.5%
+                  </span>
+                  <span class="text-slate-700 dark:text-slate-300">vs last month</span>
+                </p>
+              </div>
+              <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
+                <p class="text-sm font-medium text-slate-700 dark:text-slate-300">Customers</p>
+                <p class="text-2xl font-semibold text-slate-900 dark:text-white mt-1">2,431</p>
+                <p class="text-sm mt-2 flex items-center gap-1">
+                  <span class="text-green-700 dark:text-green-300 flex items-center gap-0.5">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M7 17l5-5 5 5"/></svg>
+                    +8.2%
+                  </span>
+                  <span class="text-slate-700 dark:text-slate-300">vs last month</span>
+                </p>
+              </div>
+              <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
+                <p class="text-sm font-medium text-slate-700 dark:text-slate-300">Orders</p>
+                <p class="text-2xl font-semibold text-slate-900 dark:text-white mt-1">1,087</p>
+                <p class="text-sm mt-2 flex items-center gap-1">
+                  <span class="text-red-700 dark:text-red-300 flex items-center gap-0.5">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 7l-5 5-5-5"/></svg>
+                    -3.1%
+                  </span>
+                  <span class="text-slate-700 dark:text-slate-300">vs last month</span>
+                </p>
+              </div>
+              <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
+                <p class="text-sm font-medium text-slate-700 dark:text-slate-300">Conversion</p>
+                <p class="text-2xl font-semibold text-slate-900 dark:text-white mt-1">3.6%</p>
+                <p class="text-sm mt-2 flex items-center gap-1">
+                  <span class="text-green-700 dark:text-green-300 flex items-center gap-0.5">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M7 17l5-5 5 5"/></svg>
+                    +0.8%
+                  </span>
+                  <span class="text-slate-700 dark:text-slate-300">vs last month</span>
+                </p>
+              </div>
+            </div>
+
+            <!-- Recent Orders Table -->
+            <div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+              <div class="px-5 py-5 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                <h2 class="text-xl font-semibold text-slate-900 dark:text-white">Recent Orders</h2>
+                <a href="#" class="text-sm text-blue-700 dark:text-blue-300 hover:underline font-medium focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none rounded">View all</a>
+              </div>
+              <!-- Mobile card layout -->
+              <div class="grid gap-3 p-4 sm:hidden">
+                <div class="rounded-lg border border-slate-200 dark:border-slate-700 p-4">
+                  <div class="flex items-start justify-between gap-4">
+                    <div>
+                      <p class="text-sm font-semibold text-slate-900 dark:text-white">#3210</p>
+                      <p class="text-sm text-slate-700 dark:text-slate-300 mt-1">Sarah Chen</p>
+                    </div>
+                    <span class="text-sm font-semibold text-slate-900 dark:text-white">$240.00</span>
+                  </div>
+                  <div class="mt-3 flex items-center justify-between gap-3">
+                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-sm font-medium bg-green-100 dark:bg-green-950 text-green-800 dark:text-green-200">Completed</span>
+                    <span class="text-sm text-slate-700 dark:text-slate-300">Mar 15, 2026</span>
+                  </div>
+                </div>
+                <div class="rounded-lg border border-slate-200 dark:border-slate-700 p-4">
+                  <div class="flex items-start justify-between gap-4">
+                    <div>
+                      <p class="text-sm font-semibold text-slate-900 dark:text-white">#3209</p>
+                      <p class="text-sm text-slate-700 dark:text-slate-300 mt-1">James Wilson</p>
+                    </div>
+                    <span class="text-sm font-semibold text-slate-900 dark:text-white">$125.50</span>
+                  </div>
+                  <div class="mt-3 flex items-center justify-between gap-3">
+                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-sm font-medium bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-200">Pending</span>
+                    <span class="text-sm text-slate-700 dark:text-slate-300">Mar 15, 2026</span>
+                  </div>
+                </div>
+                <div class="rounded-lg border border-slate-200 dark:border-slate-700 p-4">
+                  <div class="flex items-start justify-between gap-4">
+                    <div>
+                      <p class="text-sm font-semibold text-slate-900 dark:text-white">#3208</p>
+                      <p class="text-sm text-slate-700 dark:text-slate-300 mt-1">Maria Garcia</p>
+                    </div>
+                    <span class="text-sm font-semibold text-slate-900 dark:text-white">$89.99</span>
+                  </div>
+                  <div class="mt-3 flex items-center justify-between gap-3">
+                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-sm font-medium bg-green-100 dark:bg-green-950 text-green-800 dark:text-green-200">Completed</span>
+                    <span class="text-sm text-slate-700 dark:text-slate-300">Mar 14, 2026</span>
+                  </div>
+                </div>
+              </div>
+              <!-- Desktop table -->
+              <div class="hidden overflow-x-auto sm:block">
+                <table class="w-full">
+                  <caption class="sr-only">Recent orders list</caption>
+                  <thead>
+                    <tr class="border-b border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-700/30">
+                      <th class="text-left text-xs font-medium text-slate-700 dark:text-slate-300 uppercase tracking-wider px-6 py-3" scope="col">Order</th>
+                      <th class="text-left text-xs font-medium text-slate-700 dark:text-slate-300 uppercase tracking-wider px-6 py-3" scope="col">Customer</th>
+                      <th class="text-right text-xs font-medium text-slate-700 dark:text-slate-300 uppercase tracking-wider px-6 py-3" scope="col">Amount</th>
+                      <th class="text-left text-xs font-medium text-slate-700 dark:text-slate-300 uppercase tracking-wider px-6 py-3" scope="col">Status</th>
+                      <th class="text-left text-xs font-medium text-slate-700 dark:text-slate-300 uppercase tracking-wider px-6 py-3" scope="col">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
+                    <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
+                      <td class="px-6 py-4 text-sm font-medium text-slate-900 dark:text-white">#3210</td>
+                      <td class="px-6 py-4 text-sm text-slate-700 dark:text-slate-300">Sarah Chen</td>
+                      <td class="px-6 py-4 text-sm text-slate-900 dark:text-white text-right font-medium">$240.00</td>
+                      <td class="px-6 py-4"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-sm font-medium bg-green-100 dark:bg-green-950 text-green-800 dark:text-green-200">Completed</span></td>
+                      <td class="px-6 py-4 text-sm text-slate-700 dark:text-slate-300">Mar 15, 2026</td>
+                    </tr>
+                    <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
+                      <td class="px-6 py-4 text-sm font-medium text-slate-900 dark:text-white">#3209</td>
+                      <td class="px-6 py-4 text-sm text-slate-700 dark:text-slate-300">James Wilson</td>
+                      <td class="px-6 py-4 text-sm text-slate-900 dark:text-white text-right font-medium">$125.50</td>
+                      <td class="px-6 py-4"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-sm font-medium bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-200">Pending</span></td>
+                      <td class="px-6 py-4 text-sm text-slate-700 dark:text-slate-300">Mar 15, 2026</td>
+                    </tr>
+                    <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
+                      <td class="px-6 py-4 text-sm font-medium text-slate-900 dark:text-white">#3208</td>
+                      <td class="px-6 py-4 text-sm text-slate-700 dark:text-slate-300">Maria Garcia</td>
+                      <td class="px-6 py-4 text-sm text-slate-900 dark:text-white text-right font-medium">$89.99</td>
+                      <td class="px-6 py-4"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-sm font-medium bg-green-100 dark:bg-green-950 text-green-800 dark:text-green-200">Completed</span></td>
+                      <td class="px-6 py-4 text-sm text-slate-700 dark:text-slate-300">Mar 14, 2026</td>
+                    </tr>
+                    <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
+                      <td class="px-6 py-4 text-sm font-medium text-slate-900 dark:text-white">#3207</td>
+                      <td class="px-6 py-4 text-sm text-slate-700 dark:text-slate-300">Alex Thompson</td>
+                      <td class="px-6 py-4 text-sm text-slate-900 dark:text-white text-right font-medium">$312.00</td>
+                      <td class="px-6 py-4"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-sm font-medium bg-red-100 dark:bg-red-950 text-red-800 dark:text-red-200">Cancelled</span></td>
+                      <td class="px-6 py-4 text-sm text-slate-700 dark:text-slate-300">Mar 14, 2026</td>
+                    </tr>
+                    <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
+                      <td class="px-6 py-4 text-sm font-medium text-slate-900 dark:text-white">#3206</td>
+                      <td class="px-6 py-4 text-sm text-slate-700 dark:text-slate-300">Priya Patel</td>
+                      <td class="px-6 py-4 text-sm text-slate-900 dark:text-white text-right font-medium">$67.25</td>
+                      <td class="px-6 py-4"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-sm font-medium bg-green-100 dark:bg-green-950 text-green-800 dark:text-green-200">Completed</span></td>
+                      <td class="px-6 py-4 text-sm text-slate-700 dark:text-slate-300">Mar 13, 2026</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
     </div>
-  </nav>
+
+    <!-- Mobile bottom nav — lg:hidden -->
+    <nav
+      class="fixed bottom-0 inset-x-0 z-40 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 lg:hidden"
+      aria-label="Bottom navigation"
+    >
+      <div class="flex items-center justify-around">
+        <button
+          v-for="item in navItems"
+          :key="item.id"
+          @click="activePage = item.id"
+          :class="[
+            'flex flex-col items-center justify-center gap-1 py-2 px-1 min-h-14 min-w-14 flex-1 transition-colors',
+            activePage === item.id
+              ? 'text-blue-600 dark:text-blue-400'
+              : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+          ]"
+          :aria-current="activePage === item.id ? 'page' : undefined"
+          :aria-label="item.label"
+        >
+          <!-- Overview icon -->
+          <svg v-if="item.id === 'overview'" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+            <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+            <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+          </svg>
+          <!-- Reports icon -->
+          <svg v-else-if="item.id === 'reports'" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+            <path d="M9 19v-6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6m6 0h6m-6 0V9a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v10m6 0v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4"/>
+          </svg>
+          <!-- Customers icon -->
+          <svg v-else-if="item.id === 'customers'" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+          </svg>
+          <!-- Products icon -->
+          <svg v-else-if="item.id === 'products'" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+            <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+          </svg>
+          <!-- Settings icon -->
+          <svg v-else-if="item.id === 'settings'" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+          </svg>
+          <span class="text-[10px] font-medium leading-tight">{{ item.label }}</span>
+        </button>
+      </div>
+    </nav>
+  </div>
 </template>

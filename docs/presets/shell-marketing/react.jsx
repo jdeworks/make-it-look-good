@@ -5,130 +5,120 @@
 
 import { useState } from 'react';
 
-const navLinks = [
-  { id: 'home', name: 'Home', href: '#' },
-  { id: 'features', name: 'Features', href: '#' },
-  { id: 'pricing', name: 'Pricing', href: '#' },
-  { id: 'about', name: 'About', href: '#' },
-  { id: 'blog', name: 'Blog', href: '#' },
-];
-
-export function NavTopbar({ activeLink = 'home', onNavigate }) {
+export function ShellMarketing() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-40 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-700">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
-          {/* Logo */}
-          <a href="#" className="text-lg font-bold text-slate-900 dark:text-white">
-            BrandName
-          </a>
+    <div id="shellMarketingWrap" className="min-h-screen bg-slate-50 dark:bg-slate-950">
 
-          {/* Desktop Nav */}
-          <nav className="hidden md:flex items-center gap-1" aria-label="Main navigation">
-            {navLinks.map((link) => {
-              const isActive = activeLink === link.id;
-              return (
-                <a
-                  key={link.id}
-                  href={link.href}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    onNavigate?.(link.id);
-                  }}
-                  className={`px-3 py-2 text-sm font-medium rounded-md transition-colors min-h-11 flex items-center ${
-                    isActive
-                      ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800'
-                  }`}
-                  aria-current={isActive ? 'page' : undefined}
-                >
-                  {link.name}
-                </a>
-              );
-            })}
-          </nav>
+      {/* Header */}
+      <header className="sticky top-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-300 dark:border-slate-700">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            {/* Logo */}
+            <a href="#" className="text-lg font-semibold text-slate-900 dark:text-white">BrandName</a>
 
-          {/* Right side */}
-          <div className="flex items-center gap-3">
-            <a
-              href="#"
-              className="hidden md:inline-flex text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white px-3 py-2 rounded-md transition-colors min-h-11 items-center"
-            >
-              Sign In
-            </a>
-            <a
-              href="#"
-              className="hidden sm:inline-flex bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg text-sm transition-colors min-h-11 items-center"
-            >
-              Get Started
-            </a>
-            {/* Mobile menu button */}
-            <button
-              className="md:hidden p-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg min-h-11 min-w-11 flex items-center justify-center"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              aria-label="Toggle menu"
-              aria-expanded={mobileMenuOpen}
-            >
-              {mobileMenuOpen ? (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                  <path d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              ) : (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                  <path d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
-              )}
-            </button>
+            {/* Desktop Nav */}
+            <nav className="hidden md:flex items-center gap-1" aria-label="Main navigation">
+              <a href="#" className="px-3 py-2 text-sm text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white rounded-md transition-colors">Features</a>
+              <a href="#" className="px-3 py-2 text-sm text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white rounded-md transition-colors">Pricing</a>
+              <a href="#" className="px-3 py-2 text-sm text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white rounded-md transition-colors">About</a>
+              <a href="#" className="px-3 py-2 text-sm text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white rounded-md transition-colors">Blog</a>
+            </nav>
+
+            {/* CTA + Mobile toggle */}
+            <div className="flex items-center gap-3">
+              <a href="#" className="hidden sm:inline-flex bg-blue-700 hover:bg-blue-800 text-white font-semibold px-4 py-2 rounded-lg text-sm transition-colors min-h-11 items-center">Get Started</a>
+              <button
+                className="md:hidden p-2 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg min-h-11 min-w-11 focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:outline-none"
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                aria-label="Toggle menu"
+                aria-expanded={mobileMenuOpen}
+                aria-controls="shellMktMobileMenu"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+              </button>
+            </div>
+          </div>
+
+          {/* Mobile menu */}
+          {mobileMenuOpen && (
+            <div id="shellMktMobileMenu" className="pb-4 border-t border-slate-200 dark:border-slate-700 mt-2 pt-4">
+              <nav className="flex flex-col gap-1" aria-label="Mobile navigation">
+                <a href="#" className="px-3 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">Features</a>
+                <a href="#" className="px-3 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">Pricing</a>
+                <a href="#" className="px-3 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">About</a>
+                <a href="#" className="px-3 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">Blog</a>
+                <a href="#" className="mt-2 bg-blue-700 hover:bg-blue-800 text-white font-semibold px-4 py-2.5 rounded-lg text-sm text-center transition-colors min-h-11">Get Started</a>
+              </nav>
+            </div>
+          )}
+        </div>
+      </header>
+
+      {/* Main Content — drop content-* snippets here */}
+      <main>
+        {/* Hero Section slot */}
+        <section className="py-16 md:py-24 lg:py-32">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-semibold text-slate-900 dark:text-white tracking-tight">Your headline goes here</h1>
+            <p className="mt-6 text-lg sm:text-xl text-slate-700 dark:text-slate-300 max-w-2xl mx-auto">A brief description of your product or service. Keep it under two sentences for maximum impact.</p>
+            <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center">
+              <a href="#" className="bg-blue-700 hover:bg-blue-800 text-white font-semibold px-6 py-3 rounded-lg text-base transition-colors min-h-11 inline-flex items-center justify-center">Get Started Free</a>
+              <a href="#" className="border border-slate-400 dark:border-slate-500 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 font-semibold px-6 py-3 rounded-lg text-base transition-colors min-h-11 inline-flex items-center justify-center">Learn More</a>
+            </div>
+          </div>
+        </section>
+
+        {/* Section slot — repeat as needed */}
+        <section className="py-12 md:py-16 lg:py-20 bg-slate-50 dark:bg-slate-800">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <p className="text-slate-700 dark:text-slate-300 text-center">Replace with content-feature-grid, content-pricing-cards, content-testimonials, etc.</p>
+          </div>
+        </section>
+      </main>
+
+      {/* Footer */}
+      <footer className="bg-slate-900 dark:bg-slate-950 text-slate-300 py-12 md:py-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+            <div>
+              <h2 className="text-sm font-semibold text-white mb-4">Product</h2>
+              <ul className="space-y-3">
+                <li><a href="#" className="text-sm hover:text-white transition-colors">Features</a></li>
+                <li><a href="#" className="text-sm hover:text-white transition-colors">Pricing</a></li>
+                <li><a href="#" className="text-sm hover:text-white transition-colors">Changelog</a></li>
+              </ul>
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-white mb-4">Company</h2>
+              <ul className="space-y-3">
+                <li><a href="#" className="text-sm hover:text-white transition-colors">About</a></li>
+                <li><a href="#" className="text-sm hover:text-white transition-colors">Blog</a></li>
+                <li><a href="#" className="text-sm hover:text-white transition-colors">Careers</a></li>
+              </ul>
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-white mb-4">Resources</h2>
+              <ul className="space-y-3">
+                <li><a href="#" className="text-sm hover:text-white transition-colors">Documentation</a></li>
+                <li><a href="#" className="text-sm hover:text-white transition-colors">Help Center</a></li>
+                <li><a href="#" className="text-sm hover:text-white transition-colors">Community</a></li>
+              </ul>
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-white mb-4">Legal</h2>
+              <ul className="space-y-3">
+                <li><a href="#" className="text-sm hover:text-white transition-colors">Privacy</a></li>
+                <li><a href="#" className="text-sm hover:text-white transition-colors">Terms</a></li>
+              </ul>
+            </div>
+          </div>
+          <div className="mt-12 pt-8 border-t border-slate-800 text-sm text-center">
+            © 2026 BrandName. All rights reserved.
           </div>
         </div>
-
-        {/* Mobile menu */}
-        {mobileMenuOpen && (
-          <nav
-            className="md:hidden pb-4 border-t border-slate-200 dark:border-slate-700 mt-2 pt-4 space-y-1"
-            aria-label="Mobile navigation"
-          >
-            {navLinks.map((link) => {
-              const isActive = activeLink === link.id;
-              return (
-                <a
-                  key={link.id}
-                  href={link.href}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    onNavigate?.(link.id);
-                    setMobileMenuOpen(false);
-                  }}
-                  className={`block px-3 py-2.5 text-sm font-medium rounded-lg min-h-11 flex items-center ${
-                    isActive
-                      ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30'
-                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
-                  }`}
-                  aria-current={isActive ? 'page' : undefined}
-                >
-                  {link.name}
-                </a>
-              );
-            })}
-            <div className="pt-4 flex flex-col gap-2">
-              <a
-                href="#"
-                className="text-center text-sm font-medium text-slate-600 dark:text-slate-400 border border-slate-300 dark:border-slate-600 px-4 py-2.5 rounded-lg min-h-11 flex items-center justify-center"
-              >
-                Sign In
-              </a>
-              <a
-                href="#"
-                className="text-center bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2.5 rounded-lg text-sm transition-colors min-h-11 flex items-center justify-center"
-              >
-                Get Started
-              </a>
-            </div>
-          </nav>
-        )}
-      </div>
-    </header>
+      </footer>
+    </div>
   );
 }

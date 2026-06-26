@@ -76,6 +76,7 @@ foundations/
   hicks-law.md
   peak-end-rule.md
 heuristics/
+  llm-design-gotchas.md
   nielsen-10.md
   ux-frameworks.md
 interaction/
@@ -104,6 +105,7 @@ typography/
   type-scale.md
   web-font-loading.md
 workflows/
+  component-decision-points.md
   design-review-checklist.md
   new-project-checklist.md
   quick-reference.md
@@ -6460,6 +6462,229 @@ Is this the user's first time completing this action?
 *Related: [Micro-interactions](../interaction/micro-interactions.md) | [Animation Timing](../interaction/animation-timing.md) | [Feedback Components](../components/feedback.md)*
 </file>
 
+<file path="heuristics/llm-design-gotchas.md">
+# LLM Design Gotchas
+
+> **TL;DR:** Ten recurring failure modes LLMs produce when generating UI — each with a concrete fix and a link to the in-depth knowledge file. Run the Fast Self-Audit before shipping any generated design.
+
+LLMs favor patterns that appear most in training data: default blue SaaS, centered heroes, uniform rounded cards, and placeholder copy. None of these are inherently wrong, but they are automatic — applied without considering whether they serve the actual design problem. This file names the patterns so you can catch and correct them before presenting work.
+
+**Triage order.** Clusters 2 (contrast), 5 (touch targets), and 10 (semantics) are WCAG accessibility blockers — address these first. Clusters 1 (aesthetic), 3 (spacing), 4 (typography), and 9 (hierarchy) are quality issues. Clusters 6 (animation), 7 (responsive), and 8 (placeholder) depend on context but are commonly overlooked on first pass.
+
+## At a Glance
+
+| # | Cluster | Severity | Quick check |
+|---|---------|----------|-------------|
+| 1 | Generic AI aesthetic | Quality | Does the layout look like every other SaaS product? |
+| 2 | Contrast & dark mode | **Blocker** | Does body text pass 4.5:1 in both light and dark? |
+| 3 | Spacing rhythm | Quality | Are all spacing values on the 4, 8, 12, 16, 24, 32, 48, 64 scale? |
+| 4 | Typography | Quality + UX | Is body text ≥ 16px? Line length ≤ 75ch? |
+| 5 | Touch targets & states | **Blocker** | Are all targets ≥ 44px? Focus ring visible? |
+| 6 | Over-animation | UX | Are all transitions ≤ 300ms with motion-reduce support? |
+| 7 | Responsive & tables | UX | Does every table have a < 640px strategy? |
+| 8 | Placeholder content | Quality | Any lorem ipsum, href="#", or "Your Company" remaining? |
+| 9 | Hierarchy & cognitive load | Quality | Is there one clear primary CTA per screen? |
+| 10 | Semantics & a11y | **Blocker** | Semantic elements, alt text, labels all present? |
+
+## The Checklist
+
+Each cluster below is a table with columns: **Gotcha | Why LLMs do it | The fix (1 line) | → Deeper file**. The "fix" column shows the minimum change that resolves the problem, not a full design system recommendation. Use the linked file for in-depth guidance.
+
+### 1. Generic "AI Aesthetic"
+
+Recognizable instantly: blue primary, centered headline + 3 equal-weight icon cards, `rounded-xl shadow-md` on every container, italic gray subheading. This layout is not wrong — it is the statistical mode, and it signals "I did not think about this design." The fix is intent, not an alternative default.
+
+| Gotcha | Why LLMs do it | The fix (1 line) | → Deeper file |
+|--------|----------------|-----------------|---------------|
+| Default blue-500 / blue-600 primary for all interactive elements | Blue dominates SaaS training data | Pick an intentional brand hue; even indigo or teal reads as considered | [color/color-systems.md](../color/color-systems.md) |
+| Centered hero → 3 equal-weight feature cards → single CTA | The most common landing-page template | Choose layout based on content hierarchy, not convention | [expressive/visual-identity.md](../expressive/visual-identity.md) |
+| `rounded-xl shadow-md` applied to every container | Safe and "modern" looking | Vary radius by element role; elevation shadows belong on floating elements only | [layout/visual-hierarchy.md](../layout/visual-hierarchy.md) |
+| Decorative gradient blobs and glassmorphism panels everywhere | Looks polished in static screenshots | Expressive effects only when they reinforce content meaning; test on dark mode | [expressive/purposeful-motion.md](../expressive/purposeful-motion.md) |
+| All personality variants look like the base template with a different accent | Accent color = personality | Playful needs different radius, type weight, and spacing — not just rose-500 | [color/color-systems.md](../color/color-systems.md) |
+| Feature sections all use the same 3-column icon grid | Pattern appears in most SaaS feature sections | Alternate density and layout across sections to create rhythm and hierarchy | [expressive/hero-patterns.md](../expressive/hero-patterns.md) |
+| Gray card with centered icon and 2-line description for every feature | The canonical "feature item" template | Use varied layouts: some features deserve prose, tables, screenshots, or callouts | [layout/visual-hierarchy.md](../layout/visual-hierarchy.md) |
+
+### 2. Color & Dark-Mode Contrast
+
+Dark mode is the single most common source of LLM contrast failures. Light-mode color tokens are carried over without `dark:` counterparts that meet 4.5:1. The result looks fine in a screenshot and fails real users.
+
+| Gotcha | Why LLMs do it | The fix (1 line) | → Deeper file |
+|--------|----------------|-----------------|---------------|
+| `text-slate-400` on `bg-slate-700` in dark mode (~2.5:1) | Light-mode colors reused without dark: variants | Audit every text token independently in dark mode; minimum 4.5:1 for body | [color/contrast-and-accessibility.md](../color/contrast-and-accessibility.md) |
+| Invented hex values (#5e8ab4 etc.) with no contrast check | Precise values look intentional | Use named Tailwind shades with known contrast; verify at any custom value | [color/contrast-and-accessibility.md](../color/contrast-and-accessibility.md) |
+| Color as the only error / success / disabled signal | Visually striking and obvious | Add icon or text label alongside color — ~8% of men are red-green color-blind | [color/color-blind-safety.md](../color/color-blind-safety.md) |
+| Missing `dark:hover:` / `dark:focus:` pairs on interactive states | Hover added for light mode only | Every `hover:bg-*` needs a `dark:hover:bg-*` counterpart; same for focus-visible | [color/contrast-and-accessibility.md](../color/contrast-and-accessibility.md) |
+| Bright accent as body text (orange-400, yellow-400 on white) | Accent chosen for aesthetics | Test every accent as text color early; mid-range hues often fail 4.5:1 on white | [color/contrast-and-accessibility.md](../color/contrast-and-accessibility.md) |
+| Placeholder text with < 3:1 contrast (slate-300 on white) | Intentionally subdued look | Placeholder ≥ 3:1 against its background — WCAG 1.4.3 applies | [color/contrast-and-accessibility.md](../color/contrast-and-accessibility.md) |
+
+### 3. Spacing Rhythm
+
+Random pixel values (padding-[13px], gap-[22px]) create jitter — the eye perceives spacing inconsistency as "unpolished" without being able to name why. Spacing discipline requires only that every value comes from one 4px grid.
+
+| Gotcha | Why LLMs do it | The fix (1 line) | → Deeper file |
+|--------|----------------|-----------------|---------------|
+| Arbitrary values: `mt-[13px]`, `gap-[22px]`, `pb-[17px]` | Precise numbers feel "detailed" | Constrain to the 4px scale: 4, 8, 12, 16, 24, 32, 48, 64px | [layout/spacing-system.md](../layout/spacing-system.md) |
+| Inconsistent spacing between sibling elements (gap-4 here, gap-6 there) | Each component spaced in isolation | One spacing token per relationship — pick and apply it consistently | [layout/spacing-system.md](../layout/spacing-system.md) |
+| Asymmetric vertical rhythm (top sections generous, bottom cramped) | Only the top looks good in screenshots | Match `py-*` across all sections; generous or tight everywhere | [layout/whitespace.md](../layout/whitespace.md) |
+| Mobile padding < 16px (content touches screen edges) | Desktop layout never adapted | Minimum `px-4` (16px) on all mobile containers, unconditionally | [responsive/mobile-first.md](../responsive/mobile-first.md) |
+| Form fields crammed with 4px between label and input | Compact form looks "tight" | Label-to-input: 4–8px; between fields: 16px; between field groups: 24–32px | [components/forms.md](../components/forms.md) |
+| No spacing distinction between related and unrelated groups | All items look equally related | Use a larger gap (24–32px) to separate groups; 16px within a group — whitespace = structure | [layout/whitespace.md](../layout/whitespace.md) |
+
+### 4. Typography
+
+Body text at 14px, three imported fonts, 100ch-wide paragraphs, and headings that are just bold body copy — all common LLM typography defaults. Each has a concrete threshold to check against.
+
+| Gotcha | Why LLMs do it | The fix (1 line) | → Deeper file |
+|--------|----------------|-----------------|---------------|
+| Body text at 14px (triggers iOS auto-zoom on `<input>` focus) | "Dense" and "compact" | Body ≥ 16px; inputs and textareas specifically ≥ 16px (`text-base`) | [typography/type-scale.md](../typography/type-scale.md) |
+| Three or more typefaces on one page | Each addition seems expressive | Two typeface maximum (one heading, one body) — or one variable family | [typography/font-pairing.md](../typography/font-pairing.md) |
+| Line length > 80ch on body paragraphs | Wide containers look content-rich | Cap reading text at 65–75ch (`max-w-prose` = 65ch in Tailwind) | [typography/readability.md](../typography/readability.md) |
+| No size / weight hierarchy — all headings bold at the same size | Uniform weight avoids awkward choices | Scale ratio 1.25–1.333; use weight AND size together to signal hierarchy | [typography/type-scale.md](../typography/type-scale.md) |
+| Line height 1.0–1.2 on body paragraphs | Tight spacing looks "designed" | Body: `leading-relaxed` (1.625) or minimum 1.5 (WCAG SC 1.4.12) | [typography/readability.md](../typography/readability.md) |
+| Heading on mobile same size as desktop (`text-6xl` at 375px) | Responsive type feels over-engineered | At minimum: `text-3xl sm:text-5xl lg:text-6xl` on hero headings | [responsive/fluid-typography.md](../responsive/fluid-typography.md) |
+| Font weight 100–300 on small text ("light looks elegant") | Looks refined in mockup tools | Light weights fail contrast at small sizes; use weight 400+ below 24px | [typography/type-scale.md](../typography/type-scale.md) |
+
+### 5. Touch Targets & Interactive States
+
+The three most-missed failures: undersized icon buttons, removed focus rings, and missing hover states on clickable surfaces. These are WCAG failures, not stylistic preferences.
+
+| Gotcha | Why LLMs do it | The fix (1 line) | → Deeper file |
+|--------|----------------|-----------------|---------------|
+| Icon-only buttons with `p-2` on a 16px icon (~32×32px) | Minimal padding looks clean | Add `min-h-11 min-w-11` (44px) to every interactive element | [interaction/touch-targets.md](../interaction/touch-targets.md) |
+| `focus:outline-none` with no visible replacement | Default browser ring is "ugly" | Replace with `focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2` | [interaction/touch-targets.md](../interaction/touch-targets.md) |
+| Clickable cards and rows with no hover state | Clean at rest | Add `hover:bg-slate-50 dark:hover:bg-slate-700/30 cursor-pointer` on every clickable surface | [interaction/micro-interactions.md](../interaction/micro-interactions.md) |
+| No `:active` feedback on buttons | Hover is the only state shown | Add `active:scale-[0.97]` or `active:opacity-80` | [interaction/micro-interactions.md](../interaction/micro-interactions.md) |
+| Disabled elements with no visual treatment | Disabled state is forgotten | `disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none` | [interaction/touch-targets.md](../interaction/touch-targets.md) |
+| Adjacent interactive elements < 8px apart | Compact groups look organized | WCAG 2.5.8: 8px minimum between touch targets; prefer 12–16px for comfort | [interaction/touch-targets.md](../interaction/touch-targets.md) |
+
+### 6. Over-Animation
+
+Animating every element on load, or using long durations, signals "effort" to the generator and "noise" to the user. The correct direction is fewer, faster, and targeted.
+
+| Gotcha | Why LLMs do it | The fix (1 line) | → Deeper file |
+|--------|----------------|-----------------|---------------|
+| Every element fades / slides in on page load | "Polish" and "delight" | Animate one focal element; let supporting content appear without transition | [interaction/animation-timing.md](../interaction/animation-timing.md) |
+| Transition duration > 500ms on interactive UI (buttons, dropdowns) | Longer feels "premium" | UI micro-transitions: 150–200ms; page-level: 200–300ms max | [interaction/animation-timing.md](../interaction/animation-timing.md) |
+| No `motion-reduce:transition-none` on any transition class | Accessibility not considered | Add `motion-reduce:transition-none` to every `transition-*` class | [interaction/animation-timing.md](../interaction/animation-timing.md) |
+| Continuously looping background animations (spinning, pulsing) | Draws attention to the shell | Reserve loops for active loading states; information-free loops are noise | [expressive/purposeful-motion.md](../expressive/purposeful-motion.md) |
+| Hover on a card triggers a 400ms box-shadow grow | Small interactions need small durations | Shadow/border changes: 100–150ms; scale transforms: 150–200ms | [interaction/micro-interactions.md](../interaction/micro-interactions.md) |
+
+### 7. Responsive Design & Tables
+
+Desktop-first output is the default failure mode. Tables with no mobile strategy and sidebars that never collapse are the two most common layout breaks on real devices.
+
+| Gotcha | Why LLMs do it | The fix (1 line) | → Deeper file |
+|--------|----------------|-----------------|---------------|
+| HTML `<table>` with horizontal scroll as the only mobile strategy | Desktop data layout preserved | Below 640px: hide `<thead>`, convert rows to labeled flex cards using `data-label` | [components/tables-and-lists.md](../components/tables-and-lists.md) |
+| Fixed-width sidebar visible at all breakpoints | Desktop shell never adapted | `hidden lg:flex` on sidebar; hamburger + overlay drawer for mobile | [responsive/mobile-first.md](../responsive/mobile-first.md) |
+| Two-column form layout on mobile | Desktop grid preserved | Stack all form inputs to single column below 640px, unconditionally | [components/forms.md](../components/forms.md) |
+| No responsive type scale (same `text-6xl` at 375px and 1440px) | Breakpoints feel over-engineered | Minimum one breakpoint: `text-3xl sm:text-5xl lg:text-6xl` on hero headings | [responsive/fluid-typography.md](../responsive/fluid-typography.md) |
+| Sticky / fixed elements overflowing the mobile viewport | Never tested at narrow widths | Test every `fixed` or `sticky` element at 320–375px | [responsive/breakpoints.md](../responsive/breakpoints.md) |
+| 4-column grid not overridden for mobile (stays 4 columns at 375px) | Default grid-cols-4 not adapted | Always start from `grid-cols-1`; step up: `sm:grid-cols-2 lg:grid-cols-4` | [responsive/mobile-first.md](../responsive/mobile-first.md) |
+
+### 8. Fake & Placeholder Content
+
+Placeholder content is invisible to an LLM because it satisfies structural requirements. It signals an unconsidered design to every human reviewer.
+
+| Gotcha | Why LLMs do it | The fix (1 line) | → Deeper file |
+|--------|----------------|-----------------|---------------|
+| "Lorem ipsum" body copy | Default filler, structurally valid | Use real or realistic copy; lorem ipsum signals the design was never reviewed | [workflows/new-project-checklist.md](../workflows/new-project-checklist.md) |
+| `href="#"` on every link and button | Structural placeholder | Use `href="#section-id"` / `href="/path"` or add `<!-- TODO: link -->` if unknown | [workflows/new-project-checklist.md](../workflows/new-project-checklist.md) |
+| "Your Company" / "BrandName" in the header | Template not personalized | Replace all brand placeholders before first presentation | [workflows/new-project-checklist.md](../workflows/new-project-checklist.md) |
+| `$0.00` / `0` in stat cards and data tables | No real data at generation time | Use plausible domain-specific numbers ($48,295 for revenue, not $0.00) | [workflows/new-project-checklist.md](../workflows/new-project-checklist.md) |
+| All user avatar initials are "JD" or "AB" | Single name reused across all examples | Use varied realistic initials (SC, JW, MG, AT) so the UI looks like real data | [workflows/new-project-checklist.md](../workflows/new-project-checklist.md) |
+
+### 9. Hierarchy & Cognitive Load
+
+No clear primary action, multiple competing CTAs, and everything at the same visual weight make pages exhausting — users cannot tell what matters.
+
+| Gotcha | Why LLMs do it | The fix (1 line) | → Deeper file |
+|--------|----------------|-----------------|---------------|
+| Multiple equally-styled primary CTAs on one screen | More options seem helpful | One primary button per screen; demote the rest to ghost or outline style | [layout/visual-hierarchy.md](../layout/visual-hierarchy.md) |
+| Three-column grid as the default layout for any list | Looks content-rich | Match layout to data: lists for scanning, tables for comparison, grids for browsing | [layout/grid-systems.md](../layout/grid-systems.md) |
+| Every stat at the same size and weight (no scanning cues) | No natural hierarchy established | Large number → small label → supporting delta — distinct sizes for each level | [foundations/cognitive-load.md](../foundations/cognitive-load.md) |
+| More than 7 top-level navigation items | Comprehensive coverage is good | Cap at 5–7; move secondary sections under "More" | [foundations/hicks-law.md](../foundations/hicks-law.md) |
+| Long paragraphs with no visual breaks | Writing output, not designing | Break every 3–5 sentences with a heading, bullet, or callout block | [foundations/cognitive-load.md](../foundations/cognitive-load.md) |
+| Dashboard shows 10+ widgets above the fold | More data = more value | Show 5–7 key metrics above the fold; use progressive disclosure for the rest | [foundations/cognitive-load.md](../foundations/cognitive-load.md) |
+
+### 10. Semantics & Accessibility
+
+Structural accessibility failures are the hardest to catch because the output looks visually correct. These are WCAG failures with no visible symptoms in a screenshot.
+
+| Gotcha | Why LLMs do it | The fix (1 line) | → Deeper file |
+|--------|----------------|-----------------|---------------|
+| `<div onclick>` instead of `<button>` | Less verbose, visually identical | Use `<button>` for actions and `<a href>` for navigation — keyboard + SR support is free | [heuristics/nielsen-10.md](nielsen-10.md) |
+| Placeholder-only form labels (`placeholder="Email"` with no `<label>`) | Clean, minimal look | Pair `<label for>` with every `<input id>`; placeholder is hint text, not a label | [components/forms.md](../components/forms.md) |
+| Images with no `alt` attribute | Forgot, or "it is decorative" | Every `<img>` needs `alt`; decorative images get `alt=""` explicitly | [heuristics/nielsen-10.md](nielsen-10.md) |
+| Skipped heading levels (h1 → h3 → h5) | h3 looks visually appropriate | Headings are document structure, not font sizes; keep levels sequential | [heuristics/nielsen-10.md](nielsen-10.md) |
+| Icon-only buttons with no `aria-label` | Added label feels redundant | Every icon-only control needs `aria-label="descriptive action name"` | [interaction/touch-targets.md](../interaction/touch-targets.md) |
+| Modal or drawer that cannot be dismissed with Escape | Keyboard interaction not implemented | Every overlay must close on Escape and on backdrop click | [components/modals-and-dialogs.md](../components/modals-and-dialogs.md) |
+| Accordion / tabs / dropdown with no ARIA roles | ARIA feels like extra work | WAI-ARIA patterns for accordion/tabs/menu are well-documented; use a preset | [heuristics/nielsen-10.md](nielsen-10.md) |
+
+---
+
+## Compound Failures
+
+The following failure combinations appear together so frequently they deserve a named pattern. If you see one symptom, check for all others in the group.
+
+**Pattern A — The Generic SaaS:** Blue primary (Cluster 1) + arbitrary spacing (Cluster 3) + identical `text-lg font-bold` for all headings (Cluster 4) + no hover or focus states (Cluster 5). The output looks like every other product and does not pass basic interaction testing.
+
+**Pattern B — The Dark Mode Trap:** Missing `dark:` variants on text tokens (Cluster 2) + `outline-none` removed without replacement (Cluster 5) + color-only error indicators (Cluster 2). Passes visual inspection in light mode; fails WCAG in dark mode — the mode most users actually prefer.
+
+**Pattern C — The Desktop-Only Prototype:** Tables with no mobile strategy (Cluster 7) + fixed sidebar visible on all viewports (Cluster 7) + two-column form on mobile (Cluster 7). The entire layout breaks on the device the majority of users will open it on.
+
+**Pattern D — The Unfinished Template:** Lorem ipsum (Cluster 8) + `href="#"` on all links (Cluster 8) + `$0.00` placeholders (Cluster 8) + "BrandName" in the nav (Cluster 8). Common when a template is generated and presented before any content is swapped in.
+
+**Pattern E — The A11y Blind Spot:** `<div onclick>` (Cluster 10) + placeholder-only labels (Cluster 10) + no `aria-label` on icon buttons (Cluster 10) + removed focus rings (Cluster 5). The page looks correct in screenshots and completely fails keyboard and screen-reader users.
+
+**Pattern F — The Premature Animation:** Every card and section fades in on load (Cluster 6) + 400ms duration on button hover (Cluster 6) + no `motion-reduce:transition-none` on any transition (Cluster 6) + looping gradient background (Cluster 6). Users with vestibular disorders may trigger nausea; all users experience the interface as slow.
+
+## Fast Self-Audit
+
+These 12 questions catch the majority of LLM-generated UI failures at review time. A "no" is a fix before ship.
+
+### Accessibility Blockers — Fix First
+
+1. Does body text pass 4.5:1 contrast in **both** light **and** dark mode?
+2. Are all interactive touch targets at least 44×44px (`min-h-11 min-w-11`)?
+3. Does every interactive element have a visible `:focus-visible` ring?
+4. Does every `<input>` and `<select>` have a persistent `<label>` — not just `placeholder`?
+
+### Quality Issues — Fix Before Shipping
+
+5. Is the primary color chosen intentionally — not default blue-600 / #3b82f5?
+6. Is color used as the **only** signal for any state (error, success, disabled)?
+7. Are all spacing values on the 4px scale (4, 8, 12, 16, 24, 32, 48, 64)?
+8. Is every body text element ≥ 16px, including `<input>` and `<textarea>`?
+9. Does every `transition-*` class have a `motion-reduce:transition-none` companion?
+10. Does every `<table>` have a mobile strategy (stack-to-cards or constrained columns)?
+11. Is there exactly one primary-styled CTA per screen?
+12. Is all visible copy real — no lorem ipsum, "Your Company", `href="#"`, or `$0.00`?
+13. Are all icon-only buttons labelled with `aria-label` (a visible text label is not required, but a machine-readable accessible name is)?
+14. Are links visually distinct from body text by more than color alone — underline, font weight, or both?
+15. Does the page `<title>` convey the page purpose — not "My App" or the Vite/CRA template default?
+16. If a native `<select>` is replaced by a custom dropdown, does the custom version support keyboard open/close and arrow-key navigation?
+
+## Sources
+
+- Nielsen Norman Group. [Top 10 Application-Design Mistakes](https://www.nngroup.com/articles/top-10-application-design-mistakes/)
+- WCAG 2.2. [SC 1.4.3 — Contrast (Minimum)](https://www.w3.org/TR/WCAG22/#contrast-minimum) — 4.5:1 for normal text, 3:1 for large text
+- WCAG 2.2. [SC 2.5.8 — Target Size (Minimum)](https://www.w3.org/TR/WCAG22/#target-size-minimum) — 44×44px recommended
+- WCAG 2.2. [SC 1.4.12 — Text Spacing](https://www.w3.org/TR/WCAG22/#text-spacing) — line-height ≥ 1.5
+- WCAG 2.2. [SC 2.5.3 — Label in Name](https://www.w3.org/TR/WCAG22/#label-in-name) — aria-label must contain visible text
+- Baymard Institute. [Form Usability Research](https://baymard.com/research) — label placement and validation timing
+- Accessibility Insights / axe-core. [Common Accessibility Violations](https://accessibilityinsights.io/)
+
+## Related Presets
+
+- [`form/`](../docs/presets/form/) — Correct label pattern, single-column layout, accessible inputs
+- [`shell-sidebar/`](../docs/presets/shell-sidebar/) — Mobile-correct sidebar (`hidden lg:flex` + overlay)
+- [`data-table/`](../docs/presets/data-table/) — Responsive table with stack-to-cards below 640px
+- [`hero/`](../docs/presets/hero/) — Minimal hero; compare against this to avoid the default AI aesthetic
+- [`accordion/`](../docs/presets/accordion/) — Interactive states, focus rings, and `motion-reduce` done right
+- [`shell-dashboard/`](../docs/presets/shell-dashboard/) — Dashboard with contrast-safe stat cards and correct heading hierarchy
+</file>
+
 <file path="heuristics/nielsen-10.md">
 # Nielsen's 10 Usability Heuristics
 
@@ -12072,6 +12297,229 @@ Are you using a framework with built-in font optimization
 *Related: [Font Pairing](../typography/font-pairing.md) | [Readability](../typography/readability.md)*
 </file>
 
+<file path="workflows/component-decision-points.md">
+# Component Decision Points
+
+> **TL;DR:** Before generating any interactive component, read its section below. Ask the user the open questions, or pick the preset default and state the assumption explicitly in your Design Review Notes. Undisclosed defaults are invisible design decisions — naming them makes the design reviewable.
+
+Every component listed here has a corresponding preset at `docs/presets/<id>/clean.html`. The defaults described below are read directly from that HTML — not assumed. If you customize away from a preset default, say so in the Design Review Notes.
+
+**How to use this file.** For each component you build, read its section. If you are working quickly, default to all italicized preset values, then add a "Component assumptions" block to your Design Review Notes listing each assumption. This takes 2 minutes and saves a review cycle.
+
+## Quick Navigator
+
+| Component | Element ID | Primary decision | Preset default |
+|-----------|-----------|-----------------|----------------|
+| Accordion | `accordion` | One-open vs. multi-open | Ships both |
+| Data Table | `data-table` | Mobile strategy | Stack to cards < 640px |
+| Dropdown | `dropdown` | Action menu vs. value-select | Action menu |
+| Form | `form` | Validation timing; single vs. multi-step | On submit; single step |
+| Tabs | `tabs` | URL sync vs. local state | Local state only |
+| Pagination | `pagination` | Numbered vs. load-more | Numbered with ellipsis |
+| Shell Sidebar | `shell-sidebar` | Mobile: overlay vs. push | Overlay with backdrop |
+| Shell Dashboard | `shell-dashboard` | Stat count; trend deltas | 4 stats with deltas |
+| Shell Form | `shell-form` | Login vs. signup; social auth | Login, no social auth |
+| Shell Marketing | `shell-marketing` | Sticky nav; CTA in nav | Sticky; CTA in both nav + hero |
+| Hero | `hero` | CTA buttons vs. email capture | Two CTA buttons |
+| Stats Row | `stats-row` | Trend deltas; stat count | Deltas on all 4 stats |
+| Avatars | `avatars` | Overflow threshold; status dots | 4 visible + "+N"; status dots |
+
+## Accordion
+
+An accordion collapses multiple content sections behind trigger buttons, trading immediate visibility for vertical space. Decide the open-behavior before building — it affects the ARIA pattern.
+
+- Allow only one section open at a time (FAQ style), or allow multiple sections open simultaneously? *(preset ships both: a single-open group labeled "General" and a multi-open group labeled "Account & Billing")*
+- Start with the first item pre-expanded, or all items collapsed? *(preset: first item of the single-open group starts expanded; multi-open group starts fully collapsed)*
+- Animate panel height with a CSS transition, or show/hide instantly? *(preset: 200ms grid-rows transition; includes `motion-reduce:transition-none`)*
+- Use a rotating chevron icon for open/closed state, or a +/− icon swap? *(preset: rotating chevron — 0° closed, 180° open)*
+- Group items under a section label, or no grouping labels at all? *(preset: uppercase tracking-wider section labels — "General", "Account & Billing")*
+- **Common mistake:** Building single-open behavior when the content works better multi-open (e.g., settings panels where users adjust multiple fields simultaneously).
+- **Use accordion when:** content is too long to show at once and users will read one section then stop. Use Tabs instead when users switch between sections repeatedly.
+
+## Data Table
+
+A data table displays structured, comparable rows of information. The mobile strategy is the most impactful decision — specify it before writing any markup.
+
+- Make all columns sortable by clicking their header, or display-only? *(preset: all 5 columns have sort buttons with up/down arrow icons)*
+- Show all rows at once, or paginate / load-more when row count exceeds a threshold? *(preset: all rows shown, no pagination)*
+- Add row checkboxes for bulk selection, or no selection? *(preset: no row selection)*
+- Sticky column headers while scrolling vertically, or non-sticky? *(preset: non-sticky)*
+- On mobile (< 640px): stack each row into a labeled card, or allow horizontal scroll? *(preset: stacks to cards — `<thead>` hidden, each row becomes a block with label/value pairs via `data-label`)*
+- Per-row actions as inline buttons, as a "..." context menu, or none? *(preset: no per-row actions)*
+- Right-align numeric / currency columns? *(preset: Amount column uses `text-right tabular-nums`; text columns are left-aligned)*
+- **Common mistake:** Leaving all columns sortable when only 1–2 columns are actually useful to sort by — sortable headers add visual noise on every column.
+
+## Dropdown
+
+A dropdown can serve two very different roles: an action menu (command dispatcher) or a value select (option picker). These have different ARIA roles, keyboard behaviors, and close-on-select logic.
+
+- Action menu (contextual commands like Edit / Archive / Delete), or value-select (pick one option)? *(preset: action menu — `role="menu"` with Edit, Duplicate, Archive, Share, Favorite, Delete grouped by separator)*
+- Single-select, or multi-select with checkboxes? *(preset: single action, no multi-select)*
+- Searchable / filterable list inside the dropdown, or flat list only? *(preset: flat list only)*
+- Close automatically on item selection, or stay open for multi-select? *(preset: action menus close on item selection; value-selects may stay open — specify)*
+- Load options asynchronously on open, or all options in markup at load time? *(preset: all options in markup)*
+- Trigger on click only, or also on hover? *(preset: click-only — hover triggers are hostile on touch devices)*
+- **Common mistake:** Using `role="menu"` (action menu) for a value-select scenario — these require different ARIA patterns and keyboard behaviors.
+
+## Form
+
+The two most impactful decisions are validation timing and step count. Inline-on-blur validation reduces error rates; more than 7 fields per step increases abandonment.
+
+- Validate each field on blur (when user leaves the field), or only on final submit? *(preset: HTML5 `required` constraint only — no JS inline validation shown; add blur-based validation for production)*
+- Mark optional fields with "(optional)" text, or mark required fields with an asterisk? *(preset: optional fields labeled "(optional)" — e.g., Company field; required fields are unmarked)*
+- Single-step form, or multi-step wizard with a step indicator? *(preset: single step — 5 fields)*
+- On successful submit: inline success state, toast notification, or redirect? *(preset: no success state shown — choose based on context and reversibility)*
+- Include social OAuth buttons (Google, GitHub), or credentials only? *(preset: email + password only)*
+- Password field: show/hide toggle, or always masked? *(preset: always masked — add a show/hide toggle for production login forms)*
+- **Common mistake:** Disabling the submit button before the user has attempted to submit — this is confusing because users don't know why it is disabled. Show inline errors on submit instead.
+
+## Tabs
+
+Tabs segment content into panels behind a persistent tab bar. URL sync is the key structural decision — it determines whether panel state survives reload and can be shared as a link.
+
+- Sync the active tab to the URL hash, or local UI state only? *(preset: local state only — add hash routing for content that should be deep-linkable or bookmarkable)*
+- Lazy-render each panel on first activation, or render all panels in the DOM upfront (hidden)? *(preset: all panels rendered at load; inactive ones hidden with `class="hidden" aria-hidden="true"`)*
+- On mobile: let the tab bar overflow-scroll horizontally, or collapse to a `<select>` dropdown? *(preset: horizontal overflow scroll with `overflow-x-auto whitespace-nowrap`)*
+- Which tab is active by default? *(preset: first tab — "Overview")*
+- Arrow-key navigation between tabs (WAI-ARIA tablist pattern)? *(preset: yes — Left/Right/Home/End keys cycle tabs)*
+- **Common mistake:** Building tabs where the correct component is an accordion — Tabs are for switching between alternative views, not for reading through sequential content sections.
+- **Use tabs when:** users need to switch between views repeatedly. Use Accordion when reading one section and stopping is the typical pattern.
+
+## Pagination
+
+Pagination is a navigation pattern with consequences for user orientation and back-button behavior. The choice between numbered, load-more, and infinite scroll depends on task type — browsing vs. finding a specific item.
+
+- Numbered page buttons, load-more button, or infinite scroll? *(preset: numbered — shows pages 1–5, ellipsis, and last page number)*
+- Show a total results count ("Showing 1–20 of 342"), or omit it? *(preset: no results count in the pagination bar — add when users need to gauge dataset size)*
+- Include a per-page size selector (10 / 25 / 50 rows), or fixed page size? *(preset: no page-size control)*
+- On mobile: show the full numbered bar, or condense to "Page N of M" text? *(preset: "Page 1 of 10" text indicator below `sm`; numbered buttons at `sm` and above)*
+- Always show the last page button, or only when far from the last page? *(preset: last page number always shown as a button)*
+- **Common mistake:** Using infinite scroll for task-oriented lists (e.g., admin tables) — infinite scroll works for browsing, not for finding a specific row.
+
+## Shell Sidebar
+
+A sidebar shell is a full-page layout — the sidebar behavior on mobile is as important as the desktop experience. A full-width fixed sidebar on a 375px phone blocks all content.
+
+- Fixed full-width sidebar on desktop, or collapsible to an icon-only rail? *(preset: fixed 240px sidebar, no icon-only collapse — always visible at lg+)*
+- On mobile: overlay the sidebar over content with a backdrop, or push content to the right? *(preset: overlay — `bg-slate-900/50` backdrop, hamburger button in topbar)*
+- Flat navigation list, or support nested / grouped secondary sections? *(preset: flat — no nested items, no group headers)*
+- Active item style: filled pill background, or left border accent? *(preset: filled pill — `bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300`)*
+- Sidebar footer area (settings link, user profile), or no footer? *(preset: footer row with a Settings link at the bottom)*
+- **Common mistake:** Not implementing mobile behavior at all — `lg:hidden` on the sidebar makes it disappear on mobile without providing any alternative navigation.
+
+## Shell Dashboard
+
+A dashboard shell is a composed layout — sidebar, topbar, stat cards, and table. The stat card count and density drive the entire visual weight of the screen.
+
+- How many stat cards across the top row? *(preset: 4 — Revenue, Customers, Orders, Conversion; grid is `grid-cols-1 sm:grid-cols-2 lg:grid-cols-4`)*
+- Show period-over-period trend deltas on each stat, or plain current values only? *(preset: trend deltas on all 4 cards — green badge for positive, red for negative, "vs last month" label)*
+- Include a data table below the stats, or a cards-only layout? *(preset: includes a full sortable data table below the stat row)*
+- Comfortable row density or compact? *(preset: comfortable — `p-5` on stat cards, `py-4` table cells)*
+- Topbar right side: notification bell, search bar, or user-profile avatar? *(preset: placeholder profile avatar button on the right of the topbar)*
+- **Common mistake:** Showing more than 5–7 stat cards — Miller's Law applies; users cannot track more than 7 metrics at a glance.
+
+## Shell Form
+
+A centered form shell is a minimal layout: branded header, single card, centered on a neutral background. The form purpose drives the field set and CTA labels.
+
+- Login (sign in to existing account), signup (create new account), or another purpose (password reset, invite accept)? *(preset: login — "Welcome back / Sign in to your account")*
+- Include social OAuth buttons (Google, GitHub), or credentials only? *(preset: credentials only — email + password)*
+- Include "Remember me" checkbox or "Forgot password?" link? *(preset: neither shown — always add "Forgot password?" for a production login)*
+- Single centered card, or two-column with a feature / brand illustration panel on the left? *(preset: single centered card, `max-w-md`)*
+- Show a "Sign up" / "Sign in" cross-link for users who land on the wrong form? *(preset: yes — "Don't have an account? Sign up" link below the card)*
+- Submit button loading state: spinner, disabled text, or immediate redirect? *(preset: no loading state — add a spinner for any form with a server round-trip longer than 300ms)*
+- **Common mistake:** Omitting "Forgot password?" on a login form — this is the single most requested feature in post-launch feedback.
+
+## Shell Marketing
+
+A marketing shell frames landing content. Sticky navigation and CTA placement are the two decisions with the largest effect on conversion rates.
+
+- Sticky header on scroll, or static (scrolls away with content)? *(preset: sticky — `sticky top-0 z-40` with `backdrop-blur-md`)*
+- CTA in the navigation bar, in the hero only, or in both? *(preset: CTA in both — "Get Started" in desktop nav and "Get Started Free" in the hero)*
+- Footer: minimal (brand + copyright), or multi-column with organized link sections? *(preset: multi-column footer — `grid-cols-2 md:grid-cols-4` with Product / Company / Developers / Legal)*
+- Mobile navigation: hamburger opening a full-screen drawer overlay, or in-page expandable menu below the header bar? *(preset: in-page expandable accordion below the header)*
+- How many navigation links? *(preset: 4 — Features, Pricing, About, Blog; cap at 5–7 per Hick's Law)*
+- **Common mistake:** Putting more than one primary CTA in the hero — a primary and a ghost/secondary is fine, but two equally-weighted buttons reduce click-through on both.
+
+## Hero
+
+A hero sets user expectations in the first second. Visual treatment and CTA style should match product tone and primary conversion goal.
+
+- CTA buttons only, email-capture input inline, or a search input? *(preset: two CTA buttons — primary "Get started free" + ghost "See how it works"; no email capture)*
+- Visual: background image with overlay, gradient, or clean white/dark surface? *(preset: clean — no image or gradient, white light / `dark:bg-slate-900`)*
+- Layout: centered text and CTAs, or split (copy left, visual right)? *(preset: centered — `text-center max-w-3xl mx-auto`)*
+- Include above-the-fold social proof (logo strip, user count, star rating), or none? *(preset: none — add real social proof when available; avoid placeholder logos)*
+- Badge / eyebrow label above the headline ("New: feature →"), or plain headline? *(preset: plain headline — add a badge when announcing something specific)*
+- Above the fold on a 768px tablet: does the hero still look intentional, or is it a clipped desktop layout? *(preset: fully responsive — `text-4xl sm:text-5xl lg:text-6xl` headline scales to every breakpoint)*
+- **Common mistake:** Using an email-capture input as the primary CTA for a product that requires a full signup flow — this creates a dead end when the user discovers they still need to register.
+
+## Stats Row
+
+A stats row surfaces key metrics. Trend deltas dramatically increase information density but require real data — placeholder deltas ("↑ 12.5%") with no real backing undermine trust.
+
+- Show period-over-period trend deltas (arrow badge + percentage), or current value only? *(preset: trend deltas on all 4 cards — green badge for positive, red for negative, "vs last month" context)*
+- How many stats? *(preset: 4 — Total Revenue, Active Users, Bounce Rate, Conversion Rate)*
+- Make stat cards linkable (clicking goes to a detail view), or static display only? *(preset: static — no links)*
+- Include a sparkline or mini bar chart inside each card, or numbers + delta badge only? *(preset: numbers + delta badge only; no embedded chart)*
+- Use standalone or embedded inside `shell-dashboard`? *(preset exists as both: standalone `stats-row/` and embedded in `shell-dashboard/`)*
+- Grid layout on mobile: single-column stack or 2×2 grid? *(preset: `grid-cols-1 sm:grid-cols-2 lg:grid-cols-4` — single column at xs, 2×2 at sm, 4-across at lg)*
+- **Common mistake:** Showing "↑ 0%" or blank deltas when real data is not yet available — use plain numbers without deltas until trend data exists.
+
+## Avatars
+
+An avatar group represents a team or collaborator list. The overflow threshold and status indicators are the main product decisions; size is a pure visual decision.
+
+- How many avatars visible before collapsing to a "+N more" chip? *(preset: 4 visible avatars + "+3" chip; overlap uses `-space-x-3` at lg, `-space-x-2` at md and sm)*
+- Show a presence / status dot per avatar (online / offline / busy), or plain avatars? *(preset: status dot on every avatar — `bg-green-500` online, `bg-slate-300` offline)*
+- Reveal the person's name on hover via `title` attribute (native tooltip) or a custom popover? *(preset: `title` attribute — native browser tooltip)*
+- Support photo images with an initials fallback, or initials-only colored circles? *(preset: initials-only — colored background + 2-letter initials; no `<img>` elements)*
+- Size: lg (w-12 / 48px), md (w-9 / 36px), or sm (w-7 / 28px)? *(preset demos all three; pick one for production use)*
+- Are the avatars interactive (clicking opens a profile card), or a static visual only? *(preset: static — no click handlers; add `button` wrapper and keyboard support if interactive)*
+- **Common mistake:** Using initials-only in a context where users need to identify individuals at a glance — consider real photos or at minimum a color-coded initial system with consistent assignment.
+
+---
+
+## Decision Tree
+
+Unsure which option to pick? Use the preset default and state it in the Design Review Notes. Example: "Tabs use local state — add URL hash routing if panels should be bookmarkable." A named assumption is reviewable. A silent assumption is a bug.
+
+**Component vs. component tradeoffs:**
+- Accordion vs. Tabs: Tabs for repeatedly-switched views; Accordion for read-once-and-stop content.
+- Data Table vs. Card Grid: Table when users compare column values; Card Grid when they browse individual items.
+- Numbered Pagination vs. Load-More: Numbered when users need to jump to a specific page; Load-More when sequential reading is natural and all results are roughly equivalent.
+- Dropdown (action menu) vs. Inline buttons: Inline buttons when there are 1–3 actions; dropdown when 4+ actions would clutter the row.
+- Shell Sidebar vs. Shell Marketing: Sidebar for authenticated app experiences; Marketing for public-facing landing pages.
+
+**Framework variants.** All presets in the Related Presets section have `clean.html`, `minimalist.html`, and `playful.html` personality variants. Interactive components (accordion, tabs, dropdown, form, pagination, data-table, shell-sidebar, shell-dashboard, shell-form, shell-marketing, avatars) also have React, Vue, and/or Svelte variants — see [`docs/presets/FRAMEWORKS.md`](../docs/presets/FRAMEWORKS.md) and the `frameworks` key in [`docs/presets/index.json`](../docs/presets/index.json).
+
+**Composing multiple components.** Several presets embed more than one component: `shell-dashboard` nests `stats-row` and `data-table`; `shell-sidebar` hosts any content area. When composing, resolve each nested component's decision points independently — the outer shell's choices do not automatically apply to inner components.
+
+## Sources
+
+- [WAI-ARIA Authoring Practices — Accordion](https://www.w3.org/WAI/ARIA/apg/patterns/accordion/)
+- [WAI-ARIA Authoring Practices — Tab Panel](https://www.w3.org/WAI/ARIA/apg/patterns/tabs/)
+- [WAI-ARIA Authoring Practices — Menu Button](https://www.w3.org/WAI/ARIA/apg/patterns/menu-button/)
+- Baymard Institute. [Form Usability](https://baymard.com/research) — step count, validation timing, label placement
+- WCAG 2.2. [SC 2.5.8 — Target Size (Minimum)](https://www.w3.org/TR/WCAG22/#target-size-minimum) — 44×44px minimum
+- Nielsen Norman Group. [Pagination vs. Infinite Scroll](https://www.nngroup.com/articles/infinite-scrolling-tips/)
+
+## Related Presets
+
+- [`accordion/`](../docs/presets/accordion/) — Single-open + multi-open groups, animated height, reduced-motion safe
+- [`data-table/`](../docs/presets/data-table/) — Sortable, responsive, stack-to-cards below 640px
+- [`dropdown/`](../docs/presets/dropdown/) — Action menu with keyboard navigation, outside-click, and Escape close
+- [`form/`](../docs/presets/form/) — Signup form with (optional) field pattern and HTML5 validation
+- [`tabs/`](../docs/presets/tabs/) — Local-state tabs with full keyboard navigation (arrow keys)
+- [`pagination/`](../docs/presets/pagination/) — Numbered pages with ellipsis and mobile "Page N of M" fallback
+- [`shell-sidebar/`](../docs/presets/shell-sidebar/) — Sidebar shell with mobile overlay drawer
+- [`shell-dashboard/`](../docs/presets/shell-dashboard/) — Dashboard shell with 4-stat row + sortable data table
+- [`shell-form/`](../docs/presets/shell-form/) — Centered login shell
+- [`shell-marketing/`](../docs/presets/shell-marketing/) — Marketing page with sticky nav and multi-column footer
+- [`hero/`](../docs/presets/hero/) — Centered CTA hero
+- [`stats-row/`](../docs/presets/stats-row/) — 4-stat row with trend delta badges
+- [`avatars/`](../docs/presets/avatars/) — Overlapping avatar group with status dots and initials
+</file>
+
 <file path="workflows/design-review-checklist.md">
 # Design Review Checklist
 
@@ -12986,6 +13434,8 @@ Run through this checklist against their code. Note every issue you find.
 - [ ] Forms: single column, labels above, grouped into logical sections, `autocomplete` attributes?
 - [ ] Modals: max ~600px wide, trap focus, clear dismiss action?
 
+For interactive components, also resolve the behavior choices in [`workflows/component-decision-points.md`](workflows/component-decision-points.md) (e.g. accordion single- vs multi-open, table sort/pagination, form validation timing) before recommending changes.
+
 ### Output the Design Review Notes
 
 After auditing, generate a **Design Review Notes** document (see Step 4 for the full template). This is the most important output — it gives the user a persistent record of what to fix and why.
@@ -13118,7 +13568,7 @@ Before diving into design questions, gauge how much guidance the user wants. **A
 
    *Affects:* Spacing system (4px compact vs 8px generous), base font size (14px for dense, 16px for standard), line height, card padding. Dense UIs can use `text-sm` for data; light UIs should use `text-base` or larger.
 
-10. **What components do you need?** (List the specific ones)
+10. **What components do you need?** (List the specific ones) — for interactive ones, see [`workflows/component-decision-points.md`](workflows/component-decision-points.md) for the behavior questions to resolve per component.
 
 11. **Existing brand constraints beyond colors?** (Fonts, logo, existing design system)
 
@@ -13262,6 +13712,7 @@ Based on what you learned in Step 1, read the relevant files. **Read the minimum
 ### Always Read (Every Consultation)
 
 - `workflows/quick-reference.md` — critical numbers at a glance
+- `heuristics/llm-design-gotchas.md` — the gotcha self-audit; run it before writing any UI and again before you ship
 
 ---
 
@@ -13348,6 +13799,18 @@ If the user's stack is **React**, **Vue**, or **Svelte**, check if a framework v
 2. Drop **component presets** into the shell's content area
 3. Customize colors, content, and branding for the user's project
 4. Add interactivity (state, events) if using a framework variant
+
+---
+
+## Step 2.6: Confirm Component Behavior
+
+Before generating any **interactive** component, resolve its behavior choices — they change the implementation and are cheap to ask but expensive to redo. Open [`workflows/component-decision-points.md`](workflows/component-decision-points.md) and read the section for each interactive preset you'll build (the heading slug matches the element id, e.g. `#accordion`, `#data-table`, `#shell-sidebar`).
+
+For each listed question:
+- **Guided / Thorough:** ask the user — batch these with the intake questions.
+- **Quick start:** pick the preset's stated default AND record the choice in the Design Review Notes.
+
+Resolve these **before** writing code. Example: an accordion needs *"force only one open at a time, or allow multiple open?"* answered first — the preset ships both, and the choice changes the state model.
 
 ---
 
@@ -14115,7 +14578,7 @@ The consultation flow is tested across 12 real-world scenarios — all pass all 
 
 All presets: dark mode, WCAG AA contrast, 44px touch targets, responsive. [Composition recipes](docs/presets/_index.md#composition-recipes) show how to combine them into full pages.
 
-### Knowledge Files — 45 topics
+### Knowledge Files — 46 topics
 
 | Area | Topics |
 |------|--------|
@@ -14127,7 +14590,7 @@ All presets: dark mode, WCAG AA contrast, 44px touch targets, responsive. [Compo
 | **Responsive** | [Mobile-first](responsive/mobile-first.md), [Breakpoints](responsive/breakpoints.md), [Fluid typography](responsive/fluid-typography.md), [Patterns](responsive/responsive-patterns.md) |
 | **Systems** | [Design tokens](systems/design-tokens.md), [Material Design 3](systems/material-design-3.md), [Apple HIG](systems/apple-hig.md), [Building a system](systems/building-a-system.md) |
 | **Expressive** | [Visual identity](expressive/visual-identity.md), [Hero patterns](expressive/hero-patterns.md), [Scroll storytelling](expressive/scroll-storytelling.md), [Purposeful motion](expressive/purposeful-motion.md), [Scroll effect patterns](expressive/scroll-effect-patterns.md), [Curated examples](expressive/curated-examples.md) |
-| **Heuristics** | [Nielsen's 10](heuristics/nielsen-10.md), [UX frameworks](heuristics/ux-frameworks.md) |
+| **Heuristics** | [Nielsen's 10](heuristics/nielsen-10.md), [UX frameworks](heuristics/ux-frameworks.md), [LLM design gotchas](heuristics/llm-design-gotchas.md) |
 | **Components** | [Buttons](components/buttons.md), [Forms](components/forms.md), [Cards](components/cards.md), [Navigation](components/navigation.md), [Modals](components/modals-and-dialogs.md), [Tables](components/tables-and-lists.md), [Feedback](components/feedback.md) |
 
 Each file: 200–400 lines, concrete rules with numbers, CSS/Tailwind patterns, decision trees, sources.
@@ -14139,6 +14602,7 @@ Each file: 200–400 lines, concrete rules with numbers, CSS/Tailwind patterns, 
 | [Quick Reference](workflows/quick-reference.md) | Need a number fast (contrast ratio, spacing value, timing) |
 | [New Project Checklist](workflows/new-project-checklist.md) | Starting from scratch |
 | [Design Review Checklist](workflows/design-review-checklist.md) | Auditing an existing design |
+| [Component Decision Points](workflows/component-decision-points.md) | Before building an interactive component — questions to resolve first |
 
 ### Critical Numbers
 
@@ -14187,7 +14651,7 @@ Sources: [research/sources.md](research/sources.md)
   "elements": {
     "dashboard": { "label": "Dashboard", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
     "landing": { "label": "Landing Page", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
-    "form": { "label": "Form", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
+    "form": { "label": "Form", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } }, "frameworks": ["html", "react", "vue", "svelte"], "frameworkFiles": { "react": [{ "file": "react.jsx", "label": "React" }], "vue": [{ "file": "vue.vue", "label": "Vue" }], "svelte": [{ "file": "svelte.svelte", "label": "Svelte" }] } },
     "cards": { "label": "Card Grid", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
     "project": { "label": "Multi-Page App", "personalities": { "before": { "primaryColor": "blue" }, "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" }, "editorial": { "primaryColor": "indigo" } } },
     "pricing": { "label": "SaaS Pricing", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
@@ -14197,21 +14661,21 @@ Sources: [research/sources.md](research/sources.md)
     "deploy": { "label": "Deploy Monitor", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
     "buttons": { "label": "Button System", "personalities": { "clean": { "primaryColor": "emerald" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
     "osslanding": { "label": "OSS Landing", "personalities": { "clean": { "primaryColor": "violet" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "shell-sidebar": { "label": "App Shell (Sidebar)", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "shell-marketing": { "label": "Marketing Page", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "shell-dashboard": { "label": "Dashboard Shell", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "shell-form": { "label": "Centered Form", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "hero": { "label": "Hero Section", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "stats-row": { "label": "Stats Row", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "data-table": { "label": "Data Table", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "shell-sidebar": { "label": "App Shell (Sidebar)", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } }, "frameworks": ["html", "react", "vue", "svelte"], "frameworkFiles": { "react": [{ "file": "react.jsx", "label": "React" }, { "file": "react-nav.jsx", "label": "React (nav)" }], "vue": [{ "file": "vue.vue", "label": "Vue" }, { "file": "vue-nav.vue", "label": "Vue (nav)" }], "svelte": [{ "file": "svelte.svelte", "label": "Svelte" }, { "file": "svelte-nav.svelte", "label": "Svelte (nav)" }] } },
+    "shell-marketing": { "label": "Marketing Page", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } }, "frameworks": ["html", "react", "vue", "svelte"], "frameworkFiles": { "react": [{ "file": "react.jsx", "label": "React" }], "vue": [{ "file": "vue.vue", "label": "Vue" }], "svelte": [{ "file": "svelte.svelte", "label": "Svelte" }] } },
+    "shell-dashboard": { "label": "Dashboard Shell", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } }, "frameworks": ["html", "react", "vue", "svelte"], "frameworkFiles": { "react": [{ "file": "react-mobile-nav.jsx", "label": "React (mobile nav)" }], "vue": [{ "file": "vue-mobile-nav.vue", "label": "Vue (mobile nav)" }], "svelte": [{ "file": "svelte-mobile-nav.svelte", "label": "Svelte (mobile nav)" }] } },
+    "shell-form": { "label": "Centered Form", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } }, "frameworks": ["html", "react", "vue", "svelte"], "frameworkFiles": { "react": [{ "file": "react.jsx", "label": "React" }], "vue": [{ "file": "vue.vue", "label": "Vue" }], "svelte": [{ "file": "svelte.svelte", "label": "Svelte" }] } },
+    "hero": { "label": "Hero Section", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } }, "frameworks": ["html", "react", "vue", "svelte"], "frameworkFiles": { "react": [{ "file": "react-search.jsx", "label": "React (search)" }], "vue": [{ "file": "vue-search.vue", "label": "Vue (search)" }], "svelte": [{ "file": "svelte-search.svelte", "label": "Svelte (search)" }] } },
+    "stats-row": { "label": "Stats Row", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } }, "frameworks": ["html", "react", "vue"], "frameworkFiles": { "react": [{ "file": "react-toast.jsx", "label": "React (toast)" }], "vue": [{ "file": "vue-toast.vue", "label": "Vue (toast)" }] } },
+    "data-table": { "label": "Data Table", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } }, "frameworks": ["html", "react", "vue", "svelte"], "frameworkFiles": { "react": [{ "file": "react.jsx", "label": "React" }], "vue": [{ "file": "vue.vue", "label": "Vue" }], "svelte": [{ "file": "svelte.svelte", "label": "Svelte" }] } },
     "card-grid": { "label": "Card Grid", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
     "pricing-cards": { "label": "Pricing Cards", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
     "feature-grid": { "label": "Feature Grid", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "tabs": { "label": "Tabs", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "accordion": { "label": "Accordion", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "pagination": { "label": "Pagination", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "dropdown": { "label": "Dropdown Menu", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
-    "avatars": { "label": "Avatar Group", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
+    "tabs": { "label": "Tabs", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } }, "frameworks": ["html", "react", "vue", "svelte"], "frameworkFiles": { "react": [{ "file": "react.jsx", "label": "React" }], "vue": [{ "file": "vue.vue", "label": "Vue" }], "svelte": [{ "file": "svelte.svelte", "label": "Svelte" }] } },
+    "accordion": { "label": "Accordion", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } }, "frameworks": ["html", "react", "vue", "svelte"], "frameworkFiles": { "react": [{ "file": "react.jsx", "label": "React" }], "vue": [{ "file": "vue.vue", "label": "Vue" }], "svelte": [{ "file": "svelte.svelte", "label": "Svelte" }] } },
+    "pagination": { "label": "Pagination", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } }, "frameworks": ["html", "react", "vue", "svelte"], "frameworkFiles": { "react": [{ "file": "react.jsx", "label": "React" }], "vue": [{ "file": "vue.vue", "label": "Vue" }], "svelte": [{ "file": "svelte.svelte", "label": "Svelte" }] } },
+    "dropdown": { "label": "Dropdown Menu", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } }, "frameworks": ["html", "react", "vue", "svelte"], "frameworkFiles": { "react": [{ "file": "react.jsx", "label": "React" }, { "file": "react-modal.jsx", "label": "React (modal)" }], "vue": [{ "file": "vue.vue", "label": "Vue" }, { "file": "vue-modal.vue", "label": "Vue (modal)" }], "svelte": [{ "file": "svelte.svelte", "label": "Svelte" }, { "file": "svelte-modal.svelte", "label": "Svelte (modal)" }] } },
+    "avatars": { "label": "Avatar Group", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } }, "frameworks": ["html", "react", "vue"], "frameworkFiles": { "react": [{ "file": "react.jsx", "label": "React" }], "vue": [{ "file": "vue.vue", "label": "Vue" }] } },
     "personal-hero": { "label": "Personal Site", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
     "agency-landing": { "label": "Agency Landing", "personalities": { "clean": { "primaryColor": "blue" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },
     "product-launch": { "label": "Product Launch", "personalities": { "clean": { "primaryColor": "indigo" }, "minimalist": { "primaryColor": "blue" }, "playful": { "primaryColor": "rose" } } },

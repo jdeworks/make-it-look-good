@@ -125,7 +125,7 @@ export function NavSidebar({ activeItem = 'dashboard', onNavigate }) {
                     }}
                     className={`flex items-center ${
                       collapsed ? 'justify-center' : 'gap-3'
-                    } px-3 py-2.5 text-sm font-medium rounded-lg transition-colors min-h-11 ${
+                    } px-3 py-2.5 text-sm font-semibold rounded-lg transition-colors min-h-11 ${
                       isActive
                         ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
                         : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white'
@@ -149,7 +149,7 @@ export function NavSidebar({ activeItem = 'dashboard', onNavigate }) {
           href="#"
           className={`flex items-center ${
             collapsed ? 'justify-center' : 'gap-3'
-          } px-3 py-2.5 text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white rounded-lg transition-colors min-h-11`}
+          } px-3 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white rounded-lg transition-colors min-h-11`}
           title={collapsed ? 'Settings' : undefined}
         >
           <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
@@ -164,7 +164,7 @@ export function NavSidebar({ activeItem = 'dashboard', onNavigate }) {
             collapsed ? 'justify-center' : 'gap-3'
           } px-3 py-2.5 mt-1`}
         >
-          <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white text-sm font-medium shrink-0">
+          <div className="w-8 h-8 bg-blue-700 rounded-full flex items-center justify-center text-white text-sm font-semibold shrink-0">
             JD
           </div>
           {!collapsed && (
