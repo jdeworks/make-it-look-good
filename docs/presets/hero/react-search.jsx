@@ -5,6 +5,13 @@
 
 import { useState, useRef, useEffect } from 'react';
 
+const DEFAULT_FILTERS = [
+  { value: 'all', label: 'All' },
+  { value: 'products', label: 'Products' },
+  { value: 'users', label: 'Users' },
+  { value: 'orders', label: 'Orders' },
+];
+
 export function HeroSearch({ onSearch, placeholder = 'Search...', filters = [] }) {
   const [query, setQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('all');
@@ -19,12 +26,7 @@ export function HeroSearch({ onSearch, placeholder = 'Search...', filters = [] }
     return () => clearTimeout(debounceRef.current);
   }, [query, activeFilter]);
 
-  const defaultFilters = filters.length > 0 ? filters : [
-    { value: 'all', label: 'All' },
-    { value: 'products', label: 'Products' },
-    { value: 'users', label: 'Users' },
-    { value: 'orders', label: 'Orders' },
-  ];
+  const defaultFilters = filters.length > 0 ? filters : DEFAULT_FILTERS;
 
   return (
     <div id="heroWrap" className="min-h-screen flex items-center justify-center p-8 bg-slate-50 dark:bg-slate-900">

@@ -3,13 +3,28 @@
 // rationale: components/navigation.md, layout/grid-systems.md
 // requires: tailwindcss
 
-import { useState } from 'react';
+import { useState, memo } from 'react';
+
+const activeNavClass = 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300';
+const inactiveNavClass = 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white';
+
+const NavItem = memo(function NavItem({ href, name, icon, active }) {
+  return (
+    <a
+      href={href}
+      className={`flex items-center gap-3 px-3 py-2.5 text-sm font-semibold rounded-lg transition-colors ${
+        active ? activeNavClass : inactiveNavClass
+      }`}
+      aria-current={active ? 'page' : undefined}
+    >
+      <NavIcon name={icon} />
+      {name}
+    </a>
+  );
+});
 
 export function AppShell({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-
-  const activeNavClass = 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300';
-  const inactiveNavClass = 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white';
 
   const navItems = [
     { name: 'Dashboard', href: '#', icon: 'grid', active: true },
@@ -43,17 +58,13 @@ export function AppShell({ children }) {
 
         <nav className="flex-1 overflow-y-auto p-4 space-y-1" aria-label="Main navigation">
           {navItems.map((item) => (
-            <a
+            <NavItem
               key={item.name}
               href={item.href}
-              className={`flex items-center gap-3 px-3 py-2.5 text-sm font-semibold rounded-lg transition-colors ${
-                item.active ? activeNavClass : inactiveNavClass
-              }`}
-              aria-current={item.active ? 'page' : undefined}
-            >
-              <NavIcon name={item.icon} />
-              {item.name}
-            </a>
+              name={item.name}
+              icon={item.icon}
+              active={!!item.active}
+            />
           ))}
         </nav>
 

@@ -75,6 +75,12 @@ export function ComponentName({ prop1, prop2 }) {
 <div className={`px-3 py-2 rounded ${active ? 'bg-blue-600 text-white' : 'text-slate-600'}`}>
 ```
 
+**Coding conventions** (the React presets follow these — match them when porting):
+- **Explicit memoization is the house style.** Wrap a handler in `useCallback` when — and only when — it is passed to a `React.memo`'d child or used in a dependency array, and pair it with `React.memo` on that child so the stabilization is real. A `useCallback` on a handler that only sits on a native element, with no memo boundary, is inert noise — skip it there.
+- **`useMemo`** for non-trivial derived data (grouping, sorting, filtering, range building) — not for trivial slices or arithmetic.
+- **Extract repeated list-item markup** into a small `React.memo`'d subcomponent; render lists with a stable `key`, never the array index.
+- **Don't** memoize trivial pure helpers (e.g. an icon `switch`) — the overhead and noise outweigh the benefit.
+
 ---
 
 ### Vue 3 (Composition API)
@@ -120,6 +126,12 @@ const emit = defineEmits(['navigate'])
 <div v-else>Hidden</div>
 ```
 
+**Coding conventions:**
+- **`computed()`** for any value derived from props/state the template uses more than once (grouping, range building, label lookup) — don't recompute inline or in a method.
+- **`defineProps`** with explicit shapes and `withDefaults` for object/array defaults; don't destructure props in a way that drops reactivity.
+- **State:** `ref()` for primitives, `reactive()` for form objects.
+- **`v-for`** always keyed by a stable unique id, never the array index. `v-if` for structural changes, `v-show` for visibility toggles.
+
 ---
 
 ### Svelte 5 / SvelteKit
@@ -160,6 +172,12 @@ onclick="..."      → onclick={handleClick}
   <div>Hidden</div>
 {/if}
 ```
+
+**Coding conventions:**
+- **Svelte 5 runes only** — `$state`, `$props`, `$derived`, `$effect`. No Svelte 4 `export let` or `$:` reactive statements. Declare any const that a `$props()` default references *before* the `$props()` call (avoids a temporal-dead-zone error).
+- **`$derived`** for simple computed values, **`$derived.by`** for multi-line logic — don't recompute manually.
+- **Event attributes** use the Svelte 5 form (`onclick`, `onchange`), not the `on:` directive.
+- **`{#each ... (id)}`** keyed blocks with a stable id, never the array index.
 
 ---
 

@@ -3,6 +3,8 @@
 // rationale: components/cards.md
 // requires: tailwindcss
 
+import { memo } from 'react';
+
 const defaultUsers = [
   { id: 1, name: 'Sarah Chen', initials: 'SC', color: 'bg-[#1d4ed8]', status: 'online' },
   { id: 2, name: 'James Wilson', initials: 'JW', color: 'bg-[#6d28d9]', status: 'online' },
@@ -34,7 +36,9 @@ const sizeConfig = {
   },
 };
 
-function AvatarRow({ users, max, size }) {
+// Memoized — AvatarGroup passes the same users array reference and primitive
+// size/max props on every render, so memo prevents spurious re-renders.
+const AvatarRow = memo(function AvatarRow({ users, max, size }) {
   const config = sizeConfig[size] || sizeConfig.md;
   const visible = users.slice(0, max);
   const remaining = users.length - max;
@@ -69,7 +73,7 @@ function AvatarRow({ users, max, size }) {
       </div>
     </div>
   );
-}
+});
 
 export function AvatarGroup({ users = defaultUsers, maxVisible = 4 }) {
   return (

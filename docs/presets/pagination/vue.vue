@@ -48,7 +48,7 @@ function goToPage(page) {
 
       <!-- Page numbers (desktop) -->
       <div class="hidden sm:flex items-center gap-1">
-        <template v-for="(page, i) in pages" :key="i">
+        <template v-for="(page, i) in pages" :key="page === '...' ? 'ellipsis-' + i : page">
           <span v-if="page === '...'" class="min-h-11 min-w-11 px-3 py-2 text-sm text-slate-600 dark:text-slate-400 flex items-center justify-center" aria-hidden="true">&hellip;</span>
           <button
             v-else

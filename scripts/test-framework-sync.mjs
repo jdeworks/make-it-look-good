@@ -62,16 +62,24 @@ function fieldKey(raw) {
 }
 function fieldKeys(src) {
   const keys = new Set();
-  const tag = /<(input|select|textarea)\b([\s\S]*?)>/gi;
+  // Match any tag, then keep real form controls (input/select/textarea) AND component
+  // wrappers that carry a literal id alongside a name/type — e.g. a memoized
+  // <Field id="form-email" name="email" type="email" /> that renders the input internally.
+  // This keeps field parity honest without forcing the markup to stay un-refactored.
+  const tag = /<([A-Za-z][\w.]*)\b([^>]*?)\/?>/g;
   let m;
   while ((m = tag.exec(src))) {
+    const tagName = m[1].toLowerCase();
     const attrs = m[2];
     const id = /\bid\s*=\s*["']([^"']+)["']/.exec(attrs);
     const name = /\bname\s*=\s*["']([^"']+)["']/.exec(attrs);
-    const type = /\btype\s*=\s*["']([^"']+)["']/.exec(attrs);
-    const ref = id ? id[1] : name ? name[1] : null;
-    if (ref) keys.add(fieldKey(ref));
-    else if (type && /checkbox|radio|submit|button|hidden/i.test(type[1])) { /* unnamed control — skip */ }
+    const hasType = /\btype\s*=\s*["'][^"']+["']/.test(attrs);
+    const isControl = tagName === 'input' || tagName === 'select' || tagName === 'textarea';
+    const isComponent = /^[A-Z]/.test(m[1]); // a JSX component wrapper like <Field/>, not a native <button>
+    if (isControl || (isComponent && id && (name || hasType))) {
+      const ref = id ? id[1] : name ? name[1] : null;
+      if (ref) keys.add(fieldKey(ref));
+    }
   }
   return keys;
 }

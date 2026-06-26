@@ -3,13 +3,34 @@
 // rationale: components/forms.md
 // requires: tailwindcss
 
-import { useState } from 'react';
+import { useState, useCallback, memo } from 'react';
+
+// Memoized field — renders label, input, and inline error as a single memo boundary.
+// Each instance receives a stable onChange (useCallback) plus primitive value/error props,
+// so it skips re-rendering unless its own slice of state changes.
+const Field = memo(function Field({ id, label, type, value, error, onChange, placeholder, autoComplete }) {
+  const inputCls = `w-full border rounded-lg px-3 py-2.5 text-base bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-600 dark:placeholder-slate-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none min-h-11 ${
+    error ? 'border-red-500 dark:border-red-400' : 'border-slate-300 dark:border-slate-600'
+  }`;
+  return (
+    <div>
+      <label htmlFor={id} className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">{label}</label>
+      <input id={id} type={type} value={value} onChange={onChange} placeholder={placeholder} className={inputCls} autoComplete={autoComplete} />
+      {error && <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">{error}</p>}
+    </div>
+  );
+});
 
 export function LoginShell({ onSubmit }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
+
+  // Per-field onChange handlers — justified by being passed to memo'd Field instances.
+  // setEmail/setPassword are guaranteed stable by React, so dep arrays are empty.
+  const onEmailChange    = useCallback((e) => setEmail(e.target.value), []);
+  const onPasswordChange = useCallback((e) => setPassword(e.target.value), []);
 
   const validate = () => {
     const errs = {};
@@ -34,11 +55,6 @@ export function LoginShell({ onSubmit }) {
     }
   };
 
-  const inputClass = (field) =>
-    `w-full border rounded-lg px-3 py-2.5 text-base bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-600 dark:placeholder-slate-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none min-h-11 ${
-      errors[field] ? 'border-red-500 dark:border-red-400' : 'border-slate-300 dark:border-slate-600'
-    }`;
-
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col">
       {/* Minimal header */}
@@ -60,37 +76,27 @@ export function LoginShell({ onSubmit }) {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-              <div>
-                <label htmlFor="login-email" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Email
-                </label>
-                <input
-                  id="login-email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  className={inputClass('email')}
-                  autoComplete="email"
-                />
-                {errors.email && <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">{errors.email}</p>}
-              </div>
+              <Field
+                id="login-email"
+                label="Email"
+                type="email"
+                value={email}
+                error={errors.email}
+                onChange={onEmailChange}
+                placeholder="you@example.com"
+                autoComplete="email"
+              />
 
-              <div>
-                <label htmlFor="login-password" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Password
-                </label>
-                <input
-                  id="login-password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter your password"
-                  className={inputClass('password')}
-                  autoComplete="current-password"
-                />
-                {errors.password && <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">{errors.password}</p>}
-              </div>
+              <Field
+                id="login-password"
+                label="Password"
+                type="password"
+                value={password}
+                error={errors.password}
+                onChange={onPasswordChange}
+                placeholder="Enter your password"
+                autoComplete="current-password"
+              />
 
               <button
                 type="submit"

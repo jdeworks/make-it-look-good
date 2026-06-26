@@ -3,7 +3,7 @@
 // rationale: components/feedback.md
 // requires: tailwindcss
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, memo } from 'react';
 
 const STATS = [
   { label: 'Total Revenue',   value: '$48,295', delta: '12.5%', positive: true },
@@ -61,20 +61,20 @@ export function ToastContainer({ toasts, onDismiss }) {
   return (
     <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-3 max-w-sm w-full pointer-events-none" aria-live="polite">
       {toasts.map((toast) => (
-        <Toast key={toast.id} {...toast} onDismiss={() => onDismiss(toast.id)} />
+        <Toast key={toast.id} {...toast} onDismiss={onDismiss} />
       ))}
     </div>
   );
 }
 
-function Toast({ id, message, variant = 'info', duration = 5000, onDismiss }) {
+const Toast = memo(function Toast({ id, message, variant = 'info', duration = 5000, onDismiss }) {
   const v = TOAST_VARIANTS[variant] || TOAST_VARIANTS.info;
 
   useEffect(() => {
     if (duration <= 0) return;
-    const timer = setTimeout(onDismiss, duration);
+    const timer = setTimeout(() => onDismiss(id), duration);
     return () => clearTimeout(timer);
-  }, [duration, onDismiss]);
+  }, [duration, id, onDismiss]);
 
   return (
     <div className={`pointer-events-auto flex items-start gap-3 px-4 py-3 rounded-lg border shadow-lg ${v.bg} animate-in slide-in-from-right`} role="alert">
@@ -83,7 +83,7 @@ function Toast({ id, message, variant = 'info', duration = 5000, onDismiss }) {
       </svg>
       <p className={`text-sm font-medium flex-1 ${v.text}`}>{message}</p>
       <button
-        onClick={onDismiss}
+        onClick={() => onDismiss(id)}
         className={`shrink-0 p-0.5 rounded-md hover:bg-black/10 dark:hover:bg-white/10 transition-colors ${v.icon}`}
         aria-label="Dismiss notification"
       >
@@ -91,7 +91,7 @@ function Toast({ id, message, variant = 'info', duration = 5000, onDismiss }) {
       </button>
     </div>
   );
-}
+});
 
 export default function StatsRow() {
   const { toasts, addToast, removeToast } = useToast();

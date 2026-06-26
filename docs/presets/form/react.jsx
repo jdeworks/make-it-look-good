@@ -3,7 +3,31 @@
 // rationale: components/forms.md
 // requires: tailwindcss
 
-import { useState } from 'react';
+import { useState, useCallback, memo } from 'react';
+
+const labelClass = 'block text-sm font-medium text-slate-800 dark:text-slate-200 mb-2';
+
+// Stable node for the company label — defined at module level so React.memo's
+// shallow comparison sees the same reference every render.
+const companyLabelNode = <>Company <span className="font-normal text-slate-600 dark:text-slate-300">(optional)</span></>;
+
+// Memoized field — renders label, input, and inline error as a single memo boundary.
+// Each instance receives a stable onChange (useCallback) plus primitive value/error props,
+// so it skips re-rendering unless its own slice of state changes.
+const Field = memo(function Field({ id, name, label, type, value, error, onChange, placeholder, autoComplete, required }) {
+  const inputCls = `w-full min-h-11 rounded-lg border bg-white dark:bg-slate-950 px-4 py-3 text-base text-slate-950 dark:text-white placeholder:text-slate-600 dark:placeholder:text-slate-300 outline-none transition-colors focus:ring-2 focus:ring-blue-600/25 dark:focus:ring-blue-400/30 ${
+    error
+      ? 'border-red-500 dark:border-red-400 focus:border-red-500 dark:focus:border-red-400'
+      : 'border-slate-300 dark:border-slate-600 focus:border-slate-950 dark:focus:border-white'
+  }`;
+  return (
+    <div>
+      <label htmlFor={id} className={labelClass}>{label}</label>
+      <input id={id} name={name} type={type} value={value} onChange={onChange} autoComplete={autoComplete} required={required} placeholder={placeholder} className={inputCls} />
+      {error && <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">{error}</p>}
+    </div>
+  );
+});
 
 export function SignupForm({ onSubmit }) {
   const [form, setForm] = useState({
@@ -13,7 +37,17 @@ export function SignupForm({ onSubmit }) {
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
 
-  const update = (field, value) => setForm(prev => ({ ...prev, [field]: value }));
+  // Stable updater — setForm is guaranteed stable by React, so dep array is empty.
+  const update = useCallback((field, value) => setForm(prev => ({ ...prev, [field]: value })), []);
+
+  // Per-field onChange handlers — justified by being passed to memo'd Field instances.
+  // update is stable (never changes), so each handler is also permanently stable.
+  const onFirstNameChange = useCallback(e => update('firstName', e.target.value), [update]);
+  const onLastNameChange  = useCallback(e => update('lastName',  e.target.value), [update]);
+  const onEmailChange     = useCallback(e => update('email',     e.target.value), [update]);
+  const onPhoneChange     = useCallback(e => update('phone',     e.target.value), [update]);
+  const onPasswordChange  = useCallback(e => update('password',  e.target.value), [update]);
+  const onCompanyChange   = useCallback(e => update('company',   e.target.value), [update]);
 
   const validate = () => {
     const errs = {};
@@ -40,15 +74,6 @@ export function SignupForm({ onSubmit }) {
     }
   };
 
-  const inputClass = (field) =>
-    `w-full min-h-11 rounded-lg border bg-white dark:bg-slate-950 px-4 py-3 text-base text-slate-950 dark:text-white placeholder:text-slate-600 dark:placeholder:text-slate-300 outline-none transition-colors focus:ring-2 focus:ring-blue-600/25 dark:focus:ring-blue-400/30 ${
-      errors[field]
-        ? 'border-red-500 dark:border-red-400 focus:border-red-500 dark:focus:border-red-400'
-        : 'border-slate-300 dark:border-slate-600 focus:border-slate-950 dark:focus:border-white'
-    }`;
-
-  const labelClass = 'block text-sm font-medium text-slate-800 dark:text-slate-200 mb-2';
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 px-5 py-10 sm:px-6 sm:py-14">
       <main className="w-full max-w-md" aria-labelledby="form-title">
@@ -62,45 +87,33 @@ export function SignupForm({ onSubmit }) {
           <form onSubmit={handleSubmit} className="flex flex-col gap-6" aria-labelledby="form-title" aria-describedby="form-description" noValidate>
             {/* Name */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-              <div>
-                <label htmlFor="form-first-name" className={labelClass}>First name</label>
-                <input id="form-first-name" name="first-name" type="text" value={form.firstName} onChange={e => update('firstName', e.target.value)} autoComplete="given-name" required placeholder="Jane" className={inputClass('firstName')} />
-                {errors.firstName && <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">{errors.firstName}</p>}
-              </div>
-              <div>
-                <label htmlFor="form-last-name" className={labelClass}>Last name</label>
-                <input id="form-last-name" name="last-name" type="text" value={form.lastName} onChange={e => update('lastName', e.target.value)} autoComplete="family-name" required placeholder="Smith" className={inputClass('lastName')} />
-                {errors.lastName && <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">{errors.lastName}</p>}
-              </div>
+              <Field id="form-first-name" name="first-name" label="First name" type="text" value={form.firstName} error={errors.firstName} onChange={onFirstNameChange} autoComplete="given-name" required placeholder="Jane" />
+              <Field id="form-last-name" name="last-name" label="Last name" type="text" value={form.lastName} error={errors.lastName} onChange={onLastNameChange} autoComplete="family-name" required placeholder="Smith" />
             </div>
 
             {/* Email */}
-            <div>
-              <label htmlFor="form-email" className={labelClass}>Email address</label>
-              <input id="form-email" name="email" type="email" value={form.email} onChange={e => update('email', e.target.value)} autoComplete="email" required placeholder="jane@example.com" className={inputClass('email')} />
-              {errors.email && <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">{errors.email}</p>}
-            </div>
+            <Field id="form-email" name="email" label="Email address" type="email" value={form.email} error={errors.email} onChange={onEmailChange} autoComplete="email" required placeholder="jane@example.com" />
 
             {/* Phone */}
-            <div>
-              <label htmlFor="form-phone" className={labelClass}>Phone</label>
-              <input id="form-phone" name="phone" type="tel" value={form.phone} onChange={e => update('phone', e.target.value)} autoComplete="tel" placeholder="+1 (555) 000-0000" className={inputClass('phone')} />
-            </div>
+            <Field id="form-phone" name="phone" label="Phone" type="tel" value={form.phone} error={errors.phone} onChange={onPhoneChange} autoComplete="tel" placeholder="+1 (555) 000-0000" />
 
             {/* Password */}
-            <div>
-              <label htmlFor="form-password" className={labelClass}>Password</label>
-              <input id="form-password" name="password" type="password" value={form.password} onChange={e => update('password', e.target.value)} autoComplete="new-password" required placeholder="••••••••" className={inputClass('password')} />
-              {errors.password && <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">{errors.password}</p>}
-            </div>
+            <Field id="form-password" name="password" label="Password" type="password" value={form.password} error={errors.password} onChange={onPasswordChange} autoComplete="new-password" required placeholder="••••••••" />
 
             {/* Company */}
-            <div>
-              <label htmlFor="form-company" className={labelClass}>Company <span className="font-normal text-slate-600 dark:text-slate-300">(optional)</span></label>
-              <input id="form-company" name="company" type="text" value={form.company} onChange={e => update('company', e.target.value)} autoComplete="organization" placeholder="Acme Inc." className={inputClass('company')} />
-            </div>
+            <Field
+              id="form-company"
+              name="company"
+              label={companyLabelNode}
+              type="text"
+              value={form.company}
+              error={errors.company}
+              onChange={onCompanyChange}
+              autoComplete="organization"
+              placeholder="Acme Inc."
+            />
 
-            {/* Terms */}
+            {/* Terms — checkbox structure differs from text Field; handled inline */}
             <label className="flex items-start gap-3 cursor-pointer min-h-11">
               <input id="form-terms" name="terms" type="checkbox" checked={form.terms} onChange={e => update('terms', e.target.checked)} required className="mt-1 h-4 w-4 accent-slate-950 dark:accent-white" />
               <span className="text-sm leading-6 text-slate-700 dark:text-slate-300">I agree to the <a href="#" className="font-medium text-slate-950 dark:text-white underline underline-offset-4 hover:text-slate-700 dark:hover:text-slate-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 dark:focus-visible:outline-blue-400 rounded">terms and conditions</a></span>

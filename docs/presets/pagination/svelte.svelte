@@ -41,7 +41,7 @@
 
     <!-- Page numbers (desktop) -->
     <div class="hidden sm:flex items-center gap-1">
-      {#each pages as page, i}
+      {#each pages as page, i (page === '...' ? 'ellipsis-' + i : page)}
         {#if page === '...'}
           <span class="min-h-11 min-w-11 px-3 py-2 text-sm text-slate-600 dark:text-slate-400 flex items-center justify-center" aria-hidden="true">&hellip;</span>
         {:else}

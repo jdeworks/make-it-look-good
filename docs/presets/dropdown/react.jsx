@@ -3,7 +3,7 @@
 // rationale: components/navigation.md
 // requires: tailwindcss
 
-import { useState, useEffect, useRef, useCallback, Fragment } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, memo, Fragment } from 'react';
 
 const defaultItems = [
   { id: 'edit', label: 'Edit', icon: 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z' },
@@ -53,14 +53,14 @@ export function DropdownMenu({ items = defaultItems, label = 'Options', onSelect
   };
 
   // Group items between separators so each group gets a py-1 wrapper
-  const groups = items.reduce((acc, item) => {
+  const groups = useMemo(() => items.reduce((acc, item) => {
     if (item.type === 'separator') { acc.push([]); }
     else {
       if (!acc.length) acc.push([]);
       acc[acc.length - 1].push(item);
     }
     return acc;
-  }, []);
+  }, []), [items]);
 
   return (
     <div className="static sm:relative inline-block text-left" ref={wrapperRef}>
@@ -86,7 +86,7 @@ export function DropdownMenu({ items = defaultItems, label = 'Options', onSelect
           onKeyDown={handleMenuKeyDown}
         >
           {groups.map((group, gi) => (
-            <Fragment key={gi}>
+            <Fragment key={group[0].id}>
               {gi > 0 && <div className="border-t border-slate-200 dark:border-slate-700" />}
               <div className="py-1">
                 {group.map(item => (
@@ -101,7 +101,7 @@ export function DropdownMenu({ items = defaultItems, label = 'Options', onSelect
   );
 }
 
-function MenuItem({ item, onSelect, close }) {
+const MenuItem = memo(function MenuItem({ item, onSelect, close }) {
   return (
     <button
       role="menuitem"
@@ -119,4 +119,4 @@ function MenuItem({ item, onSelect, close }) {
       {item.label}
     </button>
   );
-}
+});

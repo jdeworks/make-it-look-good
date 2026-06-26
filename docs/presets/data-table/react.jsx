@@ -3,6 +3,8 @@
 // rationale: components/tables-and-lists.md
 // requires: tailwindcss
 
+import { memo } from 'react';
+
 // Avatar color classes — full strings kept as named consts for Tailwind JIT and sync-check visibility.
 const scAvatarClass = 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300';
 const jwAvatarClass = 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300';
@@ -28,6 +30,44 @@ const orders = [
   { id: '#4718', initials: 'AT', avatarClass: atAvatarClass, name: 'Alex Thompson',  email: 'alex.t@email.com',     amount: '$189.99',   status: 'Completed', date: 'Mar 13, 2026' },
   { id: '#4717', initials: 'PP', avatarClass: ppAvatarClass, name: 'Priya Patel',    email: 'priya.p@email.com',    amount: '$67.25',    status: 'Pending',   date: 'Mar 12, 2026' },
 ];
+
+// Memoized table row — orders is a module-level constant so order object references
+// are always stable; memo prevents Row re-renders when a parent re-renders DataTable.
+const Row = memo(function Row({ order }) {
+  return (
+    <tr className="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors max-sm:block max-sm:w-full max-sm:my-3 max-sm:py-2 max-sm:rounded-xl max-sm:border max-sm:border-slate-200 dark:max-sm:border-slate-700">
+      <td data-label="Order #" className="px-2 py-4 md:px-4 text-sm font-medium text-slate-900 dark:text-white max-sm:flex max-sm:w-full max-sm:items-center max-sm:flex-wrap max-sm:justify-between max-sm:gap-4 max-sm:min-h-11 max-sm:text-right">
+        <span className="hidden max-sm:block text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Order #</span>
+        <span className="min-w-0 break-words">{order.id}</span>
+      </td>
+      <td data-label="Customer" className="px-2 py-4 md:px-4 max-sm:flex max-sm:w-full max-sm:items-center max-sm:flex-wrap max-sm:justify-between max-sm:gap-4 max-sm:min-h-11 max-sm:text-right">
+        <span className="hidden max-sm:block text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Customer</span>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium shrink-0 ${order.avatarClass}`}>{order.initials}</div>
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-slate-900 dark:text-white">{order.name}</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400 break-words">{order.email}</p>
+          </div>
+        </div>
+      </td>
+      <td data-label="Amount" className="px-2 py-4 md:px-4 text-sm text-slate-900 dark:text-white text-right font-medium tabular-nums max-sm:flex max-sm:w-full max-sm:items-center max-sm:flex-wrap max-sm:justify-between max-sm:gap-4 max-sm:min-h-11">
+        <span className="hidden max-sm:block text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Amount</span>
+        <span>{order.amount}</span>
+      </td>
+      <td data-label="Status" className="px-2 py-4 md:px-4 max-sm:flex max-sm:w-full max-sm:items-center max-sm:flex-wrap max-sm:justify-between max-sm:gap-4 max-sm:min-h-11 max-sm:text-right">
+        <span className="hidden max-sm:block text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Status</span>
+        <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${statusBadgeClass[order.status]}`}>
+          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3"/></svg>
+          {order.status}
+        </span>
+      </td>
+      <td data-label="Date" className="px-2 py-4 md:px-4 text-sm text-slate-600 dark:text-slate-400 max-sm:flex max-sm:w-full max-sm:items-center max-sm:flex-wrap max-sm:justify-between max-sm:gap-4 max-sm:min-h-11 max-sm:text-right">
+        <span className="hidden max-sm:block text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Date</span>
+        <span>{order.date}</span>
+      </td>
+    </tr>
+  );
+});
 
 export function DataTable() {
   return (
@@ -79,37 +119,7 @@ export function DataTable() {
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700 max-sm:divide-y-0">
                 {orders.map((order) => (
-                  <tr key={order.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors max-sm:block max-sm:w-full max-sm:my-3 max-sm:py-2 max-sm:rounded-xl max-sm:border max-sm:border-slate-200 dark:max-sm:border-slate-700">
-                    <td data-label="Order #" className="px-2 py-4 md:px-4 text-sm font-medium text-slate-900 dark:text-white max-sm:flex max-sm:w-full max-sm:items-center max-sm:flex-wrap max-sm:justify-between max-sm:gap-4 max-sm:min-h-11 max-sm:text-right">
-                      <span className="hidden max-sm:block text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Order #</span>
-                      <span className="min-w-0 break-words">{order.id}</span>
-                    </td>
-                    <td data-label="Customer" className="px-2 py-4 md:px-4 max-sm:flex max-sm:w-full max-sm:items-center max-sm:flex-wrap max-sm:justify-between max-sm:gap-4 max-sm:min-h-11 max-sm:text-right">
-                      <span className="hidden max-sm:block text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Customer</span>
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium shrink-0 ${order.avatarClass}`}>{order.initials}</div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-slate-900 dark:text-white">{order.name}</p>
-                          <p className="text-sm text-slate-500 dark:text-slate-400 break-words">{order.email}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td data-label="Amount" className="px-2 py-4 md:px-4 text-sm text-slate-900 dark:text-white text-right font-medium tabular-nums max-sm:flex max-sm:w-full max-sm:items-center max-sm:flex-wrap max-sm:justify-between max-sm:gap-4 max-sm:min-h-11">
-                      <span className="hidden max-sm:block text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Amount</span>
-                      <span>{order.amount}</span>
-                    </td>
-                    <td data-label="Status" className="px-2 py-4 md:px-4 max-sm:flex max-sm:w-full max-sm:items-center max-sm:flex-wrap max-sm:justify-between max-sm:gap-4 max-sm:min-h-11 max-sm:text-right">
-                      <span className="hidden max-sm:block text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Status</span>
-                      <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${statusBadgeClass[order.status]}`}>
-                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3"/></svg>
-                        {order.status}
-                      </span>
-                    </td>
-                    <td data-label="Date" className="px-2 py-4 md:px-4 text-sm text-slate-600 dark:text-slate-400 max-sm:flex max-sm:w-full max-sm:items-center max-sm:flex-wrap max-sm:justify-between max-sm:gap-4 max-sm:min-h-11 max-sm:text-right">
-                      <span className="hidden max-sm:block text-sm font-semibold text-slate-700 dark:text-slate-300 text-left">Date</span>
-                      <span>{order.date}</span>
-                    </td>
-                  </tr>
+                  <Row key={order.id} order={order} />
                 ))}
               </tbody>
             </table>

@@ -3,7 +3,7 @@
 // rationale: components/navigation.md
 // requires: tailwindcss
 
-import { useState } from 'react';
+import { useState, useCallback, memo } from 'react';
 
 const navSections = [
   {
@@ -72,8 +72,35 @@ const navSections = [
   },
 ];
 
+const NavItem = memo(function NavItem({ href, id, name, icon, isActive, collapsed, onSelect }) {
+  return (
+    <a
+      href={href}
+      onClick={(e) => {
+        e.preventDefault();
+        onSelect(id);
+      }}
+      className={`flex items-center ${
+        collapsed ? 'justify-center' : 'gap-3'
+      } px-3 py-2.5 text-sm font-semibold rounded-lg transition-colors min-h-11 ${
+        isActive
+          ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white'
+      }`}
+      aria-current={isActive ? 'page' : undefined}
+      title={collapsed ? name : undefined}
+    >
+      {icon}
+      {!collapsed && name}
+    </a>
+  );
+});
+
 export function NavSidebar({ activeItem = 'dashboard', onNavigate }) {
   const [collapsed, setCollapsed] = useState(false);
+  const handleSelect = useCallback((id) => {
+    onNavigate?.(id);
+  }, [onNavigate]);
 
   return (
     <aside
@@ -113,31 +140,18 @@ export function NavSidebar({ activeItem = 'dashboard', onNavigate }) {
               </p>
             )}
             <div className="space-y-1">
-              {section.items.map((item) => {
-                const isActive = activeItem === item.id;
-                return (
-                  <a
-                    key={item.id}
-                    href={item.href}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      onNavigate?.(item.id);
-                    }}
-                    className={`flex items-center ${
-                      collapsed ? 'justify-center' : 'gap-3'
-                    } px-3 py-2.5 text-sm font-semibold rounded-lg transition-colors min-h-11 ${
-                      isActive
-                        ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-                        : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white'
-                    }`}
-                    aria-current={isActive ? 'page' : undefined}
-                    title={collapsed ? item.name : undefined}
-                  >
-                    {item.icon}
-                    {!collapsed && item.name}
-                  </a>
-                );
-              })}
+              {section.items.map((item) => (
+                <NavItem
+                  key={item.id}
+                  href={item.href}
+                  id={item.id}
+                  name={item.name}
+                  icon={item.icon}
+                  isActive={activeItem === item.id}
+                  collapsed={collapsed}
+                  onSelect={handleSelect}
+                />
+              ))}
             </div>
           </div>
         ))}

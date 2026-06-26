@@ -3,7 +3,7 @@
 // rationale: components/navigation.md
 // requires: tailwindcss
 
-import { useState } from 'react';
+import { useState, useCallback, memo } from 'react';
 
 const navItems = [
   { id: 'overview', label: 'Overview' },
@@ -51,13 +51,49 @@ function NavIcon({ id, className = 'w-5 h-5 shrink-0' }) {
   }
 }
 
+const SidebarNavItem = memo(function SidebarNavItem({ id, label, isActive, onNavigate }) {
+  return (
+    <a
+      href="#"
+      className={`flex min-h-11 items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none${
+        isActive
+          ? ' bg-blue-50 dark:bg-blue-950 text-blue-800 dark:text-blue-200'
+          : ' text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white transition-colors'
+      }`}
+      aria-current={isActive ? 'page' : undefined}
+      onClick={(e) => { e.preventDefault(); onNavigate(id); }}
+    >
+      <NavIcon id={id} />
+      {label}
+    </a>
+  );
+});
+
+const BottomNavItem = memo(function BottomNavItem({ id, label, isActive, onSelect }) {
+  return (
+    <button
+      onClick={() => onSelect(id)}
+      className={`flex flex-col items-center justify-center gap-1 py-2 px-1 min-h-14 min-w-14 flex-1 transition-colors${
+        isActive
+          ? ' text-blue-600 dark:text-blue-400'
+          : ' text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+      }`}
+      aria-current={isActive ? 'page' : undefined}
+      aria-label={label}
+    >
+      <NavIcon id={id} className="w-6 h-6" />
+      <span className="text-[10px] font-medium leading-tight">{label}</span>
+    </button>
+  );
+});
+
 export function ShellDashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activePage, setActivePage] = useState('overview');
 
   function openSidebar() { setSidebarOpen(true); }
   function closeSidebar() { setSidebarOpen(false); }
-  function navigate(id) { setActivePage(id); closeSidebar(); }
+  const navigate = useCallback((id) => { setActivePage(id); setSidebarOpen(false); }, []);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100">
@@ -76,25 +112,15 @@ export function ShellDashboard() {
             <span className="text-xl font-semibold text-slate-900 dark:text-white">Analytics</span>
           </div>
           <nav className="flex-1 overflow-y-auto p-4 space-y-1" aria-label="Main navigation">
-            {navItems.map((item) => {
-              const isActive = activePage === item.id;
-              return (
-                <a
-                  key={item.id}
-                  href="#"
-                  className={`flex min-h-11 items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none${
-                    isActive
-                      ? ' bg-blue-50 dark:bg-blue-950 text-blue-800 dark:text-blue-200'
-                      : ' text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white transition-colors'
-                  }`}
-                  aria-current={isActive ? 'page' : undefined}
-                  onClick={(e) => { e.preventDefault(); navigate(item.id); }}
-                >
-                  <NavIcon id={item.id} />
-                  {item.label}
-                </a>
-              );
-            })}
+            {navItems.map((item) => (
+              <SidebarNavItem
+                key={item.id}
+                id={item.id}
+                label={item.label}
+                isActive={activePage === item.id}
+                onNavigate={navigate}
+              />
+            ))}
           </nav>
         </aside>
 
@@ -299,25 +325,15 @@ export function ShellDashboard() {
         aria-label="Bottom navigation"
       >
         <div className="flex items-center justify-around">
-          {navItems.map((item) => {
-            const isActive = activePage === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => setActivePage(item.id)}
-                className={`flex flex-col items-center justify-center gap-1 py-2 px-1 min-h-14 min-w-14 flex-1 transition-colors${
-                  isActive
-                    ? ' text-blue-600 dark:text-blue-400'
-                    : ' text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
-                }`}
-                aria-current={isActive ? 'page' : undefined}
-                aria-label={item.label}
-              >
-                <NavIcon id={item.id} className="w-6 h-6" />
-                <span className="text-[10px] font-medium leading-tight">{item.label}</span>
-              </button>
-            );
-          })}
+          {navItems.map((item) => (
+            <BottomNavItem
+              key={item.id}
+              id={item.id}
+              label={item.label}
+              isActive={activePage === item.id}
+              onSelect={setActivePage}
+            />
+          ))}
         </div>
       </nav>
     </div>

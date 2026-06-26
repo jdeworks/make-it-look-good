@@ -1912,24 +1912,29 @@ function openAgentPackMenu() {
     + '<button onclick="copyAgentPack(\'prompt\')">Copy Agent Prompt</button>'
     + '<button onclick="copyAgentPack(\'markdown\')">Copy Markdown</button>'
     + '<button onclick="copyCurrentHtml()">Copy HTML</button>'
-    + '<button onclick="downloadCurrentHtml()">Download .html</button>'
-    + '<div class="apm-divider"></div><div class="apm-label">Framework</div>';
+    + '<button onclick="downloadCurrentHtml()">Download .html</button>';
 
-  // Per language: copy the ACTUAL component file when one exists for this element,
-  // otherwise copy a targeted conversion prompt. Angular is always prompt-only.
+  // Separate languages we ship a prepared component for ("Components") from those we
+  // only offer an LLM conversion prompt for ("Prompt conversion" — Angular always,
+  // plus any language with no file for this element, e.g. Svelte on avatars/stats-row).
   const downloads = [];
+  let componentBtns = '';
+  let promptBtns = '';
   ['react', 'vue', 'svelte', 'angular'].forEach(function(lang) {
     const files = getFrameworkFiles(element, lang);
     if (files.length) {
       files.forEach(function(f) {
-        html += '<button onclick="exportFramework(\'' + lang + '\',\'' + f.file + '\')">Copy ' + escapeHtml(f.label) + '</button>';
+        componentBtns += '<button onclick="exportFramework(\'' + lang + '\',\'' + f.file + '\')">Copy ' + escapeHtml(f.label) + '</button>';
         downloads.push(f);
       });
     } else {
       const label = lang.charAt(0).toUpperCase() + lang.slice(1);
-      html += '<button onclick="exportFramework(\'' + lang + '\')">Copy ' + label + ' prompt</button>';
+      promptBtns += '<button onclick="exportFramework(\'' + lang + '\')">Copy ' + label + ' prompt</button>';
     }
   });
+
+  if (componentBtns) html += '<div class="apm-divider"></div><div class="apm-label">Components</div>' + componentBtns;
+  if (promptBtns) html += '<div class="apm-divider"></div><div class="apm-label">Prompt conversion</div>' + promptBtns;
 
   if (downloads.length) {
     html += '<div class="apm-divider"></div><div class="apm-label">Download component</div>';
