@@ -283,6 +283,18 @@ When the user brings plain text, data, or non-visual content:
 
 When the user provides a URL as inspiration (from intake question 6) or wants you to analyze an existing site and create a template based on it. This workflow captures the **design language** of a site — layout patterns, color palette, typography, spacing, personality — and translates it into the make-it-look-good format.
 
+### Audit Fidelity: Source Code → Analyzer → WebFetch
+
+What you can actually *measure* depends on your access. A design audit lives on numbers — px font sizes, contrast ratios, spacing, touch-target dimensions, focus states — so prefer the higher-fidelity inputs and be honest about which you have. The three tiers, best first:
+
+1. **The user's source code — best, and the most common case.** When the user pastes (or points you at) their HTML/CSS/components, read it directly. Every measurable value is in the source: exact `font-size`, padding/margin, `line-height`, color tokens (so you can *compute* contrast), `:focus`/`:hover` styles, media queries, and target sizing. This is the Step 1A path — nothing is "unverifiable," so don't route a code audit through Step 1E.
+2. **The analyzer — best for a live site you don't have the code for.** make-it-look-good ships `analyzer.html` (hosted, or run `./start.sh` for local/offline). It loads the page in a real browser, captures desktop + mobile screenshots, reads **computed** styles, and runs ~60 deterministic checks (WCAG contrast, touch targets, type scale, spacing, overflow, pixel-verified small text) — no guessing. Point it at the URL and read its findings. This is the deep-analysis path; the `shot-scraper` token-extraction snippet below is the manual equivalent when you have CLI/browser tooling.
+3. **`WebFetch` only — degraded, last resort.** Understand precisely what this costs you (see below).
+
+**The exact WebFetch limitation.** `WebFetch` does **not** hand you the page. It runs the URL through a model that returns a cleaned-up, usually Markdown-converted summary of the **content** — headings, body copy, link text, rough section order. In doing so it discards everything a design audit measures: the raw HTML/DOM, class names, the stylesheet, and all **computed** values — font sizes in px, color values and therefore contrast ratios, spacing/`line-height`, focus-ring and hover styles, media-query/responsive behavior, and element/touch-target dimensions. It also never renders layout, so overflow, breakpoints, and visual hierarchy can't be observed. What it *is* good for: information architecture, copy quality, content hierarchy, and spotting missing sections (no social proof, no pricing, etc.).
+
+**If WebFetch is all you have:** say so up front, and mark every measured claim `[unverified — confirm in DevTools or analyzer.html]` with the specific check to run (e.g. *"DevTools → Computed → `font-size` on body; expect ≥16px"*). Never state a px value or contrast ratio as fact when you only inferred it from content. Better: ask the user for the source code or to run the analyzer — that turns every `[unverified]` into a real finding.
+
 ### 1. Gather Visual & Structural Data
 
 If you have access to screenshot/scraping tools (e.g., `shot-scraper`, browser automation, or built-in web tools), capture:
@@ -329,7 +341,7 @@ shot-scraper javascript "$URL" "
 })()"
 ```
 
-**If you don't have screenshot tools:** Use `WebFetch` to get the page HTML, or ask the user for a screenshot. Many LLM environments support reading images — ask the user to paste one.
+**If you don't have screenshot tools:** ask the user to paste their source code (best — see *Audit Fidelity* above) or run `analyzer.html` against the URL for computed-style + screenshot analysis. Failing that, `WebFetch` gives you content and structure only — **not** the raw HTML or any computed styles — so flag all measured findings `[unverified — confirm in DevTools or analyzer.html]`. Many LLM environments can also read images — ask the user to paste a screenshot.
 
 ### 2. Analyze the Design
 
