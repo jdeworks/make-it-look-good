@@ -1727,8 +1727,41 @@ window.MilgContrastVerify = (function() {
     return html;
   }
 
+  // Pixel-verify each region sub-screenshot (clipped/hidden content — carousel
+  // slides, collapsed panels — captured in its own mini-page). Populates
+  // rgn.regionVerifyResults. Shared by the single-page flow AND crawl so hidden-area
+  // pairs get real pass/fail verdicts (and overlay boxes) in both, not just skipped.
+  function verifyRegions(reportData, onRegionDone, onAllDone) {
+    var raw = (reportData && reportData.raw) || {};
+    var list = ((raw.regionScreenshots || (raw.screenshotMeta && raw.screenshotMeta.regionScreenshots) || []))
+      .filter(function(r) { return r.extractedData && r.screenshot; });
+    (function next(idx) {
+      if (idx >= list.length) { if (onAllDone) onAllDone(); return; }
+      var rgn = list[idx];
+      var pairs = rgn.extractedData.colors ? rgn.extractedData.colors.contrastPairs || [] : [];
+      var mr = rgn.maskResults || {};
+      Object.keys(mr).forEach(function(k) {
+        var i = parseInt(k, 10), m = mr[k];
+        if (pairs[i] && m) {
+          pairs[i]._maskBmp = m.bmp; pairs[i]._maskPacked = !!m.packed;
+          pairs[i]._maskW = m.w; pairs[i]._maskH = m.h; pairs[i]._maskLayer = m.layer; pairs[i]._maskDark = m.dark;
+        }
+      });
+      var miniReport = {
+        raw: { screenshots: [rgn.screenshot], screenshotMeta: rgn.screenshotMeta, colors: rgn.extractedData.colors || { contrastPairs: [] } },
+        categories: rgn.regionReport ? rgn.regionReport.categories : []
+      };
+      verify(miniReport, function(rgnResults) {
+        rgn.regionVerifyResults = rgnResults || [];
+        if (onRegionDone) onRegionDone(rgn, idx);
+        next(idx + 1);
+      });
+    })(0);
+  }
+
   return {
     verify: verify,
+    verifyRegions: verifyRegions,
     setDensity: setDensity,
     setEdgeMethod: setEdgeMethod,
     edgeMethods: EDGE_METHODS,

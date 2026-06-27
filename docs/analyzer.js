@@ -1,8 +1,8 @@
-// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.88
+// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.89
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.88 loaded');
+console.log('[milg] analyzer.js v3.11.89 loaded');
 
 (function() {
   "use strict";
@@ -1083,49 +1083,14 @@ console.log('[milg] analyzer.js v3.11.88 loaded');
           div.innerHTML = summaryHtml;
           if (screenshotDetails) screenshotDetails.parentNode.insertBefore(div, screenshotDetails.nextSibling);
           else _verifyContainer.insertBefore(div, _verifyContainer.firstChild);
-          // Run pixel verification on region sub-pages sequentially
-          var _rgnList = (_verifyReportData.raw && _verifyReportData.raw.regionScreenshots || []).filter(function(r) { return r.extractedData && r.screenshot; });
-          (function _verifyNextRegion(idx) {
-            if (idx >= _rgnList.length) return;
-            var rgn = _rgnList[idx];
-            // Apply mask results from the region's maskResults dict (avoids cross-frame issues)
-            var _rgnPairs = rgn.extractedData.colors ? rgn.extractedData.colors.contrastPairs || [] : [];
-            var _mr = rgn.maskResults || {};
-            var _mrKeys = Object.keys(_mr);
-            if (_mrKeys.length > 0) {
-              _mrKeys.forEach(function(k) {
-                var i = parseInt(k, 10);
-                var mr = _mr[k];
-                if (_rgnPairs[i] && mr) {
-                  _rgnPairs[i]._maskBmp = mr.bmp;
-                  _rgnPairs[i]._maskPacked = !!mr.packed;
-                  _rgnPairs[i]._maskW = mr.w;
-                  _rgnPairs[i]._maskH = mr.h;
-                  _rgnPairs[i]._maskLayer = mr.layer;
-                  _rgnPairs[i]._maskDark = mr.dark;
-                }
-              });
+          // Run pixel verification on region sub-pages (shared with the crawl path).
+          MilgContrastVerify.verifyRegions(_verifyReportData, function(rgn) {
+            _log('[milg] Region pixel verify:', rgn.regionVerifyResults ? rgn.regionVerifyResults.length : 0, 'results');
+            // Re-render region overlays if verify filter is active (results arrived async)
+            if (typeof MilgViewer !== 'undefined' && MilgViewer.refreshRegionOverlays) {
+              MilgViewer.refreshRegionOverlays();
             }
-            var _rgnMaskCount = _rgnPairs.filter(function(p) { return !!p._maskBmp; }).length;
-            console.log('[D] region ' + idx + ' verify: pairs=' + _rgnPairs.length + ' maskResults=' + _mrKeys.length + ' maskBmp=' + _rgnMaskCount);
-            var miniReport = {
-              raw: {
-                screenshots: [rgn.screenshot],
-                screenshotMeta: rgn.screenshotMeta,
-                colors: rgn.extractedData.colors || { contrastPairs: [] }
-              },
-              categories: rgn.regionReport ? rgn.regionReport.categories : []
-            };
-            MilgContrastVerify.verify(miniReport, function(rgnResults) {
-              rgn.regionVerifyResults = rgnResults || [];
-              _log('[milg] Region pixel verify:', rgnResults ? rgnResults.length : 0, 'results');
-              // Re-render region overlays if verify filter is active (results arrived async)
-              if (typeof MilgViewer !== 'undefined' && MilgViewer.refreshRegionOverlays) {
-                MilgViewer.refreshRegionOverlays();
-              }
-              _verifyNextRegion(idx + 1);
-            });
-          })(0);
+          });
 
           // Update viewport cache if this was a viewport switch
           if (_verifyData._vpCacheIdx !== undefined) {

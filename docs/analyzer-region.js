@@ -21,7 +21,11 @@ window.MilgRegion = (function() {
     '[class*="slide"],[class*="panel"],[class*="tab-pane"]{' +
     'display:block !important;visibility:visible !important;' +
     'opacity:1 !important;position:relative !important;' +
-    'transform:none !important;left:auto !important;right:auto !important;}';
+    'transform:none !important;left:auto !important;right:auto !important;}' +
+    // Block-ify the slide TRACK/rail so block slides stack vertically instead of
+    // sitting side-by-side in a flex row (which clips the off-screen slides).
+    '[class*="track"],[class*="carousel"],[class*="slider"],[class*="swiper"],[class*="slick"]{' +
+    'display:block !important;width:auto !important;max-width:none !important;transform:none !important;}';
 
   // --- Force-reveal script ---
   // Runs inside the mini-page on DOMContentLoaded. Catches computed display:none
@@ -355,7 +359,8 @@ window.MilgRegion = (function() {
         '*,*::before,*::after{transition:none !important;animation:none !important;}' +
         'body *{visibility:visible !important;opacity:1 !important;transform:none !important;overflow:visible !important;clip-path:none !important;max-height:none !important;}' +
         '[aria-hidden="true"],[hidden],.hidden,.d-none,.hide,.carousel-item,.swiper-slide,.slick-slide,' +
-        '[class*="slide"],[class*="panel"],[class*="tab-pane"]{display:block !important;visibility:visible !important;opacity:1 !important;position:relative !important;transform:none !important;left:auto !important;right:auto !important;}';
+        '[class*="slide"],[class*="panel"],[class*="tab-pane"]{display:block !important;visibility:visible !important;opacity:1 !important;position:relative !important;transform:none !important;left:auto !important;right:auto !important;}' +
+        '[class*="track"],[class*="carousel"],[class*="slider"],[class*="swiper"],[class*="slick"]{display:block !important;width:auto !important;max-width:none !important;transform:none !important;}';
 
       var _revealScript =
         '<script>document.addEventListener("DOMContentLoaded",function(){' +

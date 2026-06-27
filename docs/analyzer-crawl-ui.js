@@ -206,6 +206,24 @@ window.MilgCrawlUI = (function() {
     return true;
   }
 
+  // Pixel-verify a page's region sub-screenshots (hidden/clipped content like
+  // carousel slides) so they get real verdicts + overlay boxes — single-page parity.
+  // Idempotent (guarded by _regionVerifyDone); cb() always called.
+  function _verifyPageRegions(page, pageIdx, cb) {
+    cb = cb || function() {};
+    if (!page || !page.rawData || page.rawData._regionVerifyDone ||
+        !window.MilgContrastVerify || !MilgContrastVerify.verifyRegions) { cb(); return; }
+    var report = page.reportData || MilgScoring.runScoring(page.rawData);
+    var raw = report.raw || {};
+    var regions = raw.regionScreenshots || (raw.screenshotMeta && raw.screenshotMeta.regionScreenshots);
+    if (!regions || !regions.length) { page.rawData._regionVerifyDone = true; cb(); return; }
+    MilgContrastVerify.verifyRegions(report, null, function() {
+      page.rawData._regionVerifyDone = true;
+      if (pageIdx >= 0) delete _crawlPageReports[pageIdx]; // re-render tab with region verdicts/boxes
+      cb();
+    });
+  }
+
   function _preComputePixelVerify() {
     if (!_crawlSession || !window.MilgContrastVerify || !window.MilgQueue) return;
     var pagesToVerify = _crawlSession.pages.filter(function(p) {
@@ -225,8 +243,8 @@ window.MilgCrawlUI = (function() {
       var pageIdx = _crawlSession.pages.indexOf(page);
       var priority = (_crawlActivePageTab === String(pageIdx)) ? 100 : (totalCount - pi);
       MilgQueue.enqueue('crawl-verify-' + pageIdx, function(done) {
-        // Skip if already verified by another path
-        if (page.rawData._contrastVerifyResults) { done(null); return; }
+        // Already main-verified by another path — still ensure region sub-screenshots verify.
+        if (page.rawData._contrastVerifyResults) { _verifyPageRegions(page, pageIdx, function() { done(null); }); return; }
         var report = page.reportData || MilgScoring.runScoring(page.rawData);
         MilgContrastVerify.verify(report, function(results, bboxEdgeResults) {
           if (!page.rawData._contrastVerifyResults) {
@@ -234,7 +252,7 @@ window.MilgCrawlUI = (function() {
             page.rawData._bboxEdgeResults = bboxEdgeResults || [];
             if (pageIdx >= 0) delete _crawlPageReports[pageIdx];
           }
-          done(results);
+          _verifyPageRegions(page, pageIdx, function() { done(results); });
         });
       }, function() {
         doneCount++;
@@ -456,6 +474,7 @@ window.MilgCrawlUI = (function() {
           MilgContrastVerify.verify(report, function(results, bboxEdgeResults) {
             page.rawData._contrastVerifyResults = results;
             page.rawData._bboxEdgeResults = bboxEdgeResults || [];
+            _verifyPageRegions(page, _crawlSession.pages.indexOf(page), null);
           });
         }
       },
