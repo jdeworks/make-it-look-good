@@ -411,6 +411,244 @@ window.MilgCrawl = (function() {
     session._aborted = true;
   }
 
+  // --- Cross-page design consistency ---
+  // Operates on the per-page rawData already retained in session.pages[]. Compares
+  // design tokens (fonts, type scale, spacing, radius, palette, dark mode, framework)
+  // ACROSS pages to surface drift that per-page scoring can't see. Session-level on
+  // purpose — the scoring registry is strictly per-page, so this can't be a dimension.
+
+  function _consPath(url) { try { return new URL(url).pathname || '/'; } catch(e) { return url; } }
+  function _consGrade(s) { return s >= 90 ? 'A' : s >= 80 ? 'B' : s >= 70 ? 'C' : s >= 60 ? 'D' : 'F'; }
+  function _consPx(v) { var m = String(v == null ? '' : v).match(/^(-?[\d.]+)px$/); return m ? parseFloat(m[1]) : null; }
+  function _consFirstFont(str) { return str ? String(str).split(',')[0].trim().replace(/['"]/g, '').toLowerCase() : ''; }
+  function _consParseColor(str) {
+    if (!str) return null;
+    var m = String(str).match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    if (m) return { r: +m[1], g: +m[2], b: +m[3] };
+    var h = String(str).trim().match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+    if (!h) return null;
+    var x = h[1];
+    if (x.length === 3) x = x[0] + x[0] + x[1] + x[1] + x[2] + x[2];
+    return { r: parseInt(x.slice(0, 2), 16), g: parseInt(x.slice(2, 4), 16), b: parseInt(x.slice(4, 6), 16) };
+  }
+  function _consHex(c) { function h(n) { return ('0' + Math.max(0, Math.min(255, Math.round(n))).toString(16)).slice(-2); } return '#' + h(c.r) + h(c.g) + h(c.b); }
+
+  // Cluster numeric px values across pages. Anchored to the cluster's MIN (not the
+  // previous value) so a continuous ramp of rem-derived fractional sizes can't chain
+  // 10px→16px into one bogus "near-duplicate" — total spread within a cluster is
+  // bounded by tol. Returns only clusters holding >=2 distinct values from >=2 pages
+  // (pages using slightly different values instead of one shared scale step).
+  function _consNumericNearDups(entries, tol) {
+    var sorted = entries.slice().sort(function(a, b) { return a.value - b.value; });
+    var clusters = [], cur = null;
+    sorted.forEach(function(e) {
+      if (cur && e.value - cur.min <= tol) { cur.values[e.value] = 1; cur.pages[e.page] = 1; }
+      else { cur = { min: e.value, values: {}, pages: {} }; cur.values[e.value] = 1; cur.pages[e.page] = 1; clusters.push(cur); }
+    });
+    return clusters.filter(function(c) { return Object.keys(c.values).length >= 2 && Object.keys(c.pages).length >= 2; });
+  }
+
+  // Format up to 4 cluster values as a compact "13.3px/13.6px/14px…" example.
+  function _consClusterEx(values, unit) {
+    var vs = Object.keys(values).map(parseFloat).sort(function(a, b) { return a - b; });
+    return vs.slice(0, 4).map(function(v) { return v + (unit || ''); }).join('/') + (vs.length > 4 ? '…' : '');
+  }
+
+  // Cluster colors by Euclidean RGB distance. Same near-duplicate criterion: a cluster
+  // spanning 2+ distinct hexes from 2+ pages = a color that should be one token.
+  function _consColorNearDups(entries, threshold) {
+    var clusters = [];
+    entries.forEach(function(e) {
+      var found = null;
+      for (var i = 0; i < clusters.length; i++) {
+        var s = clusters[i].seed, dr = s.r - e.rgb.r, dg = s.g - e.rgb.g, db = s.b - e.rgb.b;
+        if (Math.sqrt(dr * dr + dg * dg + db * db) <= threshold) { found = clusters[i]; break; }
+      }
+      if (found) { found.values[e.hex] = 1; found.pages[e.page] = 1; }
+      else { var c = { seed: e.rgb, values: {}, pages: {} }; c.values[e.hex] = 1; c.pages[e.page] = 1; clusters.push(c); }
+    });
+    return clusters.filter(function(c) { return Object.keys(c.values).length >= 2 && Object.keys(c.pages).length >= 2; });
+  }
+
+  function buildConsistencyReport(donePages) {
+    var pages = (donePages || []).filter(function(p) { return p.rawData; });
+    if (pages.length < 2) return null; // no cross-page claim from a single page
+    var N = pages.length;
+    var findings = [], subs = [];
+    function add(sev, title, detail, fix, pagePaths) { findings.push({ severity: sev, title: title, detail: detail, fix: fix, pages: pagePaths || [] }); }
+    function sub(key, label, score, note) { subs.push({ key: key, label: label, score: Math.max(0, Math.min(100, Math.round(score))), note: note || '' }); }
+
+    // Font families — body typeface should be shared site-wide.
+    (function() {
+      var byFont = {};
+      pages.forEach(function(p) {
+        var f = _consFirstFont(p.rawData.typography && p.rawData.typography.bodyFontFamily);
+        if (f) (byFont[f] = byFont[f] || []).push(_consPath(p.url));
+      });
+      var fonts = Object.keys(byFont);
+      if (fonts.length === 0) return;
+      var score = 100, note = 'All pages use "' + fonts[0] + '"';
+      if (fonts.length > 1) {
+        fonts.sort(function(a, b) { return byFont[b].length - byFont[a].length; });
+        score -= (fonts.length - 1) * 15;
+        note = fonts.length + ' different body fonts';
+        fonts.slice(1).forEach(function(f) {
+          var sev = byFont[f].length <= Math.max(1, Math.floor(N * 0.3)) ? 'warning' : 'error';
+          add(sev, 'Body font differs across pages', '"' + f + '" on ' + byFont[f].join(', ') + ' — most pages use "' + fonts[0] + '"',
+            'Standardize one base font-family (and shared fallback stack) site-wide.', byFont[f]);
+        });
+      }
+      sub('fonts', 'Font families', score, note);
+    })();
+
+    // Type scale — body size + near-duplicate font sizes (no shared scale).
+    (function() {
+      var bySize = {};
+      pages.forEach(function(p) {
+        var v = _consPx(p.rawData.typography && p.rawData.typography.bodyFontSize);
+        if (v != null) (bySize[v] = bySize[v] || []).push(_consPath(p.url));
+      });
+      if (Object.keys(bySize).length === 0) return;
+      var score = 100, notes = [];
+      var sizes = Object.keys(bySize);
+      if (sizes.length > 1) {
+        score -= (sizes.length - 1) * 10;
+        add('warning', 'Body text size varies across pages', 'Body font-size differs: ' + sizes.map(function(s) { return s + 'px (' + bySize[s].length + ' page' + (bySize[s].length > 1 ? 's' : '') + ')'; }).join(', '),
+          'Set one base font-size on body and let pages inherit it.', []);
+        notes.push(sizes.length + ' body sizes');
+      }
+      // Prominence filter: only sizes actually used a few times count toward "scale"
+      // drift. This drops rem/em-derived fractional one-offs (a single heading at
+      // 14.72px) so we flag drift between REAL scale steps, not rendering artifacts.
+      var entries = [];
+      pages.forEach(function(p) {
+        ((p.rawData.typography && p.rawData.typography.fontSizes) || []).slice(0, 12).forEach(function(e) {
+          var v = _consPx(e.value); if (v != null && (e.count || 0) >= 3) entries.push({ value: v, page: _consPath(p.url) });
+        });
+      });
+      var dups = _consNumericNearDups(entries, 1.0);
+      if (dups.length > 0) {
+        score -= Math.min(20, dups.length * 4);
+        var ex = dups.slice(0, 3).map(function(c) { return _consClusterEx(c.values, 'px'); });
+        add('warning', 'No shared type scale', dups.length + ' near-duplicate font size cluster' + (dups.length > 1 ? 's' : '') + ' across pages (e.g. ' + ex.join(', ') + ') — pages use slightly different sizes instead of one scale.',
+          'Define a shared type scale (e.g. 12/14/16/20/24/32) and use only those steps.', []);
+        notes.push(dups.length + ' near-dup sizes');
+      }
+      sub('type', 'Type scale', score, notes.join(', ') || 'Consistent');
+    })();
+
+    // Spacing scale — near-duplicate padding/margin/gap values (no shared unit).
+    (function() {
+      // Prominence filter (same rationale as type): ignore rarely-used fractional
+      // values so we compare the real spacing grid, not rem-derived padding noise.
+      var entries = [];
+      pages.forEach(function(p) {
+        var sp = p.rawData.spacing || {};
+        [].concat(sp.paddings || [], sp.margins || [], sp.gaps || []).forEach(function(e) {
+          var v = _consPx(e.value); if (v != null && v > 0 && (e.count || 0) >= 3) entries.push({ value: v, page: _consPath(p.url) });
+        });
+      });
+      if (entries.length < 2) return;
+      var dups = _consNumericNearDups(entries, 1.5);
+      var score = 100, note = 'Consistent';
+      if (dups.length > 0) {
+        score -= Math.min(24, dups.length * 4);
+        var ex = dups.slice(0, 3).map(function(c) { return _consClusterEx(c.values, 'px'); });
+        add('warning', 'Inconsistent spacing scale', dups.length + ' near-duplicate spacing cluster' + (dups.length > 1 ? 's' : '') + ' across pages (e.g. ' + ex.join(', ') + ') — suggests no shared spacing unit.',
+          'Adopt one spacing scale (e.g. 4/8/16/24/32) and snap padding/margin/gap to it.', []);
+        note = dups.length + ' near-dup values';
+      }
+      sub('spacing', 'Spacing scale', score, note);
+    })();
+
+    // Corner radius — rounded vs sharp split + near-duplicate radii.
+    (function() {
+      var rounded = [], sharp = [], entries = [];
+      pages.forEach(function(p) {
+        var br = (p.rawData.layout && p.rawData.layout.borderRadii) || [];
+        var nz = br.filter(function(e) { var v = _consPx(e.value); return v != null && v > 0; });
+        (nz.length > 0 ? rounded : sharp).push(_consPath(p.url));
+        nz.slice(0, 8).forEach(function(e) { var v = _consPx(e.value); if (v != null) entries.push({ value: v, page: _consPath(p.url) }); });
+      });
+      if (rounded.length + sharp.length < 2) return;
+      var score = 100, notes = [];
+      if (rounded.length > 0 && sharp.length > 0) {
+        score -= 20;
+        add('warning', 'Corner radius style splits across pages', 'Rounded corners on ' + rounded.join(', ') + '; sharp (no radius) on ' + sharp.join(', ') + '.',
+          'Pick one corner treatment (e.g. rounded-lg) for cards/buttons site-wide.', sharp.concat(rounded));
+        notes.push('rounded/sharp split');
+      }
+      var dups = _consNumericNearDups(entries, 2);
+      if (dups.length > 0) { score -= Math.min(16, dups.length * 4); notes.push(dups.length + ' near-dup radii'); }
+      sub('radius', 'Corner radius', score, notes.join(', ') || 'Consistent');
+    })();
+
+    // Palette — near-duplicate colors that should collapse to one token.
+    (function() {
+      var entries = [];
+      pages.forEach(function(p) {
+        var cols = p.rawData.colors || {};
+        [].concat((cols.textColors || []).slice(0, 8), (cols.bgColors || []).slice(0, 8)).forEach(function(e) {
+          var rgb = _consParseColor(e.value); if (rgb) entries.push({ hex: _consHex(rgb), rgb: rgb, page: _consPath(p.url) });
+        });
+      });
+      if (entries.length < 2) return;
+      var dups = _consColorNearDups(entries, 18);
+      var score = 100, note = 'Consistent';
+      if (dups.length > 0) {
+        score -= Math.min(30, dups.length * 5);
+        var ex = dups.slice(0, 3).map(function(c) { return Object.keys(c.values).slice(0, 4).join(' ≈ '); });
+        add('warning', 'Near-duplicate colors across pages', dups.length + ' color' + (dups.length > 1 ? 's appear' : ' appears') + ' in slightly different shades across pages (e.g. ' + ex.join(', ') + ').',
+          'Unify each near-duplicate to a single palette token.', []);
+        note = dups.length + ' near-dup colors';
+      }
+      sub('palette', 'Palette', score, note);
+    })();
+
+    // Dark mode — coverage should be all-or-nothing.
+    (function() {
+      var withDark = [], without = [];
+      pages.forEach(function(p) {
+        var st = p.rawData.structure || {};
+        var has = (st.darkModeMethod && st.darkModeMethod !== 'none') || st.darkModeClasses;
+        (has ? withDark : without).push(_consPath(p.url));
+      });
+      if (withDark.length + without.length < 2) return;
+      if (withDark.length > 0 && without.length > 0) {
+        add('warning', 'Dark mode coverage is inconsistent', withDark.length + ' page(s) support dark mode, ' + without.length + ' do not (' + without.join(', ') + ').',
+          'Either add dark-mode variants to all pages or none.', without);
+        sub('darkMode', 'Dark mode', Math.round(100 * Math.max(withDark.length, without.length) / N), withDark.length + '/' + N + ' support dark mode');
+      } else {
+        sub('darkMode', 'Dark mode', 100, withDark.length ? 'All support dark mode' : 'None use dark mode');
+      }
+    })();
+
+    // CSS framework — only flag when two KNOWN frameworks are mixed (unknown is sparse, not a conflict).
+    (function() {
+      var fw = {};
+      pages.forEach(function(p) {
+        var f = (p.rawData.structure && p.rawData.structure.cssFramework) || 'unknown';
+        (fw[f] = fw[f] || []).push(_consPath(p.url));
+      });
+      var known = Object.keys(fw).filter(function(f) { return f !== 'unknown'; });
+      if (known.length >= 2) {
+        add('error', 'Mixed CSS frameworks across pages', known.map(function(f) { return f + ' on ' + fw[f].join(', '); }).join('; ') + '.',
+          'Standardize on one CSS framework across the site.', []);
+        sub('framework', 'CSS framework', 100 - (known.length - 1) * 25, known.join(' + '));
+      } else if (known.length === 1) {
+        sub('framework', 'CSS framework', 100, known[0]);
+      }
+    })();
+
+    if (subs.length === 0) return null;
+    var weights = { palette: 20, type: 20, fonts: 18, spacing: 15, radius: 12, darkMode: 8, framework: 7 };
+    var tw = 0, ws = 0;
+    subs.forEach(function(s) { var w = weights[s.key] || 10; tw += w; ws += s.score * w; });
+    var overall = tw > 0 ? Math.round(ws / tw) : 100;
+    findings.sort(function(a, b) { if (a.severity !== b.severity) return a.severity === 'error' ? -1 : 1; return 0; });
+    return { overall: overall, grade: _consGrade(overall), subScores: subs, findings: findings };
+  }
+
   // --- Summary builder ---
 
   function buildSummary(session) {
@@ -568,7 +806,8 @@ window.MilgCrawl = (function() {
       scoreGrid: scoreGrid,
       crossPageIssues: crossPageIssues,
       categoryAverages: categoryAverages,
-      viewportSummary: viewportSummary
+      viewportSummary: viewportSummary,
+      consistency: buildConsistencyReport(donePages)
     };
   }
 
@@ -633,6 +872,30 @@ window.MilgCrawl = (function() {
         if (issue.fix) lines.push('- **Fix:** ' + issue.fix);
         lines.push('');
       });
+    }
+
+    // Cross-page consistency
+    if (summary.consistency) {
+      var c = summary.consistency;
+      lines.push('## Cross-Page Consistency');
+      lines.push('');
+      lines.push('**Site Consistency:** ' + c.overall + '/100 (' + c.grade + ')');
+      lines.push('');
+      lines.push('| Dimension | Score | Notes |');
+      lines.push('|-----------|-------|-------|');
+      c.subScores.forEach(function(s) { lines.push('| ' + s.label + ' | ' + s.score + ' | ' + (s.note || '') + ' |'); });
+      lines.push('');
+      var consFindings = c.findings.filter(function(f) {
+        if (severityFilter === 'error') return f.severity === 'error';
+        if (severityFilter === 'warning') return f.severity === 'error' || f.severity === 'warning';
+        return true;
+      });
+      consFindings.forEach(function(f) {
+        var icon = f.severity === 'error' ? 'x' : '!';
+        lines.push('- [' + icon + '] **' + f.title + '** — ' + f.detail);
+        if (f.fix) lines.push('  - **Fix:** ' + f.fix);
+      });
+      if (consFindings.length > 0) lines.push('');
     }
 
     // Viewport breakdown (deep scan)
@@ -804,6 +1067,7 @@ window.MilgCrawl = (function() {
     startCrawl: startCrawl,
     abortCrawl: abortCrawl,
     buildSummary: buildSummary,
+    buildConsistencyReport: buildConsistencyReport,
     filterFindings: filterFindings,
     renderCrawlMarkdown: renderCrawlMarkdown,
     renderCrawlJSON: renderCrawlJSON
