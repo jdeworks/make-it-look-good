@@ -442,8 +442,8 @@ window.MilgCrawl = (function() {
     var sorted = entries.slice().sort(function(a, b) { return a.value - b.value; });
     var clusters = [], cur = null;
     sorted.forEach(function(e) {
-      if (cur && e.value - cur.min <= tol) { cur.values[e.value] = 1; cur.pages[e.page] = 1; }
-      else { cur = { min: e.value, values: {}, pages: {} }; cur.values[e.value] = 1; cur.pages[e.page] = 1; clusters.push(cur); }
+      if (cur && e.value - cur.min <= tol) { cur.values[e.value] = 1; cur.pages[e.page] = 1; cur.members.push(e); }
+      else { cur = { min: e.value, values: {}, pages: {}, members: [e] }; cur.values[e.value] = 1; cur.pages[e.page] = 1; clusters.push(cur); }
     });
     return clusters.filter(function(c) { return Object.keys(c.values).length >= 2 && Object.keys(c.pages).length >= 2; });
   }
@@ -464,10 +464,26 @@ window.MilgCrawl = (function() {
         var s = clusters[i].seed, dr = s.r - e.rgb.r, dg = s.g - e.rgb.g, db = s.b - e.rgb.b;
         if (Math.sqrt(dr * dr + dg * dg + db * db) <= threshold) { found = clusters[i]; break; }
       }
-      if (found) { found.values[e.hex] = 1; found.pages[e.page] = 1; }
-      else { var c = { seed: e.rgb, values: {}, pages: {} }; c.values[e.hex] = 1; c.pages[e.page] = 1; clusters.push(c); }
+      if (found) { found.values[e.hex] = 1; found.pages[e.page] = 1; found.members.push(e); }
+      else { var c = { seed: e.rgb, values: {}, pages: {}, members: [e] }; c.values[e.hex] = 1; c.pages[e.page] = 1; clusters.push(c); }
     });
     return clusters.filter(function(c) { return Object.keys(c.values).length >= 2 && Object.keys(c.pages).length >= 2; });
+  }
+
+  // Flatten cluster members into finding `locations` — one representative row per
+  // (page, value) so the report can point at WHERE the inconsistency lives. Caps
+  // total rows; dedups by page+value so a heavily-used size doesn't flood the list.
+  function _consLocsFromClusters(clusters, unit) {
+    var seen = {}, locs = [];
+    clusters.forEach(function(c) {
+      (c.members || []).forEach(function(m) {
+        var k = m.page + '|' + m.value;
+        if (seen[k]) return; seen[k] = 1;
+        if (locs.length >= 12) return;
+        locs.push({ path: m.page, selector: m.selector || '', value: m.value + (unit || ''), text: m.text || '' });
+      });
+    });
+    return locs;
   }
 
   function buildConsistencyReport(donePages) {
@@ -475,7 +491,7 @@ window.MilgCrawl = (function() {
     if (pages.length < 2) return null; // no cross-page claim from a single page
     var N = pages.length;
     var findings = [], subs = [];
-    function add(sev, title, detail, fix, pagePaths) { findings.push({ severity: sev, title: title, detail: detail, fix: fix, pages: pagePaths || [] }); }
+    function add(sev, title, detail, fix, pagePaths, locations) { findings.push({ severity: sev, title: title, detail: detail, fix: fix, pages: pagePaths || [], locations: locations || [] }); }
     function sub(key, label, score, note) { subs.push({ key: key, label: label, score: Math.max(0, Math.min(100, Math.round(score))), note: note || '' }); }
 
     // Font families — body typeface should be shared site-wide.
@@ -495,7 +511,8 @@ window.MilgCrawl = (function() {
         fonts.slice(1).forEach(function(f) {
           var sev = byFont[f].length <= Math.max(1, Math.floor(N * 0.3)) ? 'warning' : 'error';
           add(sev, 'Body font differs across pages', '"' + f + '" on ' + byFont[f].join(', ') + ' — most pages use "' + fonts[0] + '"',
-            'Standardize one base font-family (and shared fallback stack) site-wide.', byFont[f]);
+            'Standardize one base font-family (and shared fallback stack) site-wide.', byFont[f],
+            byFont[f].map(function(pp) { return { path: pp, selector: 'body', value: f }; }));
         });
       }
       sub('fonts', 'Font families', score, note);
@@ -513,8 +530,10 @@ window.MilgCrawl = (function() {
       var sizes = Object.keys(bySize);
       if (sizes.length > 1) {
         score -= (sizes.length - 1) * 10;
+        var bodyLocs = [];
+        Object.keys(bySize).forEach(function(s) { bySize[s].forEach(function(pp) { bodyLocs.push({ path: pp, selector: 'body', value: s + 'px' }); }); });
         add('warning', 'Body text size varies across pages', 'Body font-size differs: ' + sizes.map(function(s) { return s + 'px (' + bySize[s].length + ' page' + (bySize[s].length > 1 ? 's' : '') + ')'; }).join(', '),
-          'Set one base font-size on body and let pages inherit it.', []);
+          'Set one base font-size on body and let pages inherit it.', [], bodyLocs);
         notes.push(sizes.length + ' body sizes');
       }
       // Prominence filter: only sizes actually used a few times count toward "scale"
@@ -523,7 +542,7 @@ window.MilgCrawl = (function() {
       var entries = [];
       pages.forEach(function(p) {
         ((p.rawData.typography && p.rawData.typography.fontSizes) || []).slice(0, 12).forEach(function(e) {
-          var v = _consPx(e.value); if (v != null && (e.count || 0) >= 3) entries.push({ value: v, page: _consPath(p.url) });
+          var v = _consPx(e.value); if (v != null && (e.count || 0) >= 3) entries.push({ value: v, page: _consPath(p.url), selector: e.sampleSelector || '', text: e.sampleText || '' });
         });
       });
       var dups = _consNumericNearDups(entries, 1.0);
@@ -531,7 +550,7 @@ window.MilgCrawl = (function() {
         score -= Math.min(20, dups.length * 4);
         var ex = dups.slice(0, 3).map(function(c) { return _consClusterEx(c.values, 'px'); });
         add('warning', 'No shared type scale', dups.length + ' near-duplicate font size cluster' + (dups.length > 1 ? 's' : '') + ' across pages (e.g. ' + ex.join(', ') + ') — pages use slightly different sizes instead of one scale.',
-          'Define a shared type scale (e.g. 12/14/16/20/24/32) and use only those steps.', []);
+          'Define a shared type scale (e.g. 12/14/16/20/24/32) and use only those steps.', [], _consLocsFromClusters(dups, 'px'));
         notes.push(dups.length + ' near-dup sizes');
       }
       sub('type', 'Type scale', score, notes.join(', ') || 'Consistent');
@@ -555,7 +574,7 @@ window.MilgCrawl = (function() {
         score -= Math.min(24, dups.length * 4);
         var ex = dups.slice(0, 3).map(function(c) { return _consClusterEx(c.values, 'px'); });
         add('warning', 'Inconsistent spacing scale', dups.length + ' near-duplicate spacing cluster' + (dups.length > 1 ? 's' : '') + ' across pages (e.g. ' + ex.join(', ') + ') — suggests no shared spacing unit.',
-          'Adopt one spacing scale (e.g. 4/8/16/24/32) and snap padding/margin/gap to it.', []);
+          'Adopt one spacing scale (e.g. 4/8/16/24/32) and snap padding/margin/gap to it.', [], _consLocsFromClusters(dups, 'px'));
         note = dups.length + ' near-dup values';
       }
       sub('spacing', 'Spacing scale', score, note);
@@ -563,19 +582,26 @@ window.MilgCrawl = (function() {
 
     // Corner radius — rounded vs sharp split + near-duplicate radii.
     (function() {
-      var rounded = [], sharp = [], entries = [];
+      var rounded = [], sharp = [], entries = [], radiusLocs = [];
       pages.forEach(function(p) {
+        var path = _consPath(p.url);
         var br = (p.rawData.layout && p.rawData.layout.borderRadii) || [];
         var nz = br.filter(function(e) { var v = _consPx(e.value); return v != null && v > 0; });
-        (nz.length > 0 ? rounded : sharp).push(_consPath(p.url));
-        nz.slice(0, 8).forEach(function(e) { var v = _consPx(e.value); if (v != null) entries.push({ value: v, page: _consPath(p.url) }); });
+        if (nz.length > 0) {
+          rounded.push(path);
+          radiusLocs.push({ path: path, selector: (nz[0].selectors && nz[0].selectors[0]) || '', value: nz[0].value });
+        } else {
+          sharp.push(path);
+          radiusLocs.push({ path: path, selector: '', value: 'sharp (0px)' });
+        }
+        nz.slice(0, 8).forEach(function(e) { var v = _consPx(e.value); if (v != null) entries.push({ value: v, page: path, selector: (e.selectors && e.selectors[0]) || '' }); });
       });
       if (rounded.length + sharp.length < 2) return;
       var score = 100, notes = [];
       if (rounded.length > 0 && sharp.length > 0) {
         score -= 20;
         add('warning', 'Corner radius style splits across pages', 'Rounded corners on ' + rounded.join(', ') + '; sharp (no radius) on ' + sharp.join(', ') + '.',
-          'Pick one corner treatment (e.g. rounded-lg) for cards/buttons site-wide.', sharp.concat(rounded));
+          'Pick one corner treatment (e.g. rounded-lg) for cards/buttons site-wide.', sharp.concat(rounded), radiusLocs);
         notes.push('rounded/sharp split');
       }
       var dups = _consNumericNearDups(entries, 2);
@@ -588,8 +614,9 @@ window.MilgCrawl = (function() {
       var entries = [];
       pages.forEach(function(p) {
         var cols = p.rawData.colors || {};
+        var path = _consPath(p.url);
         [].concat((cols.textColors || []).slice(0, 8), (cols.bgColors || []).slice(0, 8)).forEach(function(e) {
-          var rgb = _consParseColor(e.value); if (rgb) entries.push({ hex: _consHex(rgb), rgb: rgb, page: _consPath(p.url) });
+          var rgb = _consParseColor(e.value); if (rgb) { var hex = _consHex(rgb); entries.push({ hex: hex, value: hex, rgb: rgb, page: path, selector: e.sample || '' }); }
         });
       });
       if (entries.length < 2) return;
@@ -599,7 +626,7 @@ window.MilgCrawl = (function() {
         score -= Math.min(30, dups.length * 5);
         var ex = dups.slice(0, 3).map(function(c) { return Object.keys(c.values).slice(0, 4).join(' ≈ '); });
         add('warning', 'Near-duplicate colors across pages', dups.length + ' color' + (dups.length > 1 ? 's appear' : ' appears') + ' in slightly different shades across pages (e.g. ' + ex.join(', ') + ').',
-          'Unify each near-duplicate to a single palette token.', []);
+          'Unify each near-duplicate to a single palette token.', [], _consLocsFromClusters(dups, ''));
         note = dups.length + ' near-dup colors';
       }
       sub('palette', 'Palette', score, note);
@@ -607,16 +634,18 @@ window.MilgCrawl = (function() {
 
     // Dark mode — coverage should be all-or-nothing.
     (function() {
-      var withDark = [], without = [];
+      var withDark = [], without = [], darkLocs = [];
       pages.forEach(function(p) {
         var st = p.rawData.structure || {};
         var has = (st.darkModeMethod && st.darkModeMethod !== 'none') || st.darkModeClasses;
-        (has ? withDark : without).push(_consPath(p.url));
+        var path = _consPath(p.url);
+        (has ? withDark : without).push(path);
+        darkLocs.push({ path: path, selector: '', value: has ? (st.darkModeMethod || 'dark') : 'none' });
       });
       if (withDark.length + without.length < 2) return;
       if (withDark.length > 0 && without.length > 0) {
         add('warning', 'Dark mode coverage is inconsistent', withDark.length + ' page(s) support dark mode, ' + without.length + ' do not (' + without.join(', ') + ').',
-          'Either add dark-mode variants to all pages or none.', without);
+          'Either add dark-mode variants to all pages or none.', without, darkLocs);
         sub('darkMode', 'Dark mode', Math.round(100 * Math.max(withDark.length, without.length) / N), withDark.length + '/' + N + ' support dark mode');
       } else {
         sub('darkMode', 'Dark mode', 100, withDark.length ? 'All support dark mode' : 'None use dark mode');
@@ -632,8 +661,10 @@ window.MilgCrawl = (function() {
       });
       var known = Object.keys(fw).filter(function(f) { return f !== 'unknown'; });
       if (known.length >= 2) {
+        var fwLocs = [];
+        Object.keys(fw).forEach(function(f) { fw[f].forEach(function(pp) { fwLocs.push({ path: pp, selector: '', value: f }); }); });
         add('error', 'Mixed CSS frameworks across pages', known.map(function(f) { return f + ' on ' + fw[f].join(', '); }).join('; ') + '.',
-          'Standardize on one CSS framework across the site.', []);
+          'Standardize on one CSS framework across the site.', [], fwLocs);
         sub('framework', 'CSS framework', 100 - (known.length - 1) * 25, known.join(' + '));
       } else if (known.length === 1) {
         sub('framework', 'CSS framework', 100, known[0]);
@@ -874,28 +905,12 @@ window.MilgCrawl = (function() {
       });
     }
 
-    // Cross-page consistency
-    if (summary.consistency) {
-      var c = summary.consistency;
+    // Cross-page consistency (shared markdown helper, also used by the LLM pack)
+    if (summary.consistency && window.MilgReport && window.MilgReport.consistencyMarkdown) {
       lines.push('## Cross-Page Consistency');
       lines.push('');
-      lines.push('**Site Consistency:** ' + c.overall + '/100 (' + c.grade + ')');
+      lines.push(window.MilgReport.consistencyMarkdown(summary.consistency, severityFilter));
       lines.push('');
-      lines.push('| Dimension | Score | Notes |');
-      lines.push('|-----------|-------|-------|');
-      c.subScores.forEach(function(s) { lines.push('| ' + s.label + ' | ' + s.score + ' | ' + (s.note || '') + ' |'); });
-      lines.push('');
-      var consFindings = c.findings.filter(function(f) {
-        if (severityFilter === 'error') return f.severity === 'error';
-        if (severityFilter === 'warning') return f.severity === 'error' || f.severity === 'warning';
-        return true;
-      });
-      consFindings.forEach(function(f) {
-        var icon = f.severity === 'error' ? 'x' : '!';
-        lines.push('- [' + icon + '] **' + f.title + '** — ' + f.detail);
-        if (f.fix) lines.push('  - **Fix:** ' + f.fix);
-      });
-      if (consFindings.length > 0) lines.push('');
     }
 
     // Viewport breakdown (deep scan)

@@ -1,8 +1,8 @@
-// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.87
+// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.88
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.87 loaded');
+console.log('[milg] analyzer.js v3.11.88 loaded');
 
 (function() {
   "use strict";
@@ -1920,10 +1920,12 @@ console.log('[milg] analyzer.js v3.11.87 loaded');
             units.push({ id: 'p' + pi, label: _llmPageLabel(p), report: p.reportData });
           }
         });
+        var _crawlSummary = session.summary || (MilgCrawl && MilgCrawl.buildSummary ? MilgCrawl.buildSummary(session) : null);
         return MilgReport.buildLlmPackMulti({
           mode: hasDeep ? 'matrix' : 'crawl', units: units, primaryReport: done[0].reportData,
           host: _llmHostOf(session.startUrl), startUrl: session.startUrl,
-          aggregateScore: session.summary ? session.summary.averageScore : null,
+          aggregateScore: _crawlSummary ? _crawlSummary.averageScore : null,
+          crawlSummary: _crawlSummary,
           dims: { pages: done.length, viewports: hasDeep ? maxVp : null }, severityFilter: severity
         });
       }

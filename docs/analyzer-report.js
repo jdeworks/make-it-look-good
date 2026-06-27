@@ -846,8 +846,57 @@ window.MilgReport = (function() {
     }
     html += '</div>';
 
+    // Cross-page consistency — directly under Site Overview (pixel-verify summary
+    // injects after this, before Page Scores).
+    var cons = summary.consistency;
+    if (cons) {
+      var cColor = cons.overall >= 90 ? '#16a34a' : cons.overall >= 80 ? '#ca8a04' : cons.overall >= 70 ? '#ea580c' : '#dc2626';
+      html += '<h3>Site Consistency</h3>';
+      html += '<div style="display:flex;align-items:center;gap:16px;margin-bottom:14px">';
+      html += '<div style="padding:12px 20px;border-radius:10px;background:var(--surface);border:1px solid var(--border);text-align:center;min-width:84px">';
+      html += '<div style="font-size:32px;font-weight:700;color:' + cColor + ';font-variant-numeric:tabular-nums">' + cons.overall + '</div>';
+      html += '<div style="font-size:12px;color:var(--text-secondary)">' + cons.grade + ' · cross-page</div></div>';
+      html += '<div style="flex:1;font-size:12px;color:var(--text-secondary)">How consistently design tokens (fonts, type scale, spacing, color, radius) are applied across the ' + summary.pagesAnalyzed + ' analyzed pages. Independent of each page\'s own grade.</div>';
+      html += '</div>';
+      html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;margin-bottom:14px">';
+      cons.subScores.forEach(function(s) {
+        var barColor = s.score >= 90 ? '#16a34a' : s.score >= 80 ? '#ca8a04' : s.score >= 70 ? '#ea580c' : '#dc2626';
+        html += '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;background:var(--surface);border:1px solid var(--border)">';
+        html += '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500">' + escapeHtml(s.label) + '</div>';
+        if (s.note) html += '<div style="font-size:11px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escapeHtml(s.note) + '">' + escapeHtml(s.note) + '</div>';
+        html += '</div>';
+        html += '<div style="width:50px;height:6px;border-radius:3px;background:var(--border);overflow:hidden"><div style="height:100%;width:' + s.score + '%;background:' + barColor + ';border-radius:3px"></div></div>';
+        html += '<div style="font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;width:28px;text-align:right">' + s.score + '</div>';
+        html += '</div>';
+      });
+      html += '</div>';
+      cons.findings.forEach(function(f) {
+        html += '<div class="crawl-issue-group">';
+        html += '<div class="issue-header"><div class="issue-title"><span class="severity-badge ' + f.severity + '">' + f.severity + '</span>' + escapeHtml(f.title) + '</div>';
+        if (f.pages && f.pages.length) html += '<div class="issue-count">' + f.pages.length + ' page' + (f.pages.length > 1 ? 's' : '') + '</div>';
+        html += '</div>';
+        html += '<div class="issue-pages"><div>' + escapeHtml(f.detail) + '</div>';
+        if (f.fix) html += '<div style="margin-top:4px;color:var(--text-secondary)">Fix: ' + escapeHtml(f.fix) + '</div>';
+        if (f.locations && f.locations.length) {
+          html += '<details class="finding-selectors" style="margin:6px 0 0;font-size:11px">';
+          html += '<summary style="cursor:pointer;color:var(--text-secondary)">' + f.locations.length + ' location' + (f.locations.length !== 1 ? 's' : '') + '</summary>';
+          html += '<div style="margin:4px 0 0;padding:8px;background:var(--bg-alt);border:1px solid var(--border);border-radius:4px;font-size:10px;line-height:1.8;max-height:300px;overflow:auto">';
+          f.locations.forEach(function(l) {
+            html += '<div style="padding:2px 0;border-bottom:1px solid var(--border)">';
+            html += '<code style="color:var(--text-secondary)">' + escapeHtml(l.path) + '</code>';
+            if (l.selector) html += ' <code style="color:var(--text-primary)">' + escapeHtml(l.selector) + '</code>';
+            if (l.value) html += ' <strong>' + escapeHtml(l.value) + '</strong>';
+            if (l.text) html += ' <span style="color:var(--text-secondary);font-style:italic">&quot;' + escapeHtml(String(l.text).substring(0, 40)) + (String(l.text).length > 40 ? '…' : '') + '&quot;</span>';
+            html += '</div>';
+          });
+          html += '</div></details>';
+        }
+        html += '</div></div>';
+      });
+    }
+
     // Score grid
-    html += '<h3>Page Scores</h3>';
+    html += '<h3 id="crawl-page-scores">Page Scores</h3>';
     html += '<div class="crawl-score-grid">';
     summary.scoreGrid.forEach(function(row) {
       var gradeClass = 'grade-' + row.grade.toLowerCase();
@@ -893,40 +942,6 @@ window.MilgReport = (function() {
         html += '</div>';
       });
       html += '</div>';
-    }
-
-    // Cross-page consistency
-    var cons = summary.consistency;
-    if (cons) {
-      var cColor = cons.overall >= 90 ? '#16a34a' : cons.overall >= 80 ? '#ca8a04' : cons.overall >= 70 ? '#ea580c' : '#dc2626';
-      html += '<h3>Site Consistency</h3>';
-      html += '<div style="display:flex;align-items:center;gap:16px;margin-bottom:14px">';
-      html += '<div style="padding:12px 20px;border-radius:10px;background:var(--surface);border:1px solid var(--border);text-align:center;min-width:84px">';
-      html += '<div style="font-size:32px;font-weight:700;color:' + cColor + ';font-variant-numeric:tabular-nums">' + cons.overall + '</div>';
-      html += '<div style="font-size:12px;color:var(--text-secondary)">' + cons.grade + ' · cross-page</div></div>';
-      html += '<div style="flex:1;font-size:12px;color:var(--text-secondary)">How consistently design tokens (fonts, type scale, spacing, color, radius) are applied across the ' + summary.pagesAnalyzed + ' analyzed pages. Independent of each page\'s own grade.</div>';
-      html += '</div>';
-      html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;margin-bottom:14px">';
-      cons.subScores.forEach(function(s) {
-        var barColor = s.score >= 90 ? '#16a34a' : s.score >= 80 ? '#ca8a04' : s.score >= 70 ? '#ea580c' : '#dc2626';
-        html += '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;background:var(--surface);border:1px solid var(--border)">';
-        html += '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500">' + escapeHtml(s.label) + '</div>';
-        if (s.note) html += '<div style="font-size:11px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escapeHtml(s.note) + '">' + escapeHtml(s.note) + '</div>';
-        html += '</div>';
-        html += '<div style="width:50px;height:6px;border-radius:3px;background:var(--border);overflow:hidden"><div style="height:100%;width:' + s.score + '%;background:' + barColor + ';border-radius:3px"></div></div>';
-        html += '<div style="font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;width:28px;text-align:right">' + s.score + '</div>';
-        html += '</div>';
-      });
-      html += '</div>';
-      cons.findings.forEach(function(f) {
-        html += '<div class="crawl-issue-group">';
-        html += '<div class="issue-header"><div class="issue-title"><span class="severity-badge ' + f.severity + '">' + f.severity + '</span>' + escapeHtml(f.title) + '</div>';
-        if (f.pages && f.pages.length) html += '<div class="issue-count">' + f.pages.length + ' page' + (f.pages.length > 1 ? 's' : '') + '</div>';
-        html += '</div>';
-        html += '<div class="issue-pages"><div>' + escapeHtml(f.detail) + '</div>';
-        if (f.fix) html += '<div style="margin-top:4px;color:var(--text-secondary)">Fix: ' + escapeHtml(f.fix) + '</div>';
-        html += '</div></div>';
-      });
     }
 
     // Viewport breakdown (deep scan)
@@ -1537,7 +1552,24 @@ window.MilgReport = (function() {
     });
     if (allGroups.length === 0) IX.push('| — | — | — | _no issues at this filter_ | — |');
     IX.push('');
+    // Cross-page consistency is a SITE-level report (not per-page), so it sits
+    // alongside the per-category findings rather than inside them.
+    var _cons = opts.crawlSummary && opts.crawlSummary.consistency;
+    if (_cons) {
+      IX.push('> **Site-level:** see `00-site-consistency.md` — cross-page design-token consistency (Site Consistency ' + _cons.overall + '/100, ' + _cons.grade + '), independent of each page\'s grade.');
+      IX.push('');
+    }
     files.push({ path: 'findings/00-index.md', text: IX.join('\n') });
+
+    if (_cons) {
+      var SC = [];
+      SC.push('# Site Consistency — cross-page design-token drift');
+      SC.push('');
+      SC.push('How consistently design tokens (fonts, type scale, spacing, color, radius, dark mode, framework) are applied across the crawled pages. This is a SITE-level score, independent of each page\'s own grade. Each finding lists `locations` — page path + element selector + value — so you can navigate to the divergence.');
+      SC.push('');
+      SC.push(consistencyMarkdown(_cons, severityFilter));
+      files.push({ path: 'findings/00-site-consistency.md', text: SC.join('\n') });
+    }
 
     // ---- findings/NN-<category>.md (pruned: only categories with findings) --
     cats.forEach(function(c) {
@@ -1615,5 +1647,32 @@ window.MilgReport = (function() {
     return { folder: folder, files: files, assets: assets };
   }
 
-  return { renderReport: renderReport, renderMarkdown: renderMarkdown, renderCrawlSummary: renderCrawlSummary, renderCrawlPageTab: renderCrawlPageTab, buildLlmPack: buildLlmPack, buildLlmPackMulti: buildLlmPackMulti, renderGauge: renderGauge };
+  // Shared markdown for the cross-page Site Consistency report — used by both the
+  // crawl markdown export (analyzer-crawl.js) and the LLM instruction pack. Includes
+  // per-finding `locations` (page + selector + value) so an agent can navigate to them.
+  function consistencyMarkdown(c, severityFilter) {
+    if (!c) return '';
+    var lines = [];
+    lines.push('**Site Consistency:** ' + c.overall + '/100 (' + c.grade + ')');
+    lines.push('');
+    lines.push('| Dimension | Score | Notes |');
+    lines.push('|-----------|-------|-------|');
+    (c.subScores || []).forEach(function(s) { lines.push('| ' + s.label + ' | ' + s.score + ' | ' + (s.note || '') + ' |'); });
+    lines.push('');
+    (c.findings || []).filter(function(f) {
+      if (severityFilter === 'error') return f.severity === 'error';
+      if (severityFilter === 'warning') return f.severity === 'error' || f.severity === 'warning';
+      return true;
+    }).forEach(function(f) {
+      var icon = f.severity === 'error' ? 'x' : '!';
+      lines.push('- [' + icon + '] **' + f.title + '** — ' + f.detail);
+      if (f.fix) lines.push('  - **Fix:** ' + f.fix);
+      (f.locations || []).slice(0, 12).forEach(function(l) {
+        lines.push('  - `' + l.path + '`' + (l.selector ? ' `' + l.selector + '`' : '') + (l.value ? ' → ' + l.value : '') + (l.text ? ' "' + String(l.text).substring(0, 40) + '"' : ''));
+      });
+    });
+    return lines.join('\n');
+  }
+
+  return { renderReport: renderReport, renderMarkdown: renderMarkdown, renderCrawlSummary: renderCrawlSummary, renderCrawlPageTab: renderCrawlPageTab, buildLlmPack: buildLlmPack, buildLlmPackMulti: buildLlmPackMulti, renderGauge: renderGauge, consistencyMarkdown: consistencyMarkdown };
 })();

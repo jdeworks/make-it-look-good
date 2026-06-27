@@ -253,9 +253,11 @@ window.MilgCrawlUI = (function() {
       container.id = 'milg-crawl-verify-summary';
       container.style.marginTop = '24px';
       var summaryDiv = crawlPageContent.querySelector('.crawl-summary');
-      var firstH3 = summaryDiv ? summaryDiv.querySelector('h3') : null;
-      if (firstH3) {
-        firstH3.parentNode.insertBefore(container, firstH3);
+      // Anchor to Page Scores so the verify block lands AFTER the Site Consistency
+      // section (which is the first h3); fall back to first h3 / append.
+      var anchor = summaryDiv ? (summaryDiv.querySelector('#crawl-page-scores') || summaryDiv.querySelector('h3')) : null;
+      if (anchor) {
+        anchor.parentNode.insertBefore(container, anchor);
       } else if (summaryDiv) {
         summaryDiv.appendChild(container);
       } else {
