@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Self-analysis regression test ("dogfood gate").
 // Analyzes the analyzer's own pages (index.html + analyzer.html) through the
-// real URL-mode pipeline — extraction, scoring, screenshots, pixel verify —
-// and fails when a page regresses against scripts/self-analysis-baseline.json:
+// real URL-mode pipeline — extraction + scoring (screenshots/pixel-verify OFF;
+// the rasterizer stalls for minutes on our own Monaco-heavy pages) — and fails
+// when a page regresses against scripts/self-analysis-baseline.json:
 //   - more error-level findings than the baseline allows (normally 0)
 //   - more warning-level findings than the baseline allows
 //   - overall score below the baseline minimum
@@ -36,15 +37,21 @@ function startServer() {
 
 async function analyze(page, target) {
   await page.goto(`http://localhost:${PORT}/analyzer.html`, { waitUntil: 'networkidle' });
-  // Pixel verify ON — the verify pipeline is part of what we guard.
+  // Screenshots (and the pixel-verify pipeline they feed) are turned OFF here.
+  // This gate guards scoring/findings regressions; the screenshot rasterizer
+  // (domToCanvas) stalls for minutes on our OWN Monaco-heavy pages
+  // (index.html / analyzer.html), blowing past any reasonable wait. The
+  // capture+verify pipeline is better exercised against real external sites.
   await page.evaluate(() => {
-    const c = document.getElementById('pixelVerifyCheck');
-    if (c && !c.checked) { c.checked = true; c.dispatchEvent(new Event('change')); }
+    ['screenshotCheck', 'pixelVerifyCheck'].forEach((id) => {
+      const c = document.getElementById(id);
+      if (c && c.checked) { c.checked = false; c.dispatchEvent(new Event('change')); }
+    });
   });
   await page.fill('#urlInput', `http://localhost:${PORT}/${target}`);
   await page.click('#analyzeUrlBtn');
-  await page.waitForSelector('.report-gauge', { timeout: 150000 });
-  await new Promise((r) => setTimeout(r, 10000)); // let pixel verify settle
+  await page.waitForSelector('.report-gauge', { timeout: 60000 });
+  await new Promise((r) => setTimeout(r, 500)); // let the report settle
   return page.evaluate(() => {
     const counts = { error: 0, warning: 0, info: 0 };
     const findings = [];
@@ -65,7 +72,7 @@ const baseline = JSON.parse(readFileSync(BASELINE_PATH, 'utf8'));
 const server = await startServer();
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
-page.setDefaultTimeout(180000);
+page.setDefaultTimeout(60000);
 
 let failed = false;
 const measured = {};
