@@ -647,8 +647,13 @@ window.MilgCrawl = (function() {
         add('warning', 'Dark mode coverage is inconsistent', withDark.length + ' page(s) support dark mode, ' + without.length + ' do not (' + without.join(', ') + ').',
           'Either add dark-mode variants to all pages or none.', without, darkLocs);
         sub('darkMode', 'Dark mode', Math.round(100 * Math.max(withDark.length, without.length) / N), withDark.length + '/' + N + ' support dark mode');
+      } else if (withDark.length > 0) {
+        sub('darkMode', 'Dark mode', 100, 'All support dark mode');
       } else {
-        sub('darkMode', 'Dark mode', 100, withDark.length ? 'All support dark mode' : 'None use dark mode');
+        // No page offers a dark scheme — a site-wide gap, mirroring per-page Design Polish.
+        add('warning', 'No pages support dark mode', 'None of the ' + N + ' crawled pages offer a dark color scheme.',
+          'Add dark-mode variants site-wide (e.g. Tailwind dark: utilities).', without, darkLocs);
+        sub('darkMode', 'Dark mode', 70, 'None use dark mode');
       }
     })();
 

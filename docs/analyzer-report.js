@@ -85,7 +85,7 @@ window.MilgReport = (function() {
     // --- Category cards ---
     html += '<div class="report-categories">';
     report.categories.forEach(function(cat) {
-      var catId = 'findings-' + cat.icon;
+      var catId = 'findings-' + _slug(cat.label);
       var hasFindings = cat.findings.length > 0;
       // All cards are clickable — scroll to findings if present, otherwise to passed checks
       var scrollTarget = hasFindings ? catId : 'passed-checks';
@@ -114,7 +114,7 @@ window.MilgReport = (function() {
       var totalChecks = cat.checks || (errors + warnings + infos + (cat.findings.length === 0 ? 1 : 0));
       var notApplicable = Math.max(0, totalChecks - errors - warnings - infos - passed);
 
-      var catId = 'findings-' + cat.icon;
+      var catId = 'findings-' + _slug(cat.label);
       html += '<div class="report-card-counts">';
       if (totalChecks > 0 || cat.findings.length === 0) {
         if (errors > 0) html += '<span class="count-error" title="' + errors + ' error(s)" onclick="event.stopPropagation();document.getElementById(\'' + catId + '\').scrollIntoView({behavior:\'smooth\',block:\'start\'})">' + errors + '</span>';
@@ -146,7 +146,7 @@ window.MilgReport = (function() {
     report.categories.forEach(function(cat) {
       if (cat.findings.length === 0) return;
 
-      html += '<div class="report-finding-group" id="findings-' + cat.icon + '">';
+      html += '<div class="report-finding-group" id="findings-' + _slug(cat.label) + '">';
       html += '<h3>' + (categoryIcons[cat.icon] || '') + ' ' + cat.label + '</h3>';
 
       cat.findings.forEach(function(f) {
