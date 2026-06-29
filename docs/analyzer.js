@@ -1,8 +1,8 @@
-// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.100
+// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.101
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.100 loaded');
+console.log('[milg] analyzer.js v3.11.101 loaded');
 
 (function() {
   "use strict";
@@ -230,8 +230,8 @@ console.log('[milg] analyzer.js v3.11.100 loaded');
   // wrapped in an IIFE. To add a new part (e.g. region/capture) later, add one
   // entry to the relevant `parts` array AND a matching marker line in the shell.
   var SNIPPET_MANIFEST = {
-    screenshots: { shell: 'analyzer-snippet-screenshots.js', parts: [ { marker: 'extract', file: 'analyzer-extract.js' }, { marker: 'region', file: 'analyzer-region.js' }, { marker: 'capture', file: 'analyzer-capture.js' } ] },
-    plain:       { shell: 'analyzer-snippet.js',             parts: [ { marker: 'extract', file: 'analyzer-extract.js' } ] }
+    screenshots: { shell: 'analyzer-snippet-screenshots.js', parts: [ { marker: 'extract', file: 'analyzer-extract.js' }, { marker: 'region', file: 'analyzer-region.js' }, { marker: 'capture', file: 'analyzer-capture.js' }, { marker: 'spa', file: 'analyzer-spa.js' } ] },
+    plain:       { shell: 'analyzer-snippet.js',             parts: [ { marker: 'extract', file: 'analyzer-extract.js' }, { marker: 'spa', file: 'analyzer-spa.js' } ] }
   };
   var _snippetCache = {};
   function loadSnippet(codeEl, withScreenshots, callback) {
@@ -1184,7 +1184,12 @@ console.log('[milg] analyzer.js v3.11.100 loaded');
               ';if(_milgAmd){try{define.amd=_milgAmd}catch(e){}}})();\n';
           }
           if (wantInlineVerify) prefix += 'window.__milgPixelVerify=true;\n';
-          if (crawlOn) {
+          // SPA-explore takes precedence over link-crawl: it explores the CURRENT page's
+          // app (clicks nav/tabs in place) and emits a multi-view crawl payload.
+          var spaOn = document.getElementById('spaExploreCheck') && document.getElementById('spaExploreCheck').checked;
+          if (spaOn) {
+            prefix += 'window.__milgSpaExplore=true;\n';
+          } else if (crawlOn) {
             var maxP = (snippetCrawlMaxPages && parseInt(snippetCrawlMaxPages.value)) || 5;
             prefix += 'window.__milgCrawlSite=true; window.__milgCrawlMaxPages=' + maxP + ';\n';
           }
@@ -1253,6 +1258,11 @@ console.log('[milg] analyzer.js v3.11.100 loaded');
     }
     if (snippetCrawlMaxPages) {
       snippetCrawlMaxPages.addEventListener('change', reloadSnippet);
+    }
+    // SPA-explore toggle (shared options bar) also re-bakes the snippet prefix.
+    var _spaExploreCheckEl = document.getElementById('spaExploreCheck');
+    if (_spaExploreCheckEl) {
+      _spaExploreCheckEl.addEventListener('change', reloadSnippet);
     }
 
     // Copy snippet
@@ -1428,47 +1438,12 @@ console.log('[milg] analyzer.js v3.11.100 loaded');
               // re-counting page chrome, and pixel-verify maps via their crop offset.
               var _states = (r && r.views) ? r.views : [];
               if (_states.length > 1) {
-                var _base = url.replace(/#.*$/, '');
-                var _title0 = (data.meta.title || 'App').trim() || 'App';
-                // Breadcrumb from the parent chain: a control nests under the state that
-                // revealed it, so inner tabs read "App › Live demo › Summary".
-                var _byKey = {};
-                _states.forEach(function(v) { _byKey[v.stateKey] = v; });
-                function _crumbs(v) {
-                  var parts = [], seen = {}, cur = v, guard = 0;
-                  while (cur && guard++ < 12) {
-                    if (cur.label && cur.label !== 'initial') parts.unshift(cur.label);
-                    var pk = cur.parentStateKey;
-                    if (pk == null || seen[pk]) break;
-                    seen[pk] = 1; cur = _byKey[pk] || null;
-                  }
-                  return parts;
-                }
-                var _regionN = 0, _subN = 0;
-                var results = _states.map(function(v) {
-                  var sk = String(v.stateKey || '').replace(/^#/, '');
-                  var isRegion = v.kind === 'region';
-                  var depth = v.depth || 0;
-                  if (isRegion) _regionN++;
-                  else if (depth >= 2) _subN++;
-                  v.data.meta = v.data.meta || {};
-                  v.data.meta.url = _base + (sk ? '#' + sk : '');
-                  var cr = _crumbs(v);
-                  if (isRegion && cr.length) cr[cr.length - 1] = '▤ ' + cr[cr.length - 1];
-                  v.data.meta.title = [_title0].concat(cr).join(' › ');
-                  v.data.meta._inputMethod = 'url';
-                  v.data.meta._spaView = true;
-                  v.data.meta._spaKind = v.kind;
-                  v.data.meta._spaRegionAnchor = v.regionAnchor || null;
-                  v.data.meta._spaTrigger = v.trigger || null;
-                  v.data.meta._spaParentKey = (v.parentStateKey == null) ? null : v.parentStateKey;
-                  v.data.meta._spaDepth = depth;
-                  return { url: v.data.meta.url, data: v.data };
-                });
-                var _skipN = (r.skipped || []).length;
-                var _pageN = _states.length - _regionN - _subN;
-                showToast(_pageN + ' view' + (_pageN !== 1 ? 's' : '') + (_subN ? ' + ' + _subN + ' sub-view' + (_subN > 1 ? 's' : '') : '') + (_regionN ? ' + ' + _regionN + ' panel' + (_regionN > 1 ? 's' : '') : '') + ' analyzed' + (_skipN ? ', ' + _skipN + ' skipped' : '') + (r.truncated ? ' (capped)' : ''));
-                MilgCrawlUI.loadCrawlResults({ startUrl: url, results: results, _spaProvenance: { clicked: r.clicked, skipped: r.skipped, notes: r.notes, truncated: r.truncated, counts: { pages: _pageN, subViews: _subN, panels: _regionN } } }, 'SPA views');
+                // Shared mapper (analyzer-spa.js MilgSpaMap) builds breadcrumb titles +
+                // _spa* meta + counts — same logic the crawl fold and console snippet use.
+                var _built = MilgSpaMap.build(r, { base: url.replace(/#.*$/, ''), rootTitle: (data.meta.title || 'App').trim() || 'App', inputMethod: 'url' });
+                var _c = _built.counts, _skipN = (r.skipped || []).length;
+                showToast(_c.pages + ' view' + (_c.pages !== 1 ? 's' : '') + (_c.subViews ? ' + ' + _c.subViews + ' sub-view' + (_c.subViews > 1 ? 's' : '') : '') + (_c.panels ? ' + ' + _c.panels + ' panel' + (_c.panels > 1 ? 's' : '') : '') + ' analyzed' + (_skipN ? ', ' + _skipN + ' skipped' : '') + (r.truncated ? ' (capped)' : ''));
+                MilgCrawlUI.loadCrawlResults({ startUrl: url, results: _built.results, _spaProvenance: _built.provenance }, 'SPA views');
               } else {
                 if (r && r.error) showToast('SPA explore failed (' + r.error + ') — showing single view');
                 else showToast('No additional SPA views found — showing single view');

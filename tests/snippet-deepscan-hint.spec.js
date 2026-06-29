@@ -36,7 +36,9 @@ test('analyzer asset cache-busters match the visible analyzer version', async ({
     }).filter((a) => /^(analyzer|scoring\/)/.test(a.url));
     return { label, expected, assets };
   });
-  expect(versions.label).toBe('v3.11.66');
+  // Version-agnostic: the point is that EVERY asset cache-buster matches the visible
+  // version label, not that the label equals a hard-coded value (which breaks on every bump).
+  expect(versions.label).toMatch(/^v\d+\.\d+\.\d+$/);
   expect(versions.assets.length).toBeGreaterThan(10);
   expect(versions.assets.every((a) => a.version === versions.expected)).toBe(true);
 });

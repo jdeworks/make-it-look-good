@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Acme SPA</title>
+<style>
+  /* Self-contained, inline only — no CDN / web fonts / network. Deterministic fixture for
+     the dogfood gate's SPA / crawl / theme-toggle coverage. NOT a preset; lives under
+     docs/tests/fixtures and is exempt from the no-<style> preset rule. */
+  :root { --bg:#ffffff; --fg:#1f2933; --muted:#52606d; --accent:#1d4ed8; --line:#d2d6dc; --panel:#f5f7fa; }
+  html.dark { --bg:#11161c; --fg:#e7ecf2; --muted:#9aa5b1; --accent:#7aa2ff; --line:#2a323c; --panel:#1a212a; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--fg); line-height:1.5; }
+  header { display:flex; align-items:center; gap:16px; padding:14px 22px; border-bottom:1px solid var(--line); }
+  header h1 { font-size:18px; margin:0; }
+  nav { display:flex; gap:6px; }
+  nav button, .tab, #themeBtn { font:inherit; cursor:pointer; border:1px solid var(--line); background:var(--panel); color:var(--fg); border-radius:8px; padding:9px 14px; min-height:40px; }
+  nav button.active, .tab.active { background:var(--accent); color:#ffffff; border-color:var(--accent); }
+  #themeBtn { margin-left:auto; min-width:44px; }
+  main { padding:24px 22px; min-height:70vh; }
+  .view { display:none; }
+  .view.active { display:block; }
+  .tabstrip { display:flex; gap:6px; margin-bottom:18px; border-bottom:1px solid var(--line); padding-bottom:12px; }
+  .panel { display:none; min-height:55vh; }
+  .panel.active { display:block; }
+  h2 { font-size:24px; margin:0 0 12px; }
+  p { color:var(--muted); max-width:60ch; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:18px; margin-top:14px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Acme</h1>
+  <nav id="nav">
+    <button data-view="home" class="active">Home</button>
+    <button data-view="features">Features</button>
+    <button data-view="pricing">Pricing</button>
+    <button data-view="contact">Contact</button>
+  </nav>
+  <button id="themeBtn" aria-label="Toggle dark mode" title="Toggle dark mode">🌙 Dark</button>
+</header>
+<main>
+  <section class="view active" id="view-home">
+    <h2>Welcome to Acme</h2>
+    <p>Acme helps teams ship better interfaces faster. This is a single-page app whose views
+       are reached by clicking the nav — there are no anchor links to crawl.</p>
+    <div class="card"><p>Everything here renders client-side. The analyzer must click the nav
+       controls to discover the hidden views.</p></div>
+  </section>
+
+  <section class="view" id="view-features">
+    <h2>Features</h2>
+    <div class="tabstrip" id="featureTabs">
+      <button class="tab active" data-tab="overview">Overview</button>
+      <button class="tab" data-tab="specs">Specs</button>
+      <button class="tab" data-tab="faq">FAQ</button>
+    </div>
+    <div class="panel active" id="tab-overview">
+      <p>Overview of the feature set — a full content panel that swaps when you switch tabs.
+         These inner tabs are a second level of navigation nested under Features.</p>
+      <p>Each panel is structurally distinct (prose vs. table vs. accordion) so the explorer's
+         visibility-aware signature recognises them as separate sub-views.</p>
+      <div class="card"><p>Overview prose block.</p></div>
+    </div>
+    <div class="panel" id="tab-specs">
+      <table>
+        <thead><tr><th>Property</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td>Rendering</td><td>Client-side</td></tr>
+          <tr><td>Accessibility</td><td>WCAG AA</td></tr>
+          <tr><td>Bundle size</td><td>42 KB</td></tr>
+          <tr><td>Frameworks</td><td>None</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="panel" id="tab-faq">
+      <details open><summary>Is there a free tier?</summary><p>Yes — the Free tier covers small teams.</p></details>
+      <details><summary>How is billing handled?</summary><p>Monthly or annual, cancel anytime.</p></details>
+      <details><summary>Where is data stored?</summary><p>Regional data centres of your choice.</p></details>
+    </div>
+  </section>
+
+  <section class="view" id="view-pricing">
+    <h2>Pricing</h2>
+    <p>Simple, transparent pricing. Free, Pro, and Enterprise tiers with no hidden fees.</p>
+    <div class="card"><p>Pricing details rendered for this view only.</p></div>
+  </section>
+
+  <section class="view" id="view-contact">
+    <h2>Contact</h2>
+    <p>Reach the team. This view has no form submit — just informational content so the
+       explorer's safety denylist has nothing destructive to skip.</p>
+    <div class="card"><p>hello@acme.example · Mon–Fri</p></div>
+  </section>
+</main>
+
+<script>
+  (function () {
+    var nav = document.getElementById('nav');
+    var views = { home: 'view-home', features: 'view-features', pricing: 'view-pricing', contact: 'view-contact' };
+    nav.addEventListener('click', function (e) {
+      var btn = e.target.closest('button[data-view]'); if (!btn) return;
+      Object.keys(views).forEach(function (k) { document.getElementById(views[k]).classList.remove('active'); });
+      nav.querySelectorAll('button').forEach(function (b) { b.classList.remove('active'); });
+      document.getElementById(views[btn.getAttribute('data-view')]).classList.add('active');
+      btn.classList.add('active');
+    });
+
+    var tabs = document.getElementById('featureTabs');
+    var panels = { overview: 'tab-overview', specs: 'tab-specs', faq: 'tab-faq' };
+    tabs.addEventListener('click', function (e) {
+      var btn = e.target.closest('button[data-tab]'); if (!btn) return;
+      Object.keys(panels).forEach(function (k) { document.getElementById(panels[k]).classList.remove('active'); });
+      tabs.querySelectorAll('button').forEach(function (b) { b.classList.remove('active'); });
+      document.getElementById(panels[btn.getAttribute('data-tab')]).classList.add('active');
+      btn.classList.add('active');
+    });
+
+    var themeBtn = document.getElementById('themeBtn');
+    themeBtn.addEventListener('click', function () {
+      var dark = document.documentElement.classList.toggle('dark');
+      themeBtn.textContent = dark ? '☀ Light' : '🌙 Dark';
+    });
+  })();
+</script>
+</body>
+</html>

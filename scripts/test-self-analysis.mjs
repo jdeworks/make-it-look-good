@@ -23,6 +23,11 @@ const ROOT = join(import.meta.dirname, '..');
 const BASELINE_PATH = join(import.meta.dirname, 'self-analysis-baseline.json');
 const PORT = 8917; // dedicated port so a dev server on 8901 keeps running
 const PAGES = ['index.html', 'analyzer.html'];
+// Deterministic fixtures for the cross-mode (SPA / crawl / deep-scan) checks. Screenshots
+// stay OFF everywhere (the rasterizer stalls on our Monaco pages); these assert STRUCTURE
+// — view counts, hierarchy depth, viewport count — not pixels.
+const FIXTURE_SPA = `tests/fixtures/spa-views.html`;     // nav views + Features sub-tabs + theme toggle
+const FIXTURE_PLAIN = `tests/fixtures/parity-page.html`; // self-contained, for deep-scan viewport check
 
 function startServer() {
   const child = spawn('node', ['server.js', '--port', String(PORT)], { cwd: ROOT, stdio: 'pipe' });
@@ -68,6 +73,63 @@ async function analyze(page, target) {
   });
 }
 
+// Set the analyzer's option toggles before an analysis run (screenshots/pixel-verify always
+// off; spa/crawl/deep per the mode under test).
+async function setToggles(page, t) {
+  await page.evaluate((t) => {
+    function set(id, on) { const c = document.getElementById(id); if (c && !!c.checked !== on) { c.checked = on; c.dispatchEvent(new Event('change')); } }
+    set('screenshotCheck', false); set('pixelVerifyCheck', false);
+    set('spaExploreCheck', !!t.spa); set('crawlSiteCheck', !!t.crawl); set('deepScanCheck', !!t.deep);
+  }, t);
+}
+
+// SPA discovery (and SPA-in-crawl): analyze a fixture, wait for the crawl UI, read the
+// session — assert view count + hierarchy depth (pages > tabs) from the deterministic fixture.
+async function runSpaOrCrawl(page, target, toggles) {
+  await page.goto(`http://localhost:${PORT}/analyzer.html`, { waitUntil: 'networkidle' });
+  await setToggles(page, toggles);
+  await page.fill('#urlInput', `http://localhost:${PORT}/${target}`);
+  await page.click('#analyzeUrlBtn');
+  await page.waitForFunction(() => {
+    const s = window.MilgCrawlUI && MilgCrawlUI.getCrawlSession && MilgCrawlUI.getCrawlSession();
+    return s && s.status === 'complete';
+  }, { timeout: 90000 });
+  return page.evaluate(() => {
+    const s = MilgCrawlUI.getCrawlSession();
+    const meta = (p) => (p.rawData && p.rawData.meta) || {};
+    const depths = s.pages.map((p) => meta(p)._spaDepth || 0);
+    return {
+      count: s.pages.length,
+      maxDepth: depths.reduce((a, b) => Math.max(a, b), 0),
+      spaPages: s.pages.filter((p) => meta(p)._spaView).length
+    };
+  });
+}
+
+// Deep scan: analyze a fixture with multi-viewport on, assert the viewport count.
+async function runDeepScan(page, target) {
+  await page.goto(`http://localhost:${PORT}/analyzer.html`, { waitUntil: 'networkidle' });
+  await setToggles(page, { deep: true });
+  await page.fill('#urlInput', `http://localhost:${PORT}/${target}`);
+  await page.click('#analyzeUrlBtn');
+  await page.waitForSelector('.report-gauge', { timeout: 90000 });
+  await new Promise((r) => setTimeout(r, 600));
+  return page.evaluate(() => {
+    const r = window.__milgLastReport, ds = r && r.raw && r.raw.deepScan;
+    return { viewports: (ds && ds.viewports && ds.viewports.length) || 0 };
+  });
+}
+
+// One cross-mode check: compare measured fields against baseline thresholds (>=), log, fail-track.
+function checkMode(label, measuredObj, baseObj, fields) {
+  const problems = [];
+  fields.forEach((f) => { if ((measuredObj[f.key] || 0) < baseObj[f.key]) problems.push(`${f.label} ${measuredObj[f.key] || 0} < ${baseObj[f.key]}`); });
+  const tag = problems.length ? 'FAIL' : 'ok';
+  console.log(`${tag}  ${label}  ${fields.map((f) => f.key + '=' + (measuredObj[f.key] || 0)).join('  ')}`);
+  problems.forEach((p) => console.log('      ' + p));
+  return problems.length === 0;
+}
+
 const baseline = JSON.parse(readFileSync(BASELINE_PATH, 'utf8'));
 const server = await startServer();
 const browser = await chromium.launch();
@@ -95,6 +157,24 @@ for (const target of PAGES) {
   }
   if (problems.length) failed = true;
 }
+
+// --- Cross-mode coverage: SPA discovery, SPA-in-crawl, deep scan (deterministic fixtures) ---
+// Measured objects use the SAME keys checkMode compares + writes to the baseline (each
+// baseline value is a >= floor, matching the minScore pattern above).
+const spa = await runSpaOrCrawl(page, FIXTURE_SPA, { spa: true });
+measured.spa = { count: spa.count, maxDepth: spa.maxDepth };
+if (!checkMode('SPA(url)', spa, baseline.spa || { count: 4, maxDepth: 2 },
+    [{ key: 'count', label: 'views' }, { key: 'maxDepth', label: 'hierarchy depth' }])) failed = true;
+
+const crawl = await runSpaOrCrawl(page, FIXTURE_SPA, { spa: true, crawl: true });
+measured.crawl = { count: crawl.count, spaPages: crawl.spaPages };
+if (!checkMode('SPA(crawl)', crawl, baseline.crawl || { count: 4, spaPages: 3 },
+    [{ key: 'count', label: 'pages' }, { key: 'spaPages', label: 'folded SPA views' }])) failed = true;
+
+const deep = await runDeepScan(page, FIXTURE_PLAIN);
+measured.deepScan = { viewports: deep.viewports };
+if (!checkMode('deep-scan', deep, baseline.deepScan || { viewports: 3 },
+    [{ key: 'viewports', label: 'viewports' }])) failed = true;
 
 await browser.close();
 server.kill();

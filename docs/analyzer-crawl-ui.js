@@ -253,60 +253,39 @@ window.MilgCrawlUI = (function() {
   // crawl's hash-stripping dedup), a breadcrumb title, and parent/depth for the tree.
   function _foldSpaViews(session, pageEntry, r, budget) {
     var prov = session._spaProvenance || (session._spaProvenance = { clicked: [], skipped: [], notes: [], truncated: false, counts: { pages: 0, subViews: 0, panels: 0 } });
-    var states = (r && r.views) ? r.views : [];
+    // Merge exploration provenance across source pages (clicked/skipped/notes/truncated).
     if (r) {
       if (r.clicked) prov.clicked = prov.clicked.concat(r.clicked);
       if (r.skipped) prov.skipped = prov.skipped.concat(r.skipped);
       if (r.notes) r.notes.forEach(function(n) { prov.notes.push(n); });
       if (r.truncated) prov.truncated = true;
     }
-    if (states.length <= 1) return; // only the initial baseline — nothing new
-
+    // Shared mapper (analyzer-spa.js MilgSpaMap): breadcrumb titles + _spa* meta, rooted at
+    // this crawled page (skipInitial drops the baseline == the page we already have).
     var sourceTitle = (pageEntry.title || (pageEntry.rawData && pageEntry.rawData.meta && pageEntry.rawData.meta.title) || pageEntry.url || 'App').trim() || 'App';
-    var base = pageEntry.url.replace(/#.*$/, '');
-    var prof = (session.options && session.options.profile) || null;
-    var byKey = {};
-    states.forEach(function(v) { byKey[v.stateKey] = v; });
-    function crumbs(v) {
-      var parts = [], seen = {}, cur = v, guard = 0;
-      while (cur && guard++ < 12) {
-        if (cur.label && cur.label !== 'initial') parts.unshift(cur.label);
-        var pk = cur.parentStateKey;
-        if (pk == null || seen[pk]) break;
-        seen[pk] = 1; cur = byKey[pk] || null;
+    var built = MilgSpaMap.build(r, {
+      base: pageEntry.url.replace(/#.*$/, ''), rootTitle: sourceTitle,
+      inputMethod: 'crawl', skipInitial: true, sourceUrl: pageEntry.url,
+      profile: (session.options && session.options.profile) || null
+    });
+    for (var i = 0; i < built.results.length; i++) {
+      if (budget.used >= budget.totalCap) {
+        prov.truncated = true;
+        if (prov.notes.indexOf('SPA view budget reached — some views dropped') === -1) prov.notes.push('SPA view budget reached — some views dropped');
+        break;
       }
-      return parts;
-    }
-    var foldedPages = 0, foldedRegions = 0, any = false;
-    for (var i = 1; i < states.length; i++) {
-      var v = states[i];
-      if (!v || !v.trigger || !v.data) continue; // skip baseline / malformed
-      if (budget.used >= budget.totalCap) { prov.truncated = true; if (prov.notes.indexOf('SPA view budget reached — some views dropped') === -1) prov.notes.push('SPA view budget reached — some views dropped'); break; }
-      var isRegion = v.kind === 'region';
-      var sk = String(v.stateKey || '').replace(/^#/, '');
-      var cr = crumbs(v);
-      if (isRegion && cr.length) cr[cr.length - 1] = '▤ ' + cr[cr.length - 1];
-      v.data.meta = v.data.meta || {};
-      v.data.meta.url = base + (sk ? '#' + sk : '');
-      v.data.meta.title = [sourceTitle].concat(cr).join(' › ');
-      v.data.meta._inputMethod = 'crawl';
-      v.data.meta._spaView = true;
-      v.data.meta._spaKind = v.kind;
-      v.data.meta._spaRegionAnchor = v.regionAnchor || null;
-      v.data.meta._spaTrigger = v.trigger || null;
-      v.data.meta._spaParentKey = (v.parentStateKey == null) ? null : v.parentStateKey;
-      v.data.meta._spaDepth = v.depth || 0;
-      v.data.meta._spaSourceUrl = pageEntry.url;
-      if (prof && !v.data.profile) v.data.profile = prof;
+      var rr = built.results[i], m = rr.data.meta || {};
       session.pages.push({
-        url: v.data.meta.url, status: 'done', title: v.data.meta.title,
-        rawData: v.data, reportData: MilgScoring.runScoring(v.data), error: null,
+        url: rr.url, status: 'done', title: m.title || '',
+        rawData: rr.data, reportData: MilgScoring.runScoring(rr.data), error: null,
         startedAt: pageEntry.completedAt, completedAt: pageEntry.completedAt
       });
-      budget.used++; any = true;
-      if (isRegion) foldedRegions++; else foldedPages++;
+      budget.used++;
+      // Tally per actually-pushed view (budget may truncate before built.counts).
+      if (m._spaKind === 'region') prov.counts.panels++;
+      else if ((m._spaDepth || 0) >= 2) prov.counts.subViews++;
+      else prov.counts.pages++;
     }
-    if (any) { prov.counts.pages += 1; prov.counts.subViews += foldedPages; prov.counts.panels += foldedRegions; }
   }
 
   function _preComputePixelVerify() {

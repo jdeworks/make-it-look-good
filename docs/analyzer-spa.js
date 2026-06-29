@@ -1,4 +1,4 @@
-// make-it-look-good — SPA View Explorer v3.11.100
+// make-it-look-good — SPA View Explorer v3.11.101
 // Runs INSIDE the analysis iframe (injected alongside MilgExtract). Discovers the
 // hidden "views" of a single-page app — reached by hash/History routes (Tier 1) or
 // by clicking nav controls (Tier 2, opt-in) — and re-runs MilgExtract on each so the
@@ -135,6 +135,11 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
     function add(el) {
       if (!el || seen.indexOf(el) !== -1) return;
       if (el.disabled || el.getAttribute('aria-disabled') === 'true') return;
+      // Skip controls that aren't currently rendered (display:none / [hidden] / detached):
+      // they belong to an inactive view (e.g. a tab strip inside a hidden panel) and would
+      // otherwise be attributed to the CURRENT state at boot and consumed by no-op clicks.
+      // They become candidates — correctly nested under their parent view — once shown.
+      if (!isRendered(el)) return;
       // Skip checkbox/radio/switch — these toggle settings/filters (e.g. a findings-table
       // filter), not navigation, so they shouldn't spawn "views".
       var role = (el.getAttribute('role') || '').toLowerCase();
@@ -147,10 +152,19 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
     return out;
   }
 
-  // Key for "already tried" tracking (tag + first class + label) so re-enumeration after
-  // a re-render doesn't re-click the same logical control forever.
+  // Key for "already tried" tracking (tag + first STABLE class + label) so re-enumeration
+  // after a re-render doesn't re-click the same logical control forever. Volatile state
+  // classes (active/selected/current/open/…) are stripped — SPA nav toggles them on the
+  // clicked control, which would otherwise change its key, make it look "new", and cause
+  // re-clicks + wrong parent attribution.
   function candKey(el) {
-    var cls = (el.className && typeof el.className === 'string') ? el.className.trim().split(/\s+/)[0] : '';
+    var cls = '';
+    if (el.className && typeof el.className === 'string') {
+      var toks = el.className.trim().split(/\s+/);
+      for (var i = 0; i < toks.length; i++) {
+        if (toks[i] && !/^(active|selected|current|open|show|shown|expanded|collapsed|is-active|is-selected|is-open)$/i.test(toks[i])) { cls = toks[i]; break; }
+      }
+    }
     return el.tagName + '|' + cls + '|' + labelOf(el).substring(0, 40);
   }
 
@@ -486,5 +500,76 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
       });
     }
     return Promise.resolve().then(step);
+  }
+};
+
+// Shared view→crawl mapper. Turns a MilgSpaExplore result ({views, clicked, skipped,
+// notes, truncated}) into the crawl payload the analyzer ingests: per-view {url, data}
+// with breadcrumb titles + _spa* meta, plus aggregate counts/provenance. ONE source of
+// truth used by all three entry points — the URL path (analyzer.js _finishUrl), the crawl
+// fold (analyzer-crawl-ui.js _foldSpaViews), and the console snippet (inlined). Lives
+// OUTSIDE MilgSpaExplore (not serialized into the iframe — mapping happens in the parent).
+//   opts: { base, rootTitle, inputMethod='url', skipInitial=false, sourceUrl=null, profile=null }
+//   returns: { results:[{url,data}], counts:{pages,subViews,panels}, provenance:{...,counts} }
+window.MilgSpaMap = {
+  build: function build(result, opts) {
+    opts = opts || {};
+    var states = (result && result.views) ? result.views : [];
+    var base = opts.base || '';
+    var rootTitle = opts.rootTitle || 'App';
+    var inputMethod = opts.inputMethod || 'url';
+    var skipInitial = !!opts.skipInitial;
+    var byKey = {};
+    states.forEach(function(v) { byKey[v.stateKey] = v; });
+    // Breadcrumb labels from the parent chain (a control nests under the state that revealed
+    // it): "App › Live demo › Summary". 'initial' is the root and contributes no segment.
+    function crumbs(v) {
+      var parts = [], seen = {}, cur = v, guard = 0;
+      while (cur && guard++ < 12) {
+        if (cur.label && cur.label !== 'initial') parts.unshift(cur.label);
+        var pk = cur.parentStateKey;
+        if (pk == null || seen[pk]) break;
+        seen[pk] = 1; cur = byKey[pk] || null;
+      }
+      return parts;
+    }
+    var pages = 0, subViews = 0, panels = 0, results = [];
+    for (var i = 0; i < states.length; i++) {
+      if (skipInitial && i === 0) continue;          // baseline == the page we already have
+      var v = states[i];
+      if (!v || !v.data) continue;
+      if (skipInitial && !v.trigger) continue;        // extra guard against the baseline
+      var isRegion = v.kind === 'region';
+      var depth = v.depth || 0;
+      if (isRegion) panels++; else if (depth >= 2) subViews++; else pages++;
+      var sk = String(v.stateKey || '').replace(/^#/, '');
+      var cr = crumbs(v);
+      if (isRegion && cr.length) cr[cr.length - 1] = '▤ ' + cr[cr.length - 1];
+      v.data.meta = v.data.meta || {};
+      v.data.meta.url = base + (sk ? '#' + sk : '');
+      v.data.meta.title = [rootTitle].concat(cr).join(' › ');
+      v.data.meta._inputMethod = inputMethod;
+      v.data.meta._spaView = true;
+      v.data.meta._spaKind = v.kind;
+      v.data.meta._spaRegionAnchor = v.regionAnchor || null;
+      v.data.meta._spaTrigger = v.trigger || null;
+      v.data.meta._spaParentKey = (v.parentStateKey == null) ? null : v.parentStateKey;
+      v.data.meta._spaDepth = depth;
+      if (opts.sourceUrl) v.data.meta._spaSourceUrl = opts.sourceUrl;
+      if (opts.profile && !v.data.profile) v.data.profile = opts.profile;
+      results.push({ url: v.data.meta.url, data: v.data });
+    }
+    var counts = { pages: pages, subViews: subViews, panels: panels };
+    return {
+      results: results,
+      counts: counts,
+      provenance: {
+        clicked: (result && result.clicked) || [],
+        skipped: (result && result.skipped) || [],
+        notes: (result && result.notes) || [],
+        truncated: !!(result && result.truncated),
+        counts: counts
+      }
+    };
   }
 };

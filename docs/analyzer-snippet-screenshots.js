@@ -52,11 +52,62 @@
   // Defines window.MilgCapture (shared with URL/iframe mode). Must come BEFORE
   // capture runs so the snippet can call MilgCapture.getCaptureFn().
   // @milg-insert: capture
+  // --- SPA view explorer + mapper (inlined by analyzer assembler) ---
+  // Defines window.MilgSpaExplore + window.MilgSpaMap. Must come AFTER MilgExtract.
+  // @milg-insert: spa
   _runExtraction();
+
+  // SPA view discovery output — runs the inlined explorer in the live page (already booted)
+  // and copies/downloads the {_milgCrawl:true, results, _spaProvenance} payload the analyzer
+  // ingests (same shape as URL-mode SPA discovery). Clicks the page's nav/tabs in place;
+  // safe controls only (submit/delete/logout/external skipped). wantCapture waits briefly for
+  // the screenshot lib so per-view screenshots are captured.
+  function _milgRunSpaExplore(wantCapture) {
+    console.log('%c🔍 Exploring SPA views (clicking nav/tabs in place)…', 'color:#8b5cf6;font-weight:bold;');
+    function _libReady() { return !!(window.modernScreenshot && window.modernScreenshot.domToCanvas); }
+    function _go() {
+      window.MilgSpaExplore({
+        exploreClicks: true,
+        maxViews: (window.__milgSpaMaxViews || 20),
+        capture: _libReady(),
+        captureScale: 1, timeBudgetMs: 45000, pageEnterGraceMs: 1500
+      }).then(function(r) {
+        var built = window.MilgSpaMap.build(r, {
+          base: location.href.replace(/#.*$/, ''),
+          rootTitle: document.title || 'App', inputMethod: 'console'
+        });
+        var payload = JSON.stringify({ _milgCrawl: true, startUrl: location.href, results: built.results, _spaProvenance: built.provenance });
+        window.__milgCrawlJson = payload; window.__milgCrawlResults = built.results;
+        try { localStorage.setItem('milg-crawl-complete', payload); } catch (e) {}
+        var mb = Math.round(payload.length / 1024 / 1024 * 10) / 10, c = built.counts;
+        var host = location.hostname.replace(/[^a-z0-9]/gi, '-');
+        function _dl() {
+          var b = new Blob([payload], { type: 'application/json' }), u = URL.createObjectURL(b), a = document.createElement('a');
+          a.href = u; a.download = 'milg-spa-' + host + '.json'; a.style.display = 'none';
+          document.body.appendChild(a); a.click();
+          setTimeout(function() { document.body.removeChild(a); URL.revokeObjectURL(u); }, 100);
+        }
+        function _ok() { console.log('%c✓ ' + built.results.length + ' SPA view(s) copied (' + c.pages + ' pages + ' + c.subViews + ' sub-views + ' + c.panels + ' panels). Paste into the analyzer.', 'color:#16a34a;font-weight:bold;font-size:14px;'); }
+        if (payload.length > 4 * 1024 * 1024) { _dl(); console.log('%c⬇ SPA views downloaded as file (' + mb + ' MB). Import in the analyzer.', 'color:#16a34a;font-weight:bold;'); }
+        else if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(payload).then(_ok).catch(_dl); }
+        else { _dl(); }
+      }).catch(function(e) { console.error('[milg] SPA explore failed:', (e && e.message) || e); });
+    }
+    if (wantCapture && !_libReady()) {
+      var w = 0, t = setInterval(function() { w += 200; if (_libReady() || w >= 6000) { clearInterval(t); _go(); } }, 200);
+    } else { _go(); }
+  }
 
   function _runExtraction() {
     window.__milgOnExtractComplete = function(data) {
       window.__milgData = data;
+      // SPA view discovery (in-place): explore the current app's hidden views by clicking
+      // nav/tabs, emit a multi-view crawl payload. Opt-in via the "Explore SPA views" toggle.
+      // Replaces the single-page capture path; the explorer does its own per-view capture.
+      if (window.__milgSpaExplore && window.MilgSpaExplore && window.MilgSpaMap) {
+        _milgRunSpaExplore(true); // screenshot snippet: wait for the lib → per-view captures
+        return;
+      }
       console.log('%c[milg] Extraction complete, starting screenshot capture...', 'color: #3b82f6;');
       window.__milgSnippetSent = false;
 
