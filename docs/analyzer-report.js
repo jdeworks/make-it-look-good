@@ -821,7 +821,8 @@ window.MilgReport = (function() {
     var REASONS = {
       destructive: 'unsafe — destructive control', submit: 'form submit', input: 'form input',
       'in-form': 'inside a form', external: 'external link', 'click-error': 'click failed',
-      'change-too-small': 'change too small', 'duplicate-content': 'duplicate content', 'empty-region': 'empty panel'
+      'change-too-small': 'change too small', 'duplicate-content': 'duplicate content', 'empty-region': 'empty panel',
+      'too-deep': 'nesting limit reached', 'nested-filter': 'filter/setting inside a sub-view'
     };
     var clicked = prov.clicked || [], skipped = prov.skipped || [], notes = prov.notes || [];
     var changedN = clicked.filter(function(c) { return c.changed; }).length;
@@ -829,6 +830,15 @@ window.MilgReport = (function() {
     h += '<summary style="cursor:pointer;user-select:none;font-weight:600;padding:12px 0">SPA exploration log';
     h += ' <span style="font-weight:400;color:var(--text-secondary);font-size:12px">— ' + clicked.length + ' control' + (clicked.length !== 1 ? 's' : '') + ' clicked, ' + changedN + ' changed a view; ' + skipped.length + ' skipped' + (prov.truncated ? ' · capped' : '') + '</span></summary>';
     h += '<div style="padding:4px 0 14px;font-size:12px;color:var(--text-secondary);line-height:1.7">';
+    // Hierarchy count: pages > tabs (sub-views) > panels.
+    var ct = prov.counts;
+    if (ct) {
+      var total = (ct.pages || 0) + (ct.subViews || 0) + (ct.panels || 0);
+      var bits = [ (ct.pages || 0) + ' page' + (ct.pages !== 1 ? 's' : '') ];
+      if (ct.subViews) bits.push(ct.subViews + ' sub-view' + (ct.subViews !== 1 ? 's' : ''));
+      if (ct.panels) bits.push(ct.panels + ' panel' + (ct.panels !== 1 ? 's' : ''));
+      h += '<div style="margin-bottom:8px;color:var(--text)"><strong>' + total + ' view' + (total !== 1 ? 's' : '') + '</strong> = ' + bits.join(' + ') + '</div>';
+    }
     if (clicked.length) {
       h += '<div style="margin-bottom:6px"><strong style="color:var(--text)">Clicked:</strong> ' +
         clicked.map(function(c) { return escapeHtml(c.label || '?') + (c.changed ? ' <span style="color:#16a34a">✓</span>' : ' <span style="opacity:.5">(no change)</span>'); }).join(', ') + '</div>';
@@ -1034,11 +1044,21 @@ window.MilgReport = (function() {
     var path;
     try { path = new URL(page.url).pathname; } catch(e) { path = page.url; }
     if (path === '/') path = '/ (home)';
-    var label = page.title ? page.title.substring(0, 25) : path;
+    var _m = page.rawData && page.rawData.meta;
+    var label, _indent = '';
+    if (_m && _m._spaView && page.title) {
+      // Breadcrumb title (e.g. "App › Live demo › Summary") → show the leaf, indent by depth
+      // so the tab strip reads as a tree (pages > tabs > sub-tabs).
+      var segs = page.title.split(' › ');
+      label = (segs[segs.length - 1] || page.title).substring(0, 25);
+      var _d = _m._spaDepth || 0;
+      if (_d >= 2) _indent = '└' + (_d > 2 ? '─'.repeat(_d - 2) : '') + ' ';
+    } else {
+      label = page.title ? page.title.substring(0, 25) : path;
+    }
 
     // SPA region/view provenance in the tab tooltip (how this state was reached).
     var _tip = page.url;
-    var _m = page.rawData && page.rawData.meta;
     if (_m && _m._spaView) {
       _tip += (_m._spaTrigger ? '\nvia ' + _m._spaTrigger : '') + (_m._spaRegionAnchor ? ' → ' + _m._spaRegionAnchor : '') + (_m._spaKind === 'region' ? '\n(mid-page panel — scoped analysis)' : '');
     }
@@ -1052,6 +1072,7 @@ window.MilgReport = (function() {
 
     return '<button class="crawl-page-tab' + (isActive ? ' active' : '') + '" data-crawl-page="' + index + '" title="' + escapeHtml(_tip) + '">' +
       '<span class="score-dot ' + dotClass + '"></span>' +
+      (_indent ? '<span style="opacity:.5">' + escapeHtml(_indent) + '</span>' : '') +
       escapeHtml(label) +
       (page.status === 'done' && page.reportData ? ' <span style="font-size:11px;color:var(--text-secondary)">' + page.reportData.overall + '</span>' : '') +
       '</button>';

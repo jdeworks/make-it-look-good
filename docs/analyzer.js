@@ -1,8 +1,8 @@
-// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.98
+// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.99
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.98 loaded');
+console.log('[milg] analyzer.js v3.11.99 loaded');
 
 (function() {
   "use strict";
@@ -1429,25 +1429,46 @@ console.log('[milg] analyzer.js v3.11.98 loaded');
               var _states = (r && r.views) ? r.views : [];
               if (_states.length > 1) {
                 var _base = url.replace(/#.*$/, '');
-                var _regionN = 0;
+                var _title0 = (data.meta.title || 'App').trim() || 'App';
+                // Breadcrumb from the parent chain: a control nests under the state that
+                // revealed it, so inner tabs read "App › Live demo › Summary".
+                var _byKey = {};
+                _states.forEach(function(v) { _byKey[v.stateKey] = v; });
+                function _crumbs(v) {
+                  var parts = [], seen = {}, cur = v, guard = 0;
+                  while (cur && guard++ < 12) {
+                    if (cur.label && cur.label !== 'initial') parts.unshift(cur.label);
+                    var pk = cur.parentStateKey;
+                    if (pk == null || seen[pk]) break;
+                    seen[pk] = 1; cur = _byKey[pk] || null;
+                  }
+                  return parts;
+                }
+                var _regionN = 0, _subN = 0;
                 var results = _states.map(function(v) {
                   var sk = String(v.stateKey || '').replace(/^#/, '');
                   var isRegion = v.kind === 'region';
+                  var depth = v.depth || 0;
                   if (isRegion) _regionN++;
+                  else if (depth >= 2) _subN++;
                   v.data.meta = v.data.meta || {};
                   v.data.meta.url = _base + (sk ? '#' + sk : '');
-                  v.data.meta.title = ((data.meta.title || '') + ' › ' + (isRegion ? '▤ ' : '') + (v.label || 'view')).trim();
+                  var cr = _crumbs(v);
+                  if (isRegion && cr.length) cr[cr.length - 1] = '▤ ' + cr[cr.length - 1];
+                  v.data.meta.title = [_title0].concat(cr).join(' › ');
                   v.data.meta._inputMethod = 'url';
                   v.data.meta._spaView = true;
                   v.data.meta._spaKind = v.kind;
                   v.data.meta._spaRegionAnchor = v.regionAnchor || null;
                   v.data.meta._spaTrigger = v.trigger || null;
+                  v.data.meta._spaParentKey = (v.parentStateKey == null) ? null : v.parentStateKey;
+                  v.data.meta._spaDepth = depth;
                   return { url: v.data.meta.url, data: v.data };
                 });
                 var _skipN = (r.skipped || []).length;
-                var _pageN = _states.length - _regionN;
-                showToast(_pageN + ' view' + (_pageN !== 1 ? 's' : '') + (_regionN ? ' + ' + _regionN + ' panel' + (_regionN > 1 ? 's' : '') : '') + ' analyzed' + (_skipN ? ', ' + _skipN + ' skipped' : '') + (r.truncated ? ' (capped)' : ''));
-                MilgCrawlUI.loadCrawlResults({ startUrl: url, results: results, _spaProvenance: { clicked: r.clicked, skipped: r.skipped, notes: r.notes, truncated: r.truncated } }, 'SPA views');
+                var _pageN = _states.length - _regionN - _subN;
+                showToast(_pageN + ' view' + (_pageN !== 1 ? 's' : '') + (_subN ? ' + ' + _subN + ' sub-view' + (_subN > 1 ? 's' : '') : '') + (_regionN ? ' + ' + _regionN + ' panel' + (_regionN > 1 ? 's' : '') : '') + ' analyzed' + (_skipN ? ', ' + _skipN + ' skipped' : '') + (r.truncated ? ' (capped)' : ''));
+                MilgCrawlUI.loadCrawlResults({ startUrl: url, results: results, _spaProvenance: { clicked: r.clicked, skipped: r.skipped, notes: r.notes, truncated: r.truncated, counts: { pages: _pageN, subViews: _subN, panels: _regionN } } }, 'SPA views');
               } else {
                 if (r && r.error) showToast('SPA explore failed (' + r.error + ') — showing single view');
                 else showToast('No additional SPA views found — showing single view');

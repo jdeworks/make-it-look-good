@@ -298,6 +298,7 @@ window.MilgCrawl = (function() {
 
         // Analyze starting page
         startPage.status = 'analyzing';
+        startPage._html = html; // retained so expandPage can re-explore SPA views without re-fetching
         pipeline.analyzePage(html, startUrl, opts, function(data) {
           if (session._aborted) return;
           if (data) {
@@ -316,8 +317,8 @@ window.MilgCrawl = (function() {
             if (pipeline.onPageError) pipeline.onPageError(startPage);
           }
 
-          // Process remaining queue
-          processQueue(session, pipeline, 0);
+          // Fold in SPA views (if any) BEFORE the next page, then process remaining queue.
+          expandPage(session, pipeline, startPage, function() { processQueue(session, pipeline, 0); });
         });
       }
 
@@ -384,6 +385,7 @@ window.MilgCrawl = (function() {
       }
 
       pageEntry.status = 'analyzing';
+      pageEntry._html = html; // retained so expandPage can re-explore SPA views without re-fetching
       pipeline.analyzePage(html, url, session.options, function(data) {
         if (session._aborted) { processQueue(session, pipeline, idx + 1); return; }
         if (data) {
@@ -401,10 +403,24 @@ window.MilgCrawl = (function() {
         } else {
           if (pipeline.onPageError) pipeline.onPageError(pageEntry);
         }
-        // Delay between pages to respect rate limits
-        setTimeout(function() { processQueue(session, pipeline, idx + 1); }, 2000);
+        // Fold in SPA views (if any) for this page, then continue after a rate-limit delay.
+        expandPage(session, pipeline, pageEntry, function() {
+          setTimeout(function() { processQueue(session, pipeline, idx + 1); }, 2000);
+        });
       });
     });
+  }
+
+  // Optional per-page expansion step: after a page is analyzed, let the pipeline discover
+  // and fold in extra states (e.g. a SPA's hidden views) BEFORE the crawl moves on, so the
+  // final summary/consistency report sees them. The pipeline's expandPage(pageEntry,
+  // session, done) MUST call done() exactly once; if absent, this is a no-op. Errors and
+  // aborts fall through to `next` so the crawl can never stall here.
+  function expandPage(session, pipeline, pageEntry, next) {
+    if (session._aborted || pageEntry.status !== 'done' || !pipeline.expandPage) { next(); return; }
+    var called = false;
+    var done = function() { if (called) return; called = true; next(); };
+    try { pipeline.expandPage(pageEntry, session, done); } catch (e) { done(); }
   }
 
   function abortCrawl(session) {

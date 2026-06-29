@@ -242,6 +242,73 @@ window.MilgCrawlUI = (function() {
     page.reportData = MilgScoring.runScoring(page.rawData);
   }
 
+  function _spaExpandModal(url) {
+    try { var p = String(url).replace(/^https?:\/\/[^/]+/, '') || url; _crawlModal('Exploring SPA views on ' + p + '…'); } catch (e) {}
+  }
+
+  // Fold a page's discovered SPA views/panels (from MilgIframe.analyzeSpaViews) into the
+  // live crawl session as their own `done` pages. The explorer's first view is the initial
+  // baseline (== the crawled page we already have) so it's skipped. Each folded view gets a
+  // deterministic synthetic url (sourceUrl#stateKey — never re-fetched, so it bypasses the
+  // crawl's hash-stripping dedup), a breadcrumb title, and parent/depth for the tree.
+  function _foldSpaViews(session, pageEntry, r, budget) {
+    var prov = session._spaProvenance || (session._spaProvenance = { clicked: [], skipped: [], notes: [], truncated: false, counts: { pages: 0, subViews: 0, panels: 0 } });
+    var states = (r && r.views) ? r.views : [];
+    if (r) {
+      if (r.clicked) prov.clicked = prov.clicked.concat(r.clicked);
+      if (r.skipped) prov.skipped = prov.skipped.concat(r.skipped);
+      if (r.notes) r.notes.forEach(function(n) { prov.notes.push(n); });
+      if (r.truncated) prov.truncated = true;
+    }
+    if (states.length <= 1) return; // only the initial baseline — nothing new
+
+    var sourceTitle = (pageEntry.title || (pageEntry.rawData && pageEntry.rawData.meta && pageEntry.rawData.meta.title) || pageEntry.url || 'App').trim() || 'App';
+    var base = pageEntry.url.replace(/#.*$/, '');
+    var prof = (session.options && session.options.profile) || null;
+    var byKey = {};
+    states.forEach(function(v) { byKey[v.stateKey] = v; });
+    function crumbs(v) {
+      var parts = [], seen = {}, cur = v, guard = 0;
+      while (cur && guard++ < 12) {
+        if (cur.label && cur.label !== 'initial') parts.unshift(cur.label);
+        var pk = cur.parentStateKey;
+        if (pk == null || seen[pk]) break;
+        seen[pk] = 1; cur = byKey[pk] || null;
+      }
+      return parts;
+    }
+    var foldedPages = 0, foldedRegions = 0, any = false;
+    for (var i = 1; i < states.length; i++) {
+      var v = states[i];
+      if (!v || !v.trigger || !v.data) continue; // skip baseline / malformed
+      if (budget.used >= budget.totalCap) { prov.truncated = true; if (prov.notes.indexOf('SPA view budget reached — some views dropped') === -1) prov.notes.push('SPA view budget reached — some views dropped'); break; }
+      var isRegion = v.kind === 'region';
+      var sk = String(v.stateKey || '').replace(/^#/, '');
+      var cr = crumbs(v);
+      if (isRegion && cr.length) cr[cr.length - 1] = '▤ ' + cr[cr.length - 1];
+      v.data.meta = v.data.meta || {};
+      v.data.meta.url = base + (sk ? '#' + sk : '');
+      v.data.meta.title = [sourceTitle].concat(cr).join(' › ');
+      v.data.meta._inputMethod = 'crawl';
+      v.data.meta._spaView = true;
+      v.data.meta._spaKind = v.kind;
+      v.data.meta._spaRegionAnchor = v.regionAnchor || null;
+      v.data.meta._spaTrigger = v.trigger || null;
+      v.data.meta._spaParentKey = (v.parentStateKey == null) ? null : v.parentStateKey;
+      v.data.meta._spaDepth = v.depth || 0;
+      v.data.meta._spaSourceUrl = pageEntry.url;
+      if (prof && !v.data.profile) v.data.profile = prof;
+      session.pages.push({
+        url: v.data.meta.url, status: 'done', title: v.data.meta.title,
+        rawData: v.data, reportData: MilgScoring.runScoring(v.data), error: null,
+        startedAt: pageEntry.completedAt, completedAt: pageEntry.completedAt
+      });
+      budget.used++; any = true;
+      if (isRegion) foldedRegions++; else foldedPages++;
+    }
+    if (any) { prov.counts.pages += 1; prov.counts.subViews += foldedPages; prov.counts.panels += foldedRegions; }
+  }
+
   function _preComputePixelVerify() {
     if (!_crawlSession || !window.MilgContrastVerify || !window.MilgQueue) return;
     var pagesToVerify = _crawlSession.pages.filter(function(p) {
@@ -473,6 +540,40 @@ window.MilgCrawlUI = (function() {
         }
       },
       scorePage: function(data) { return MilgScoring.runScoring(data); },
+      // SPA expansion: if a crawled page is a single-page app with hidden views, explore
+      // them and fold each discovered view/panel into THIS crawl session as its own page
+      // (deterministic synthetic url, breadcrumb title, parent/depth), so the summary +
+      // cross-page consistency see them. Bounded by a session-wide budget. No-op unless the
+      // page is SPA-likely and (Tier-1 routes exist OR the "Explore SPA views" toggle is on).
+      expandPage: function(pageEntry, session, done) {
+        try {
+          var raw = pageEntry.rawData;
+          var spa = raw && raw.structure && raw.structure.spa;
+          var spaToggle = document.getElementById('spaExploreCheck');
+          var wantClicks = !!(spaToggle && spaToggle.checked);
+          var wantSpa = spa && spa.isLikelyHiddenViews && (((spa.routes || []).length >= 1) || wantClicks);
+          if (!wantSpa || !pageEntry._html) { done(); return; }
+          var budget = session._spa || (session._spa = { perPageCap: 12, totalCap: 40, used: 0 });
+          var room = Math.min(budget.perPageCap, budget.totalCap - budget.used);
+          if (room <= 1) { // 1 = the initial baseline we'd skip anyway
+            var pv0 = session._spaProvenance || (session._spaProvenance = { clicked: [], skipped: [], notes: [], truncated: false, counts: { pages: 0, subViews: 0, panels: 0 } });
+            if (pv0.notes.indexOf('SPA view budget reached — some pages not expanded') === -1) pv0.notes.push('SPA view budget reached — some pages not expanded');
+            pv0.truncated = true;
+            done(); return;
+          }
+          var wantShots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
+          _spaExpandModal(pageEntry.url);
+          MilgIframe.analyzeSpaViews(pageEntry._html, {
+            url: pageEntry.url, exploreClicks: wantClicks, maxViews: room,
+            screenshots: wantShots, timeBudgetMs: wantShots ? 30000 : 22000
+          }, function(r) {
+            try { _foldSpaViews(session, pageEntry, r, budget); } catch (e) {}
+            renderCrawlTabs();
+            if (_crawlActivePageTab === 'summary') showCrawlPageContent('summary');
+            done();
+          });
+        } catch (e) { done(); }
+      },
       onDiscovery: function(urls) {
         totalPages = 1 + urls.length;
         crawlProgressCount.textContent = '0 / ' + totalPages;
@@ -519,8 +620,13 @@ window.MilgCrawlUI = (function() {
         crawlProgressFill.style.width = '100%';
         _crawlModal('Crawl complete! ' + _crawlSession.pages.length + ' pages analyzed');
         setTimeout(_crawlModalClose, 3000);
+        // Carry SPA exploration provenance onto the freshly-built summary so the log shows.
+        if (_crawlSession._spaProvenance && _crawlSession.summary) _crawlSession.summary._spaProvenance = _crawlSession._spaProvenance;
         renderCrawlTabs();
         showCrawlPageContent('summary');
+        // Pixel-verify any folded SPA-view pages that weren't verified inline (no-op when
+        // screenshots are off or everything is already verified).
+        _preComputePixelVerify();
       }
     });
   }

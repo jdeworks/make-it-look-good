@@ -1,4 +1,4 @@
-// make-it-look-good — SPA View Explorer v3.11.98
+// make-it-look-good — SPA View Explorer v3.11.99
 // Runs INSIDE the analysis iframe (injected alongside MilgExtract). Discovers the
 // hidden "views" of a single-page app — reached by hash/History routes (Tier 1) or
 // by clicking nav controls (Tier 2, opt-in) — and re-runs MilgExtract on each so the
@@ -7,7 +7,9 @@
 // only genuinely new states. Single-iframe, depth-limited, capped, and safety-gated.
 //
 // Exposed as window.MilgSpaExplore(opts) -> Promise<{views, clicked, skipped, notes,
-// truncated, navCandidateCount}>. Each view: {stateKey, label, trigger, data}.
+// truncated, navCandidateCount}>. Each view: {stateKey, kind, label, trigger,
+// parentStateKey, depth, regionAnchor, data} — parentStateKey/depth give the
+// pages > tabs > sub-tabs hierarchy (a control nests under the state that revealed it).
 //
 // IMPORTANT: this is injected into the iframe via Function.toString(), so the ENTIRE
 // implementation (every helper) MUST live inside this one function — a serialized
@@ -94,6 +96,11 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
     function add(el) {
       if (!el || seen.indexOf(el) !== -1) return;
       if (el.disabled || el.getAttribute('aria-disabled') === 'true') return;
+      // Skip checkbox/radio/switch — these toggle settings/filters (e.g. a findings-table
+      // filter), not navigation, so they shouldn't spawn "views".
+      var role = (el.getAttribute('role') || '').toLowerCase();
+      var ty = (el.getAttribute('type') || '').toLowerCase();
+      if (role === 'checkbox' || role === 'radio' || role === 'switch' || ty === 'checkbox' || ty === 'radio') return;
       seen.push(el); out.push(el);
     }
     try { Array.prototype.forEach.call(document.querySelectorAll(sel), add); } catch (e) {}
@@ -243,11 +250,23 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
 
   var maxViews = opts.maxViews || 7;
   var deadline = nowMs() + (opts.timeBudgetMs || 15000);
+  // After entering a full view, lazy sub-content (e.g. a tab strip behind an async data
+  // fetch) can mount AFTER the click settles — the settle observer goes quiet on the
+  // initial swap and resolves before the tabs exist, so a naive loop races past them.
+  // Grace window: once a page view is added, wait (bounded, early-exit) for the candidate
+  // set to grow before re-enumerating, so newly-mounted controls are explored as children.
+  var pageEnterGraceMs = opts.pageEnterGraceMs != null ? opts.pageEnterGraceMs : 1500;
   var FULL_VIEW_RATIO = 0.6;   // changed area ≥ 60% of viewport ⇒ full view (a "page")
   var NOTICEABLE_MIN = 0.10;   // changed region < 10% of viewport ⇒ tiny toggle, skip
+  var MAX_DEPTH = 4;           // overall hierarchy guard (pages > tabs > sub-tabs > …)
+  var REGION_MAX_DEPTH = 2;    // bounded panels only as top-level tab-panels (depth ≤ 2);
+                               // deeper small-region toggles are filters/settings, not views.
   var views = [], clicked = [], skipped = [], notes = [];
   var seenSigs = {}, truncated = false;
   var vpArea = (window.innerWidth || 1280) * (window.innerHeight || 900);
+  // Hierarchy bookkeeping: depth per stateKey so children (inner tabs) nest under the
+  // state that revealed them — the report renders pages > tabs > sub-tabs from this.
+  var depthByKey = {};
 
   // Best-effort screenshot of a target (full page = documentElement, or a region element)
   // via modern-screenshot (loaded by the bootstrap). Returns {uri, meta} or null. For a
@@ -276,11 +295,16 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
   // screenshotMeta in the shape pixel-verify consumes), then store it. Async.
   // stateKey is the DETERMINISTIC activation key — the parent prefixes the page URL.
   function addState(o, target) {
+    // depth = parent's depth + 1 (root states have null/unknown parent → depth 0).
+    var pk = (o.parentStateKey == null) ? null : o.parentStateKey;
+    var depth = (pk != null && depthByKey[pk] != null) ? depthByKey[pk] + 1 : 0;
+    if (depthByKey[o.stateKey] == null) depthByKey[o.stateKey] = depth;
     return captureTarget(target, o.kind).then(function(shot) {
       if (shot) { o.data.screenshots = [shot.uri]; o.data.screenshotMeta = shot.meta; }
       views.push({
         stateKey: o.stateKey, kind: o.kind || 'page', regionAnchor: o.regionAnchor || null,
         activation: o.activation || null, label: o.label, trigger: o.trigger || null,
+        parentStateKey: pk, depth: depth,
         contentSig: o.contentSig, hasShot: !!shot, data: o.data
       });
     });
@@ -290,12 +314,25 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
     if (nowMs() > deadline) { truncated = true; notes.push('time budget reached'); return true; }
     return false;
   }
+  // Wait (bounded) for lazy controls to mount after entering a view; resolves early the
+  // moment the candidate count grows past the post-settle baseline.
+  function awaitNewCandidates(baseCount) {
+    if (!pageEnterGraceMs || capExceeded()) return Promise.resolve();
+    return new Promise(function(resolve) {
+      var start = nowMs();
+      (function tick() {
+        try { if (liveCandidates().length > baseCount) return resolve(); } catch (e) { return resolve(); }
+        if (nowMs() - start >= pageEnterGraceMs) return resolve();
+        setTimeout(tick, 200);
+      })();
+    });
+  }
 
   // State 0 — the initial full view.
   var sig0 = domSignature();
   seenSigs[sig0] = true;
   var spa = {};
-  return addState({ stateKey: location.hash || '/', kind: 'page', label: 'initial', contentSig: sig0, data: extractNow() }, document.documentElement).then(function() {
+  return addState({ stateKey: location.hash || '/', kind: 'page', label: 'initial', parentStateKey: null, contentSig: sig0, data: extractNow() }, document.documentElement).then(function() {
     spa = (views[0].data && views[0].data.structure && views[0].data.structure.spa) || {};
     // Tier 1 — deterministic hash routes (always safe; no clicks; full views).
     var routes = (spa.routes || []).slice();
@@ -307,7 +344,7 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
           var s = domSignature();
           if (seenSigs[s]) return;
           seenSigs[s] = true;
-          return addState({ stateKey: location.hash || route, kind: 'page', activation: 'route:' + route, label: route, trigger: 'route:' + route, contentSig: s, data: extractNow() }, document.documentElement);
+          return addState({ stateKey: location.hash || route, kind: 'page', activation: 'route:' + route, label: route, trigger: 'route:' + route, parentStateKey: (views[0] && views[0].stateKey), contentSig: s, data: extractNow() }, document.documentElement);
         });
       });
     }, Promise.resolve());
@@ -326,16 +363,29 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
   // full-view PAGE or a bounded REGION, keys it deterministically, and dedups by content.
   function clickLoop() {
     var triedKeys = {}, everSeen = {}, guard = 0;
-    // Depth-first via "newly-appeared first": clicking a nav reveals a view's inner tab
-    // strip — those controls weren't candidates before, so prioritize them over the
-    // already-seen sibling navs. This explores a view's nested tabs BEFORE navigating
-    // away, and is robust to sidebar layouts (nav + content in one container) where a
-    // containment-based scope can't separate nav from inner tabs.
+    // The state the DOM is currently in (clickLoop starts from the initial view — Tier 1
+    // reset location.hash). A control's PARENT is the state active when it first appeared
+    // as a candidate, so we tag each newly-seen control with the current state key.
+    var currentStateKey = views[0] ? views[0].stateKey : (location.hash || '/');
+    var discoveredUnder = {};
+    // Depth-first by hierarchy: clicking a nav reveals a view's inner tab strip — explore
+    // those (and any deeper) BEFORE returning to sibling navs, so a view's tabs nest under
+    // it instead of being skipped when the loop wanders off to the next nav. We rank each
+    // candidate by the DEPTH of the state that first revealed it (deeper = explore first):
+    // inner tabs (revealed by a depth-1 view) outrank top-nav siblings (revealed at the
+    // root), and stay ahead even after we've stepped into one of the tabs. Robust to
+    // sidebar layouts (nav + content in one container) where containment can't separate them.
+    function candParentDepth(c) {
+      var du = discoveredUnder[candKey(c)];
+      return (du != null && depthByKey[du] != null) ? depthByKey[du] : -1;
+    }
     function step() {
       if (capExceeded() || guard++ > 200) { if (guard > 200) notes.push('exploration guard limit'); return; }
       var cands = liveCandidates(), next = null, nextKey = null;
-      cands.sort(function(a, b) { return (everSeen[candKey(a)] ? 1 : 0) - (everSeen[candKey(b)] ? 1 : 0); });
-      cands.forEach(function(c) { everSeen[candKey(c)] = 1; });
+      // Record first-appearance parent BEFORE ranking, so freshly-revealed controls are
+      // attributed to the view that revealed them.
+      cands.forEach(function(c) { var k = candKey(c); if (!everSeen[k]) { everSeen[k] = 1; discoveredUnder[k] = currentStateKey; } });
+      cands.sort(function(a, b) { return candParentDepth(b) - candParentDepth(a); });
       for (var i = 0; i < cands.length; i++) {
         var key = candKey(cands[i]);
         if (triedKeys[key]) continue;
@@ -353,10 +403,16 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
         var changed = res.after !== res.before;
         clicked.push({ label: label, changed: changed });
         if (!changed) return step();
+        // Depth of the state this control was revealed under → the new state sits one below.
+        var parentDepth = (discoveredUnder[nextKey] != null && depthByKey[discoveredUnder[nextKey]] != null) ? depthByKey[discoveredUnder[nextKey]] : 0;
+        if (parentDepth + 1 > MAX_DEPTH) { skipped.push({ label: label, reason: 'too-deep' }); return step(); }
         var root = changedRegionFor(trigger, res.mutated);
         var ratio = vpArea ? areaOf(root) / vpArea : 1;
         var kind = (root === document.body || ratio >= FULL_VIEW_RATIO) ? 'page' : 'region';
         if (kind === 'region') {
+          // Bounded panels are captured as tab-panels near the top of the tree; a small
+          // region nested under a sub-tab is a filter/setting, not a view — skip it.
+          if (parentDepth + 1 > REGION_MAX_DEPTH) { skipped.push({ label: label, reason: 'nested-filter' }); return step(); }
           // "Noticeable" gate + empty guard: skip tiny toggles / zero-size panels.
           var rr; try { rr = root.getBoundingClientRect(); } catch (e) { rr = { width: 0, height: 0 }; }
           if (rr.width < 40 || rr.height < 20 || ratio < NOTICEABLE_MIN) { skipped.push({ label: label, reason: 'change-too-small' }); return step(); }
@@ -364,11 +420,18 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
           var rsig = subtreeSig(root);
           if (seenSigs[rsig]) { skipped.push({ label: label, reason: 'duplicate-content' }); return step(); }
           seenSigs[rsig] = true;
-          return addState({ stateKey: 'act:' + descriptor, kind: 'region', regionAnchor: regionSelector(root), activation: descriptor, label: label, trigger: 'click:' + label, contentSig: rsig, data: extractScoped(root) }, root).then(step);
+          var rk = 'act:' + descriptor;
+          return addState({ stateKey: rk, kind: 'region', regionAnchor: regionSelector(root), activation: descriptor, label: label, trigger: 'click:' + label, parentStateKey: (discoveredUnder[nextKey] != null ? discoveredUnder[nextKey] : currentStateKey), contentSig: rsig, data: extractScoped(root) }, root).then(function() { currentStateKey = rk; return step(); });
         } else {
           if (seenSigs[res.after]) { skipped.push({ label: label, reason: 'duplicate-content' }); return step(); }
           seenSigs[res.after] = true;
-          return addState({ stateKey: 'act:' + descriptor, kind: 'page', activation: descriptor, label: label, trigger: 'click:' + label, contentSig: res.after, data: extractNow() }, document.documentElement).then(step);
+          var pk2 = 'act:' + descriptor;
+          return addState({ stateKey: pk2, kind: 'page', activation: descriptor, label: label, trigger: 'click:' + label, parentStateKey: (discoveredUnder[nextKey] != null ? discoveredUnder[nextKey] : currentStateKey), contentSig: res.after, data: extractNow() }, document.documentElement).then(function() {
+            currentStateKey = pk2;
+            // Let lazy sub-content (tab strips, etc.) mount before re-enumerating so it
+            // nests under THIS view rather than being missed.
+            return awaitNewCandidates(liveCandidates().length).then(step);
+          });
         }
       });
     }
