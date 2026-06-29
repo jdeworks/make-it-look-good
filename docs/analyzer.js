@@ -1,8 +1,8 @@
-// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.95
+// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.96
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.95 loaded');
+console.log('[milg] analyzer.js v3.11.96 loaded');
 
 (function() {
   "use strict";
@@ -1422,25 +1422,31 @@ console.log('[milg] analyzer.js v3.11.95 loaded');
               showProgress(100, 'Done!');
               setTimeout(hideProgress, 500);
               urlStatus.style.display = 'none';
-              // Region-kind states (mid-page tab panels) are detected by the explorer but
-              // not yet surfaced — they need scoped extraction + element-anchored screenshots
-              // + dedicated rendering (next stages). For now only full-view "page" states
-              // surface, so shipped single-URL SPA behavior is unchanged.
-              var _surface = (r && r.views ? r.views : []).filter(function(v) { return v.kind !== 'region'; });
-              if (_surface.length > 1) {
+              // Both full-view "page" states and mid-page "region" units (tab panels) are
+              // surfaced as crawl entries. Region units carry scoped rawData (just the
+              // changed panel) + an element-anchored screenshot, so they're analyzed without
+              // re-counting page chrome, and pixel-verify maps via their crop offset.
+              var _states = (r && r.views) ? r.views : [];
+              if (_states.length > 1) {
                 var _base = url.replace(/#.*$/, '');
-                var results = _surface.map(function(v) {
+                var _regionN = 0;
+                var results = _states.map(function(v) {
                   var sk = String(v.stateKey || '').replace(/^#/, '');
+                  var isRegion = v.kind === 'region';
+                  if (isRegion) _regionN++;
                   v.data.meta = v.data.meta || {};
                   v.data.meta.url = _base + (sk ? '#' + sk : '');
-                  v.data.meta.title = ((data.meta.title || '') + ' › ' + (v.label || 'view')).trim();
+                  v.data.meta.title = ((data.meta.title || '') + ' › ' + (isRegion ? '▤ ' : '') + (v.label || 'view')).trim();
                   v.data.meta._inputMethod = 'url';
                   v.data.meta._spaView = true;
+                  v.data.meta._spaKind = v.kind;
+                  v.data.meta._spaRegionAnchor = v.regionAnchor || null;
                   v.data.meta._spaTrigger = v.trigger || null;
                   return { url: v.data.meta.url, data: v.data };
                 });
                 var _skipN = (r.skipped || []).length;
-                showToast(_surface.length + ' SPA views analyzed' + (_skipN ? ', ' + _skipN + ' unsafe control' + (_skipN > 1 ? 's' : '') + ' skipped' : '') + (r.truncated ? ' (capped)' : ''));
+                var _pageN = _states.length - _regionN;
+                showToast(_pageN + ' view' + (_pageN !== 1 ? 's' : '') + (_regionN ? ' + ' + _regionN + ' panel' + (_regionN > 1 ? 's' : '') : '') + ' analyzed' + (_skipN ? ', ' + _skipN + ' skipped' : '') + (r.truncated ? ' (capped)' : ''));
                 MilgCrawlUI.loadCrawlResults({ startUrl: url, results: results, _spaProvenance: { clicked: r.clicked, skipped: r.skipped, notes: r.notes, truncated: r.truncated } }, 'SPA views');
               } else {
                 if (r && r.error) showToast('SPA explore failed (' + r.error + ') — showing single view');
