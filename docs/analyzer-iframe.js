@@ -667,31 +667,46 @@ window.MilgIframe = (function() {
     }
     window.addEventListener('message', onMsg);
 
+    var wantShots = opts.screenshots !== false; // capture per-state screenshots unless disabled
     var spaOpts = {
       exploreClicks: !!opts.exploreClicks,
       maxViews: opts.maxViews || 8,
-      timeBudgetMs: opts.timeBudgetMs || 18000,
+      timeBudgetMs: opts.timeBudgetMs || (wantShots ? 30000 : 18000),
       settleMs: opts.settleMs || 250,
-      settleMaxMs: opts.settleMaxMs || 1500
+      settleMaxMs: opts.settleMaxMs || 1500,
+      capture: wantShots,
+      captureScale: opts.captureScale || 1
     };
     // Inject MilgExtract (no auto-run — the explorer drives extraction itself) + the
-    // explorer + a bootstrap that runs after the SPA boots and batches all views back.
+    // explorer + (when capturing) the modern-screenshot lib + a bootstrap that runs after
+    // the SPA boots, waits for the screenshot lib if needed, and batches all views back.
     var extractSrc = window.MilgExtract.toString();
     var exploreSrc = window.MilgSpaExplore.toString();
     var bootDelay = 2000;
+    var msCdn = 'https://cdn.jsdelivr.net/npm/modern-screenshot@4.6.8/dist/index.js';
+    var cdnTag = wantShots ? '<script src="' + msCdn + '"></' + 'script>' : '';
+    var bootstrap =
+      '(function(){' +
+      'var CAP=' + (wantShots ? 'true' : 'false') + ';' +
+      'function post(r){parent.postMessage({type:"milg-spa-views",result:r,_iframeId:"' + _iframeId + '"},"*")}' +
+      'function run(){try{window.MilgSpaExplore(' + JSON.stringify(spaOpts) + ').then(post).catch(function(e){post({views:[],error:String(e&&e.message||e)})})}catch(e){post({views:[],error:String(e)})}}' +
+      'function go(){if(CAP&&!(window.modernScreenshot&&window.modernScreenshot.domToCanvas)){var w=0,t=setInterval(function(){w+=200;if((window.modernScreenshot&&window.modernScreenshot.domToCanvas)||w>=6000){clearInterval(t);run()}},200);return}run()}' +
+      'window.addEventListener("load",function(){setTimeout(go,' + bootDelay + ')});' +
+      '})();';
     var inject =
       '<script>window.__milgIframeId="' + _iframeId + '";</' + 'script>' +
       '<script>window.MilgExtract=(' + extractSrc + ');</' + 'script>' +
       '<script>window.MilgSpaExplore=(' + exploreSrc + ');</' + 'script>' +
-      '<script>(function(){function go(){try{window.MilgSpaExplore(' + JSON.stringify(spaOpts) + ').then(function(r){parent.postMessage({type:"milg-spa-views",result:r,_iframeId:"' + _iframeId + '"},"*")}).catch(function(e){parent.postMessage({type:"milg-spa-views",result:{views:[],error:String(e&&e.message||e)},_iframeId:"' + _iframeId + '"},"*")})}catch(e){parent.postMessage({type:"milg-spa-views",result:{views:[],error:String(e)},_iframeId:"' + _iframeId + '"},"*")}}window.addEventListener("load",function(){setTimeout(go,' + bootDelay + ')});})();</' + 'script>';
+      cdnTag +
+      '<script>' + bootstrap + '</' + 'script>';
 
     // Function replacement so `$` sequences in the serialized source (e.g. React's
     // __reactContainer$ keys) are never interpreted as String.replace special patterns.
     var srcdoc = /<\/body>/i.test(html) ? html.replace(/<\/body>/i, function() { return inject + '</body>'; }) : html + inject;
     iframe.srcdoc = srcdoc;
 
-    // Hard timeout: boot delay + explorer budget + margin.
-    setTimeout(function() { finish({ views: [], error: 'spa-explore-timeout' }); }, bootDelay + spaOpts.timeBudgetMs + 8000);
+    // Hard timeout: boot delay + explorer budget + (screenshot lib wait + capture) margin.
+    setTimeout(function() { finish({ views: [], error: 'spa-explore-timeout' }); }, bootDelay + spaOpts.timeBudgetMs + (wantShots ? 20000 : 8000));
   }
 
   return {

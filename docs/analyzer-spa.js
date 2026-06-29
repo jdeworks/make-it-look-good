@@ -1,4 +1,4 @@
-// make-it-look-good — SPA View Explorer v3.11.94
+// make-it-look-good — SPA View Explorer v3.11.95
 // Runs INSIDE the analysis iframe (injected alongside MilgExtract). Discovers the
 // hidden "views" of a single-page app — reached by hash/History routes (Tier 1) or
 // by clicking nav controls (Tier 2, opt-in) — and re-runs MilgExtract on each so the
@@ -237,13 +237,40 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
   var seenSigs = {}, truncated = false;
   var vpArea = (window.innerWidth || 1280) * (window.innerHeight || 900);
 
-  // A discovered state. stateKey is the DETERMINISTIC activation key (route or control
-  // descriptor) — the parent prefixes the page URL to form the full identity.
-  function pushState(o) {
-    views.push({
-      stateKey: o.stateKey, kind: o.kind || 'page', regionAnchor: o.regionAnchor || null,
-      activation: o.activation || null, label: o.label, trigger: o.trigger || null,
-      contentSig: o.contentSig, data: o.data
+  // Best-effort screenshot of a target (full page = documentElement, or a region element)
+  // via modern-screenshot (loaded by the bootstrap). Returns {uri, meta} or null. For a
+  // region the canvas is the element's box; cropOffset = the element's PAGE position so
+  // post-hoc pixel-verify can map page-coordinate contrast-pair bboxes into the crop.
+  function captureTarget(target, kind) {
+    var ms = window.modernScreenshot;
+    if (!opts.capture || !ms || !ms.domToCanvas || !target) return Promise.resolve(null);
+    var scale = opts.captureScale || 1;
+    var rect; try { rect = target.getBoundingClientRect(); } catch (e) { rect = { left: 0, top: 0 }; }
+    function filter(n) { try { return !(n && n.getAttribute && (n.getAttribute('data-milg-overlay') || n.hasAttribute('data-milg-iframe-ph'))); } catch (e) { return true; } }
+    return ms.domToCanvas(target, { scale: scale, timeout: 20000, filter: filter }).then(function(canvas) {
+      if (!canvas || !canvas.width || !canvas.height) return null;
+      var uri; try { uri = canvas.toDataURL('image/webp', 0.85); } catch (e) { try { uri = canvas.toDataURL('image/png'); } catch (e2) { return null; } }
+      var isRegion = kind === 'region';
+      return { uri: uri, meta: {
+        scale: scale, viewportHeight: window.innerHeight, canvasWidth: canvas.width, canvasHeight: canvas.height,
+        cropOffsetX: isRegion ? Math.round((rect.left || 0) + (window.scrollX || 0)) : 0,
+        cropOffsetY: isRegion ? Math.round((rect.top || 0) + (window.scrollY || 0)) : 0,
+        isRegion: isRegion
+      } };
+    }).catch(function() { return null; });
+  }
+
+  // Build a state, capture its screenshot (best-effort, attached to data.screenshots /
+  // screenshotMeta in the shape pixel-verify consumes), then store it. Async.
+  // stateKey is the DETERMINISTIC activation key — the parent prefixes the page URL.
+  function addState(o, target) {
+    return captureTarget(target, o.kind).then(function(shot) {
+      if (shot) { o.data.screenshots = [shot.uri]; o.data.screenshotMeta = shot.meta; }
+      views.push({
+        stateKey: o.stateKey, kind: o.kind || 'page', regionAnchor: o.regionAnchor || null,
+        activation: o.activation || null, label: o.label, trigger: o.trigger || null,
+        contentSig: o.contentSig, hasShot: !!shot, data: o.data
+      });
     });
   }
   function capExceeded() {
@@ -255,21 +282,24 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
   // State 0 — the initial full view.
   var sig0 = domSignature();
   seenSigs[sig0] = true;
-  pushState({ stateKey: location.hash || '/', kind: 'page', label: 'initial', contentSig: sig0, data: extractNow() });
-  var spa = (views[0].data && views[0].data.structure && views[0].data.structure.spa) || {};
-
-  // Tier 1 — deterministic hash routes (always safe; no clicks; treated as full views).
-  var routes = (spa.routes || []).slice();
-  return routes.reduce(function(p, route) {
-    return p.then(function() {
-      if (capExceeded()) return;
-      try { location.hash = route.charAt(0) === '#' ? route : '#' + route; } catch (e) { return; }
-      return settle().then(function() {
-        var s = domSignature();
-        if (!seenSigs[s]) { seenSigs[s] = true; pushState({ stateKey: location.hash || route, kind: 'page', activation: 'route:' + route, label: route, trigger: 'route:' + route, contentSig: s, data: extractNow() }); }
+  var spa = {};
+  return addState({ stateKey: location.hash || '/', kind: 'page', label: 'initial', contentSig: sig0, data: extractNow() }, document.documentElement).then(function() {
+    spa = (views[0].data && views[0].data.structure && views[0].data.structure.spa) || {};
+    // Tier 1 — deterministic hash routes (always safe; no clicks; full views).
+    var routes = (spa.routes || []).slice();
+    return routes.reduce(function(p, route) {
+      return p.then(function() {
+        if (capExceeded()) return;
+        try { location.hash = route.charAt(0) === '#' ? route : '#' + route; } catch (e) { return; }
+        return settle().then(function() {
+          var s = domSignature();
+          if (seenSigs[s]) return;
+          seenSigs[s] = true;
+          return addState({ stateKey: location.hash || route, kind: 'page', activation: 'route:' + route, label: route, trigger: 'route:' + route, contentSig: s, data: extractNow() }, document.documentElement);
+        });
       });
-    });
-  }, Promise.resolve()).then(function() {
+    }, Promise.resolve());
+  }).then(function() {
     try { if (location.hash) location.hash = ''; } catch (e) {}
     if (!opts.exploreClicks) { notes.push('click exploration disabled (Tier 1 routes only)'); return; }
     return settle().then(clickLoop);
@@ -315,13 +345,12 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
           var rsig = subtreeSig(root);
           if (seenSigs[rsig]) { skipped.push({ label: label, reason: 'duplicate-content' }); return step(); }
           seenSigs[rsig] = true;
-          pushState({ stateKey: 'act:' + descriptor, kind: 'region', regionAnchor: regionSelector(root), activation: descriptor, label: label, trigger: 'click:' + label, contentSig: rsig, data: extractScoped(root) });
+          return addState({ stateKey: 'act:' + descriptor, kind: 'region', regionAnchor: regionSelector(root), activation: descriptor, label: label, trigger: 'click:' + label, contentSig: rsig, data: extractScoped(root) }, root).then(step);
         } else {
           if (seenSigs[res.after]) { skipped.push({ label: label, reason: 'duplicate-content' }); return step(); }
           seenSigs[res.after] = true;
-          pushState({ stateKey: 'act:' + descriptor, kind: 'page', activation: descriptor, label: label, trigger: 'click:' + label, contentSig: res.after, data: extractNow() });
+          return addState({ stateKey: 'act:' + descriptor, kind: 'page', activation: descriptor, label: label, trigger: 'click:' + label, contentSig: res.after, data: extractNow() }, document.documentElement).then(step);
         }
-        return step();
       });
     }
     return Promise.resolve().then(step);
