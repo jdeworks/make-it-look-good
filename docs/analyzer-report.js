@@ -822,7 +822,8 @@ window.MilgReport = (function() {
       destructive: 'unsafe — destructive control', submit: 'form submit', input: 'form input',
       'in-form': 'inside a form', external: 'external link', 'click-error': 'click failed',
       'change-too-small': 'change too small', 'duplicate-content': 'duplicate content', 'empty-region': 'empty panel',
-      'too-deep': 'nesting limit reached', 'nested-filter': 'filter/setting inside a sub-view'
+      'too-deep': 'nesting limit reached', 'nested-filter': 'filter/setting inside a sub-view',
+      'theme-toggle': 'appearance/theme toggle (re-skin, not a view)'
     };
     var clicked = prov.clicked || [], skipped = prov.skipped || [], notes = prov.notes || [];
     var changedN = clicked.filter(function(c) { return c.changed; }).length;

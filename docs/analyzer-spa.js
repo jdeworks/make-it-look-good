@@ -1,4 +1,4 @@
-// make-it-look-good — SPA View Explorer v3.11.99
+// make-it-look-good — SPA View Explorer v3.11.100
 // Runs INSIDE the analysis iframe (injected alongside MilgExtract). Discovers the
 // hidden "views" of a single-page app — reached by hash/History routes (Tier 1) or
 // by clicking nav controls (Tier 2, opt-in) — and re-runs MilgExtract on each so the
@@ -79,6 +79,45 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
 
   function labelOf(el) {
     return (el.textContent || el.getAttribute('aria-label') || el.getAttribute('title') || '').trim();
+  }
+
+  // --- Appearance/theme-toggle detection (dark↔light etc.) ---
+  // A theme switch re-skins the page but keeps the same text + structure, so it must NOT
+  // be counted as a new "view". Two deterministic signals (see clickAndSettle): the visible
+  // TEXT is unchanged across the click, and/or a ROOT theme attribute/class flips. A
+  // label/icon hint is a corroborating fast-path for the rare case both are ambiguous.
+
+  // Hash of the page's normalized visible text — identical before/after a pure re-skin.
+  function textSig() {
+    try {
+      var t = (document.body.textContent || '').replace(/\s+/g, ' ').trim();
+      var h = 5381; for (var i = 0; i < t.length; i++) { h = ((h << 5) + h + t.charCodeAt(i)) | 0; }
+      return h + ':' + t.length;
+    } catch (e) { return '0'; }
+  }
+
+  // Root-level theme state: <html>/<body> class + data-theme/-color-scheme/-mode + inline
+  // style (color vars / color-scheme). A change here = the app flipped its appearance.
+  function themeKey() {
+    try {
+      var de = document.documentElement, bd = document.body;
+      function k(el) {
+        if (!el) return '';
+        return (el.getAttribute('class') || '') + '§' + (el.getAttribute('data-theme') || el.getAttribute('data-color-scheme') || el.getAttribute('data-mode') || el.getAttribute('data-color-mode') || '') + '§' + (el.getAttribute('style') || '');
+      }
+      return k(de) + '¶' + k(bd);
+    } catch (e) { return ''; }
+  }
+
+  // Cheap label/icon/class hint that a control is an appearance toggle.
+  function themeHint(el) {
+    try {
+      var s = (labelOf(el) + ' ' + (el.getAttribute('aria-label') || '') + ' ' + (el.getAttribute('title') || '') + ' ' + ((el.className && typeof el.className === 'string') ? el.className : '')).toLowerCase();
+      if (/\btheme\b|appearance|colou?r\s*scheme|\b(dark|light|night|day)\s*mode\b/.test(s)) return true;
+      if (/[☀☁☼☽☾\u{1F311}-\u{1F31C}\u{1F506}]/u.test(labelOf(el))) return true; // sun/moon glyphs
+      if (el.querySelector && el.querySelector('[class*="moon" i],[class*="sun" i],[class*="theme" i]')) return true;
+    } catch (e) {}
+    return false;
   }
 
   // Live clickable candidates (re-queried each step so framework re-renders + newly
@@ -237,12 +276,12 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
         obs = new MutationObserver(function(muts) { last = nowMs(); for (var i = 0; i < muts.length; i++) { var t = muts[i].target; if (t) mutated.push(t.nodeType === 1 ? t : t.parentNode); } });
         obs.observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true });
       } catch (e) {}
-      var before = domSignature();
+      var before = domSignature(), beforeText = textSig(), beforeTheme = themeKey();
       try { el.click(); } catch (e) { if (obs) obs.disconnect(); resolve({ error: true }); return; }
       (function tick() {
         if (done) return;
         var t = nowMs();
-        if (t - last >= quietMs || t - start >= maxMs) { done = true; if (obs) obs.disconnect(); resolve({ before: before, after: domSignature(), mutated: mutated }); return; }
+        if (t - last >= quietMs || t - start >= maxMs) { done = true; if (obs) obs.disconnect(); resolve({ before: before, after: domSignature(), mutated: mutated, beforeText: beforeText, afterText: textSig(), beforeTheme: beforeTheme, afterTheme: themeKey() }); return; }
         setTimeout(tick, 50);
       })();
     });
@@ -403,6 +442,17 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
         var changed = res.after !== res.before;
         clicked.push({ label: label, changed: changed });
         if (!changed) return step();
+        // Appearance/theme toggle (dark↔light, etc.) — a re-skin, not a view. Skip it when
+        // the visible text is unchanged AND/OR a root theme attribute flipped (two signals,
+        // a label/icon hint corroborates). Then click it again to RESTORE the default
+        // appearance so later views aren't all captured in the toggled theme.
+        var themeFlip = res.afterTheme !== res.beforeTheme;
+        var textSame = res.afterText === res.beforeText;
+        var hinted = themeHint(trigger);
+        if ((themeFlip && textSame) || (hinted && (themeFlip || textSame))) {
+          skipped.push({ label: label, reason: 'theme-toggle' });
+          return clickAndSettle(trigger).then(function() { return step(); });
+        }
         // Depth of the state this control was revealed under → the new state sits one below.
         var parentDepth = (discoveredUnder[nextKey] != null && depthByKey[discoveredUnder[nextKey]] != null) ? depthByKey[discoveredUnder[nextKey]] : 0;
         if (parentDepth + 1 > MAX_DEPTH) { skipped.push({ label: label, reason: 'too-deep' }); return step(); }
