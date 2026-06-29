@@ -34,3 +34,62 @@ test('analyzer UI exposes accessible names + live regions', async ({ page }) => 
   expect(a.analysisProgressLive).toBe('polite');
   expect(a.hasProfilesH2).toBe(true);
 });
+
+test('input tabs follow the WAI-ARIA tabs pattern (roles + roving tabindex)', async ({ page }) => {
+  await page.goto(ANALYZER);
+  const t = await page.evaluate(() => {
+    const list = document.querySelector('.input-tabs');
+    const tabs = Array.from(document.querySelectorAll('.tab-btn'));
+    const active = tabs.find((b) => b.classList.contains('active'));
+    return {
+      listRole: list && list.getAttribute('role'),
+      tabRoles: tabs.map((b) => b.getAttribute('role')),
+      activeSelected: active && active.getAttribute('aria-selected'),
+      activeTabindex: active && active.getAttribute('tabindex'),
+      inactiveTabindexes: tabs.filter((b) => b !== active).map((b) => b.getAttribute('tabindex')),
+      controls: tabs.map((b) => b.getAttribute('aria-controls')),
+      panelsExist: tabs.every((b) => !!document.getElementById(b.getAttribute('aria-controls'))),
+      panelRoles: tabs.map((b) => { const p = document.getElementById(b.getAttribute('aria-controls')); return p && p.getAttribute('role'); }),
+    };
+  });
+  expect(t.listRole).toBe('tablist');
+  expect(t.tabRoles.every((r) => r === 'tab')).toBe(true);
+  expect(t.activeSelected).toBe('true');
+  expect(t.activeTabindex).toBe('0');
+  expect(t.inactiveTabindexes.every((x) => x === '-1')).toBe(true);
+  expect(t.controls.every(Boolean)).toBe(true);
+  expect(t.panelsExist).toBe(true);
+  expect(t.panelRoles.every((r) => r === 'tabpanel')).toBe(true);
+
+  // Arrow-key navigation: focus the first tab, ArrowRight activates the second.
+  await page.focus('.tab-btn[data-tab="tabUrl"]');
+  await page.keyboard.press('ArrowRight');
+  const after = await page.evaluate(() => {
+    const snippet = document.querySelector('.tab-btn[data-tab="tabSnippet"]');
+    return {
+      activeData: document.activeElement && document.activeElement.dataset && document.activeElement.dataset.tab,
+      snippetActive: snippet.classList.contains('active'),
+      snippetSelected: snippet.getAttribute('aria-selected'),
+      panelShown: document.getElementById('tabSnippet').classList.contains('active'),
+    };
+  });
+  expect(after.activeData).toBe('tabSnippet');
+  expect(after.snippetActive).toBe(true);
+  expect(after.snippetSelected).toBe('true');
+  expect(after.panelShown).toBe(true);
+});
+
+test('analyzer.css honors prefers-reduced-motion', async ({ page }) => {
+  await page.goto(ANALYZER);
+  const hasReducedMotion = await page.evaluate(() => {
+    for (const sheet of Array.from(document.styleSheets)) {
+      let rules;
+      try { rules = sheet.cssRules; } catch (e) { continue; }
+      for (const rule of Array.from(rules || [])) {
+        if (rule.media && /prefers-reduced-motion/.test(rule.conditionText || rule.media.mediaText || '')) return true;
+      }
+    }
+    return false;
+  });
+  expect(hasReducedMotion).toBe(true);
+});

@@ -151,11 +151,13 @@ window.MilgReport = (function() {
 
       html += '<div class="report-finding-group" id="findings-' + _slug(cat.label) + '">';
       html += '<h3>' + (categoryIcons[cat.icon] || '') + ' ' + cat.label + '</h3>';
+      // Findings are a semantic list so screen readers announce count + position.
+      html += '<ul class="report-finding-list" style="list-style:none;margin:0;padding:0">';
 
       cat.findings.forEach(function(f) {
         if (f.severity === 'pass') return; // pass findings only show in screenshot viewer
         var hasBboxes = f.locator && f.locator.bboxes && f.locator.bboxes.length > 0;
-        html += '<div class="report-finding severity-' + f.severity + '"' + (hasBboxes ? ' data-finding-idx="' + _bboxFindingIdx + '"' : '') + '>';
+        html += '<li class="report-finding severity-' + f.severity + '"' + (hasBboxes ? ' data-finding-idx="' + _bboxFindingIdx + '"' : '') + '>';
         html += '<div class="finding-header">';
         html += severityBadge(f.severity);
         html += '<span class="finding-title">' + escapeHtml(f.title) + '</span>';
@@ -242,10 +244,10 @@ window.MilgReport = (function() {
         }
         if (hasBboxes) _bboxFindingIdx++;
 
-        html += '</div>';
+        html += '</li>';
       });
 
-      html += '</div>';
+      html += '</ul></div>';
     });
 
     html += '</div>';

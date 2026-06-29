@@ -1528,3 +1528,21 @@ body.dark-ui .crawl-issue-group .severity-badge.warning { background:#451a00; co
 
 /* Touch targets: checkbox rows act as the hit area — keep them ≥32px tall. */
 label:has(> input[type="checkbox"]) { min-height: 32px; }
+
+/* Respect prefers-reduced-motion (WCAG 2.3.3): the looping progress pulses
+   (crawl status icons / pending score dots) and finite attention pulses can
+   trigger vestibular discomfort. Fully stop the loops and collapse every other
+   animation/transition for users who opt out of motion. */
+@media (prefers-reduced-motion: reduce) {
+  .crawl-progress-item .status-icon.active,
+  .crawl-page-tab .score-dot.pending,
+  .milg-viewer-filter-btn.milg-viewer-verify-hl {
+    animation: none !important;
+  }
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

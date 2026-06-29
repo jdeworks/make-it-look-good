@@ -1,8 +1,8 @@
-// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.109
+// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.110
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.109 loaded');
+console.log('[milg] analyzer.js v3.11.110 loaded');
 
 (function() {
   "use strict";
@@ -939,6 +939,38 @@ console.log('[milg] analyzer.js v3.11.109 loaded');
         if (_analysisOptions) _analysisOptions.style.display = (btn.dataset.tab === 'tabImport') ? 'none' : 'flex';
       });
     });
+
+    // Tab accessibility (WAI-ARIA tabs pattern): reflect the .active state to
+    // aria-selected + a roving tabindex, and add arrow/Home/End keyboard nav.
+    // The two click handlers above only toggle .active classes; this layer runs on
+    // bubble (after them) and keeps the ARIA state in sync from a single place.
+    var _inputTablist = document.querySelector('.input-tabs[role="tablist"]');
+    if (_inputTablist) {
+      var _tabBtns = function() { return Array.prototype.slice.call(_inputTablist.querySelectorAll('.tab-btn')); };
+      var _syncTabAria = function() {
+        _tabBtns().forEach(function(b) {
+          var on = b.classList.contains('active');
+          b.setAttribute('aria-selected', on ? 'true' : 'false');
+          b.setAttribute('tabindex', on ? '0' : '-1');
+        });
+      };
+      _inputTablist.addEventListener('click', _syncTabAria);
+      _inputTablist.addEventListener('keydown', function(e) {
+        var btns = _tabBtns();
+        var i = btns.indexOf(document.activeElement);
+        if (i === -1) return;
+        var next = -1;
+        if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (i + 1) % btns.length;
+        else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = (i - 1 + btns.length) % btns.length;
+        else if (e.key === 'Home') next = 0;
+        else if (e.key === 'End') next = btns.length - 1;
+        else return;
+        e.preventDefault();
+        btns[next].focus();
+        btns[next].click(); // automatic activation — shows the panel + syncs ARIA
+      });
+      _syncTabAria();
+    }
 
     // Snippet loading with crawl + screenshot options
     var sharedScreenshotCheck = document.getElementById('screenshotCheck');

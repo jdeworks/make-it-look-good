@@ -6,7 +6,7 @@
   <title>make-it-look-good — Design Analyzer</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='2' y='2' width='12' height='12' rx='2' fill='%232563eb'/><rect x='18' y='2' width='12' height='12' rx='2' fill='%2393c5fd'/><rect x='2' y='18' width='12' height='12' rx='2' fill='%2393c5fd'/><rect x='18' y='18' width='12' height='12' rx='2' fill='%232563eb'/></svg>">
   <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="analyzer.css?v=3.11.109">
+  <link rel="stylesheet" href="analyzer.css?v=3.11.110">
 </head>
 <body class="analyzer-body">
 
@@ -42,16 +42,16 @@
       <button type="button" aria-label="Dismiss" title="Dismiss for now" onclick="window.__milgBannerDismiss&&window.__milgBannerDismiss()" style="background:none;border:none;color:var(--text-secondary);font-size:20px;line-height:1;padding:6px 10px;min-height:36px;min-width:36px;cursor:pointer">&times;</button>
     </div>
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.11.109</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.11.110</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
     <!-- Tabs -->
-    <div class="input-tabs">
-      <button class="tab-btn active" data-tab="tabUrl">Enter URL<br><span class="tab-sub">(mobile-friendly)</span></button>
-      <button class="tab-btn" data-tab="tabSnippet">Console Snippet<br><span class="tab-sub">(most accurate)</span></button>
-      <button class="tab-btn" data-tab="tabHtml">Paste HTML<br><span class="tab-sub">(partial fallback)</span></button>
-      <button class="tab-btn" data-tab="tabImport">Load Saved<br><span class="tab-sub">(re-open analysis)</span></button>
+    <div class="input-tabs" role="tablist" aria-label="Input method">
+      <button class="tab-btn active" data-tab="tabUrl" id="tabBtnUrl" role="tab" aria-selected="true" aria-controls="tabUrl" tabindex="0">Enter URL<br><span class="tab-sub">(mobile-friendly)</span></button>
+      <button class="tab-btn" data-tab="tabSnippet" id="tabBtnSnippet" role="tab" aria-selected="false" aria-controls="tabSnippet" tabindex="-1">Console Snippet<br><span class="tab-sub">(most accurate)</span></button>
+      <button class="tab-btn" data-tab="tabHtml" id="tabBtnHtml" role="tab" aria-selected="false" aria-controls="tabHtml" tabindex="-1">Paste HTML<br><span class="tab-sub">(partial fallback)</span></button>
+      <button class="tab-btn" data-tab="tabImport" id="tabBtnImport" role="tab" aria-selected="false" aria-controls="tabImport" tabindex="-1">Load Saved<br><span class="tab-sub">(re-open analysis)</span></button>
     </div>
 
     <!-- Shared analysis options (hidden on Import tab — imported data has its own settings) -->
@@ -99,7 +99,7 @@
     </div>
 
     <!-- Tab 0: URL fetch -->
-    <div class="tab-content active" id="tabUrl">
+    <div class="tab-content active" id="tabUrl" role="tabpanel" aria-labelledby="tabBtnUrl">
       <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;line-height:1.5;">
         Enter a URL to analyze &mdash; works on phone, no console needed.
       </p>
@@ -224,7 +224,7 @@
     </div>
 
     <!-- Tab 1: Snippet extraction -->
-    <div class="tab-content" id="tabSnippet">
+    <div class="tab-content" id="tabSnippet" role="tabpanel" aria-labelledby="tabBtnSnippet">
       <div class="guide-steps">
         <div class="guide-step">
           <div class="guide-step-num">1</div>
@@ -304,7 +304,7 @@
     </div>
 
     <!-- Tab 2: Paste HTML fallback -->
-    <div class="tab-content" id="tabHtml">
+    <div class="tab-content" id="tabHtml" role="tabpanel" aria-labelledby="tabBtnHtml">
       <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;line-height:1.5;">
         Paste copied markup from DevTools Elements when URL mode and the console snippet are blocked. This is a partial fallback for pages behind login, strict CSP, or private environments.
       </p>
@@ -328,7 +328,7 @@
     </div>
 
     <!-- Tab 3: Load Saved Analysis -->
-    <div class="tab-content" id="tabImport">
+    <div class="tab-content" id="tabImport" role="tabpanel" aria-labelledby="tabBtnImport">
       <div class="import-dropzone" id="importDropzone">
         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--text-secondary);margin-bottom:12px">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
@@ -522,34 +522,34 @@
   <div class="toast" id="toast" aria-live="polite" aria-atomic="true" role="status"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=3.11.109"></script>
-  <script src="scoring/contrast.js?v=3.11.109"></script>
-  <script src="scoring/typography.js?v=3.11.109"></script>
-  <script src="scoring/spacing.js?v=3.11.109"></script>
-  <script src="scoring/touch.js?v=3.11.109"></script>
-  <script src="scoring/accessibility.js?v=3.11.109"></script>
-  <script src="scoring/responsive.js?v=3.11.109"></script>
-  <script src="scoring/consistency.js?v=3.11.109"></script>
-  <script src="scoring/cognitive.js?v=3.11.109"></script>
-  <script src="scoring/layout.js?v=3.11.109"></script>
-  <script src="scoring/performance.js?v=3.11.109"></script>
-  <script src="scoring/readability.js?v=3.11.109"></script>
-  <script src="scoring/filters.js?v=3.11.109"></script>
-  <script src="scoring/balance.js?v=3.11.109"></script>
-  <script src="scoring/polish.js?v=3.11.109"></script>
+  <script src="scoring/registry.js?v=3.11.110"></script>
+  <script src="scoring/contrast.js?v=3.11.110"></script>
+  <script src="scoring/typography.js?v=3.11.110"></script>
+  <script src="scoring/spacing.js?v=3.11.110"></script>
+  <script src="scoring/touch.js?v=3.11.110"></script>
+  <script src="scoring/accessibility.js?v=3.11.110"></script>
+  <script src="scoring/responsive.js?v=3.11.110"></script>
+  <script src="scoring/consistency.js?v=3.11.110"></script>
+  <script src="scoring/cognitive.js?v=3.11.110"></script>
+  <script src="scoring/layout.js?v=3.11.110"></script>
+  <script src="scoring/performance.js?v=3.11.110"></script>
+  <script src="scoring/readability.js?v=3.11.110"></script>
+  <script src="scoring/filters.js?v=3.11.110"></script>
+  <script src="scoring/balance.js?v=3.11.110"></script>
+  <script src="scoring/polish.js?v=3.11.110"></script>
   <!-- Queue + Report rendering + UI -->
-  <script src="analyzer-queue.js?v=3.11.109"></script>
-  <script src="analyzer-report.js?v=3.11.109"></script>
-  <script src="analyzer-crawl.js?v=3.11.109"></script>
-  <script src="analyzer-extract.js?v=3.11.109"></script>
-  <script src="analyzer-spa.js?v=3.11.109"></script>
-  <script src="analyzer-region.js?v=3.11.109"></script>
-  <script src="analyzer-capture.js?v=3.11.109"></script>
-  <script src="analyzer-iframe.js?v=3.11.109"></script>
-  <script src="analyzer-proxy.js?v=3.11.109"></script>
-  <script src="analyzer-crawl-ui.js?v=3.11.109"></script>
-  <script src="analyzer-contrast-verify.js?v=3.11.109"></script>
-  <script src="analyzer-viewer.js?v=3.11.109"></script>
-  <script src="analyzer.js?v=3.11.109"></script>
+  <script src="analyzer-queue.js?v=3.11.110"></script>
+  <script src="analyzer-report.js?v=3.11.110"></script>
+  <script src="analyzer-crawl.js?v=3.11.110"></script>
+  <script src="analyzer-extract.js?v=3.11.110"></script>
+  <script src="analyzer-spa.js?v=3.11.110"></script>
+  <script src="analyzer-region.js?v=3.11.110"></script>
+  <script src="analyzer-capture.js?v=3.11.110"></script>
+  <script src="analyzer-iframe.js?v=3.11.110"></script>
+  <script src="analyzer-proxy.js?v=3.11.110"></script>
+  <script src="analyzer-crawl-ui.js?v=3.11.110"></script>
+  <script src="analyzer-contrast-verify.js?v=3.11.110"></script>
+  <script src="analyzer-viewer.js?v=3.11.110"></script>
+  <script src="analyzer.js?v=3.11.110"></script>
 </body>
 </html>
