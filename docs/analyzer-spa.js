@@ -1,4 +1,4 @@
-// make-it-look-good — SPA View Explorer v3.11.97
+// make-it-look-good — SPA View Explorer v3.11.98
 // Runs INSIDE the analysis iframe (injected alongside MilgExtract). Discovers the
 // hidden "views" of a single-page app — reached by hash/History routes (Tier 1) or
 // by clicking nav controls (Tier 2, opt-in) — and re-runs MilgExtract on each so the
@@ -86,7 +86,11 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
   // blast radius; disabled controls are skipped (clicking is a no-op anyway).
   function liveCandidates() {
     var out = [], seen = [];
-    var sel = 'button, [role="button"], [role="tab"], [role="menuitem"], [aria-controls], [aria-selected], a[href^="#"], [data-page], [data-view], [data-tab], [data-step], [data-nav], .nav-link, .tab';
+    // NOTE: no a[href] here — with the injected <base> tag, clicking a hash anchor
+    // (e.g. a skip-to-content link) resolves against the real URL and navigates the
+    // iframe away, tearing down our injected scripts. Hash routes are handled safely by
+    // Tier-1 (location.hash=) instead.
+    var sel = 'button, [role="button"], [role="tab"], [role="menuitem"], [aria-controls], [aria-selected], [data-page], [data-view], [data-tab], [data-step], [data-nav], .nav-link, .tab';
     function add(el) {
       if (!el || seen.indexOf(el) !== -1) return;
       if (el.disabled || el.getAttribute('aria-disabled') === 'true') return;

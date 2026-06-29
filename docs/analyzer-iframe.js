@@ -685,13 +685,28 @@ window.MilgIframe = (function() {
     var bootDelay = 2000;
     var msCdn = 'https://cdn.jsdelivr.net/npm/modern-screenshot@4.6.8/dist/index.js';
     var cdnTag = wantShots ? '<script src="' + msCdn + '"></' + 'script>' : '';
+    // Robust boot: heavy SPA bundles fire `load` late (or it already fired before this
+    // script registered) and need time to render their nav. So: (1) start once, guarded;
+    // (2) wait until the app looks RENDERED (clickable controls present, or substantial
+    // DOM) up to a cap, instead of a fixed delay; (3) a fallback timer guarantees we run
+    // even if `load` never fires. Then wait for the screenshot lib (if capturing) and explore.
     var bootstrap =
       '(function(){' +
-      'var CAP=' + (wantShots ? 'true' : 'false') + ';' +
+      'var CAP=' + (wantShots ? 'true' : 'false') + ',started=false;' +
+      // Navigation guard: a <base>-resolved anchor click (e.g. a skip-to-content link) or a
+      // control that sets location would unload the srcdoc and destroy our injected scripts.
+      // Block anchor navigation + beforeunload during analysis; the explorer drives state via
+      // buttons + Tier-1 location.hash (which stays within the srcdoc).
+      'try{document.addEventListener("click",function(e){var a=e.target&&e.target.closest&&e.target.closest("a[href]");if(a)e.preventDefault();},true);' +
+      'window.addEventListener("beforeunload",function(e){e.preventDefault();e.returnValue="";});}catch(_g){}' +
       'function post(r){parent.postMessage({type:"milg-spa-views",result:r,_iframeId:"' + _iframeId + '"},"*")}' +
       'function run(){try{window.MilgSpaExplore(' + JSON.stringify(spaOpts) + ').then(post).catch(function(e){post({views:[],error:String(e&&e.message||e)})})}catch(e){post({views:[],error:String(e)})}}' +
-      'function go(){if(CAP&&!(window.modernScreenshot&&window.modernScreenshot.domToCanvas)){var w=0,t=setInterval(function(){w+=200;if((window.modernScreenshot&&window.modernScreenshot.domToCanvas)||w>=6000){clearInterval(t);run()}},200);return}run()}' +
-      'window.addEventListener("load",function(){setTimeout(go,' + bootDelay + ')});' +
+      'function libReady(){return CAP?!!(window.modernScreenshot&&window.modernScreenshot.domToCanvas):true}' +
+      'function explore(){if(!libReady()){var w=0,t=setInterval(function(){w+=200;if(libReady()||w>=6000){clearInterval(t);run()}},200);return}run()}' +
+      'function booted(){try{return document.querySelectorAll("button,[role=button],a[href],[role=tab]").length>2||document.body.getElementsByTagName("*").length>60}catch(e){return true}}' +
+      'function start(){if(started)return;started=true;var w=0;(function poll(){if(booted()||w>=' + bootDelay + '+6000){explore();return}w+=200;setTimeout(poll,200)})()}' +
+      'if(document.readyState==="complete")setTimeout(start,' + bootDelay + ');else window.addEventListener("load",function(){setTimeout(start,' + bootDelay + ')});' +
+      'setTimeout(start,' + bootDelay + '+9000);' + // fallback if load never fires
       '})();';
     var inject =
       '<script>window.__milgIframeId="' + _iframeId + '";</' + 'script>' +
@@ -705,8 +720,11 @@ window.MilgIframe = (function() {
     var srcdoc = /<\/body>/i.test(html) ? html.replace(/<\/body>/i, function() { return inject + '</body>'; }) : html + inject;
     iframe.srcdoc = srcdoc;
 
-    // Hard timeout: boot delay + explorer budget + (screenshot lib wait + capture) margin.
-    setTimeout(function() { finish({ views: [], error: 'spa-explore-timeout' }); }, bootDelay + spaOpts.timeBudgetMs + (wantShots ? 20000 : 8000));
+    // Hard backstop, sized ABOVE the bootstrap's own deadlines (boot poll + fallback start
+    // at bootDelay+9000, + screenshot-lib wait, + the explorer's timeBudget, + per-state
+    // capture overhead) so the explorer's own resolution (with partial views) wins instead
+    // of this discarding everything.
+    setTimeout(function() { finish({ views: [], error: 'spa-explore-timeout' }); }, bootDelay + 9000 + spaOpts.timeBudgetMs + (wantShots ? 25000 : 12000));
   }
 
   return {
