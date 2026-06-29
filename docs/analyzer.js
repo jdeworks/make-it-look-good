@@ -1,8 +1,8 @@
-// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.92
+// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.93
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.92 loaded');
+console.log('[milg] analyzer.js v3.11.93 loaded');
 
 (function() {
   "use strict";
@@ -1422,9 +1422,14 @@ console.log('[milg] analyzer.js v3.11.92 loaded');
               showProgress(100, 'Done!');
               setTimeout(hideProgress, 500);
               urlStatus.style.display = 'none';
-              if (r && r.views && r.views.length > 1) {
+              // Region-kind states (mid-page tab panels) are detected by the explorer but
+              // not yet surfaced — they need scoped extraction + element-anchored screenshots
+              // + dedicated rendering (next stages). For now only full-view "page" states
+              // surface, so shipped single-URL SPA behavior is unchanged.
+              var _surface = (r && r.views ? r.views : []).filter(function(v) { return v.kind !== 'region'; });
+              if (_surface.length > 1) {
                 var _base = url.replace(/#.*$/, '');
-                var results = r.views.map(function(v) {
+                var results = _surface.map(function(v) {
                   var sk = String(v.stateKey || '').replace(/^#/, '');
                   v.data.meta = v.data.meta || {};
                   v.data.meta.url = _base + (sk ? '#' + sk : '');
@@ -1435,7 +1440,7 @@ console.log('[milg] analyzer.js v3.11.92 loaded');
                   return { url: v.data.meta.url, data: v.data };
                 });
                 var _skipN = (r.skipped || []).length;
-                showToast(r.views.length + ' SPA views analyzed' + (_skipN ? ', ' + _skipN + ' unsafe control' + (_skipN > 1 ? 's' : '') + ' skipped' : '') + (r.truncated ? ' (capped)' : ''));
+                showToast(_surface.length + ' SPA views analyzed' + (_skipN ? ', ' + _skipN + ' unsafe control' + (_skipN > 1 ? 's' : '') + ' skipped' : '') + (r.truncated ? ' (capped)' : ''));
                 MilgCrawlUI.loadCrawlResults({ startUrl: url, results: results, _spaProvenance: { clicked: r.clicked, skipped: r.skipped, notes: r.notes, truncated: r.truncated } }, 'SPA views');
               } else {
                 if (r && r.error) showToast('SPA explore failed (' + r.error + ') — showing single view');
