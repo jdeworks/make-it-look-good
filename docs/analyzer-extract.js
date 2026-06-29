@@ -1164,6 +1164,41 @@ window.MilgExtract = (function() {
       data.layout.fixedContrastRisks = data.layout.fixedContrastRisks.slice(0, 10);
     })();
 
+    // Fixed/sticky chrome consuming the viewport (mobile UX). Sum the vertical span
+    // of visible, ~full-width position:fixed / position:sticky bars (headers, nav,
+    // footers, toolbars) that sit within the first screen, as a % of viewport
+    // height. Feeds layout.js's "fixed elements consume X% of viewport" check, which
+    // was previously dormant — the value was referenced in scoring but never set.
+    (function() {
+      var vpH = window.innerHeight || 0;
+      var vpW = window.innerWidth || 0;
+      data.layout.fixedViewportConsumption = 0;
+      if (vpH <= 0 || vpW <= 0) return;
+      var spans = [];
+      _qa('header,nav,footer,aside,[class*="fixed"],[class*="sticky"],[class*="toolbar"],[class*="navbar"],[class*="appbar"],[class*="topbar"],[class*="bottom-bar"]').forEach(function(el) {
+        var s = getComputedStyle(el);
+        if (s.position !== 'fixed' && s.position !== 'sticky') return;
+        if (!isVisible(el) || isDecorative(el)) return;
+        var r = el.getBoundingClientRect();
+        // Only ~full-width bars count as "chrome"; ignore narrow floating widgets
+        // (FABs, chat bubbles, back-to-top) that don't crowd out content.
+        if (r.width < vpW * 0.5) return;
+        var top = Math.max(0, r.top);
+        var bottom = Math.min(vpH, r.bottom);
+        if (bottom - top < 4) return; // occupies no meaningful space in the viewport
+        spans.push([top, bottom]);
+      });
+      // Union of vertical intervals so overlapping/stacked bars aren't double-counted.
+      spans.sort(function(a, b) { return a[0] - b[0]; });
+      var covered = 0, curStart = -1, curEnd = -1;
+      spans.forEach(function(iv) {
+        if (iv[0] > curEnd) { if (curEnd > curStart) covered += curEnd - curStart; curStart = iv[0]; curEnd = iv[1]; }
+        else if (iv[1] > curEnd) { curEnd = iv[1]; }
+      });
+      if (curEnd > curStart) covered += curEnd - curStart;
+      data.layout.fixedViewportConsumption = Math.round((covered / vpH) * 100);
+    })();
+
     // --- Missing data points expected by scoring modules ---
     data.structure.hasHorizontalOverflow = document.documentElement.scrollWidth > document.documentElement.clientWidth;
     // Find the widest element causing page-level overflow
