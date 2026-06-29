@@ -1,8 +1,8 @@
-// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.103
+// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.104
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.103 loaded');
+console.log('[milg] analyzer.js v3.11.104 loaded');
 
 (function() {
   "use strict";
@@ -897,6 +897,12 @@ console.log('[milg] analyzer.js v3.11.103 loaded');
   // --- UI Initialization ---
   function init() {
     applyDarkMode();
+
+    // Best-effort disclaimer banner: × dismisses for this load; "Don't show again" persists.
+    // Inline onclick handlers (survive the input-section innerHTML save/restore below).
+    window.__milgBannerDismiss = function() { var b = document.getElementById('bestEffortBanner'); if (b) b.style.display = 'none'; };
+    window.__milgBannerNever = function() { window.__milgBannerDismiss(); try { localStorage.setItem('milg-besteffort-dismissed', '1'); } catch (e) {} };
+    try { if (localStorage.getItem('milg-besteffort-dismissed') === '1') window.__milgBannerDismiss(); } catch (e) {}
 
     var pasteInput = document.getElementById('pasteInput');
     var analyzeBtn = document.getElementById('analyzeBtn');
