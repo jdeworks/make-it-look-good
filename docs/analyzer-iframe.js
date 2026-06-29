@@ -336,14 +336,17 @@ window.MilgIframe = (function() {
       var colorScheme = opts.colorScheme || _getColorScheme();
       if (colorScheme === 'dark' || colorScheme === 'light') {
         var wantDark = colorScheme === 'dark';
+        var _tgt = wantDark ? 'dark' : 'light';
         html = html.replace(/<html\b([^>]*)>/i, function(m, attrs) {
-          // merge a class token
+          // Set the EXPLICIT target class token + drop the opposite. Handles both the
+          // Tailwind convention (class="dark" = dark, no class = light) AND the inverted
+          // one (class="light" = light, no class = dark — e.g. dead-data-cleaner).
           var cm = /\bclass\s*=\s*("([^"]*)"|'([^']*)')/i.exec(attrs);
           if (cm) {
-            var toks = ((cm[2] != null ? cm[2] : cm[3]) || '').split(/\s+/).filter(function(t) { return t && t !== 'dark'; });
-            if (wantDark) toks.push('dark');
+            var toks = ((cm[2] != null ? cm[2] : cm[3]) || '').split(/\s+/).filter(function(t) { return t && t !== 'dark' && t !== 'light'; });
+            toks.push(_tgt);
             attrs = attrs.replace(cm[0], 'class="' + toks.join(' ') + '"');
-          } else if (wantDark) { attrs += ' class="dark"'; }
+          } else { attrs += ' class="' + _tgt + '"'; }
           // data-theme
           var tm = /\bdata-theme\s*=\s*("[^"]*"|'[^']*')/i.exec(attrs);
           if (tm) attrs = attrs.replace(tm[0], 'data-theme="' + (wantDark ? 'dark' : 'light') + '"');
@@ -358,6 +361,11 @@ window.MilgIframe = (function() {
         });
         // matchMedia override (runs before page JS — injected before the first <script>)
         scripts += '<script>(function(){try{var _mm=window.matchMedia?window.matchMedia.bind(window):null;var WD=' + (wantDark ? 'true' : 'false') + ';window.matchMedia=function(q){q=String(q||"");if(/prefers-color-scheme/i.test(q)){var dq=/dark/i.test(q);var mm=dq?WD:!WD;return{matches:mm,media:q,onchange:null,addListener:function(){},removeListener:function(){},addEventListener:function(){},removeEventListener:function(){},dispatchEvent:function(){return false}}}return _mm?_mm(q):{matches:false,media:q,addListener:function(){},removeListener:function(){},addEventListener:function(){},removeEventListener:function(){}}};}catch(e){}})();</' + 'script>';
+        // ENFORCE the scheme: SPA frameworks (React, etc.) set documentElement.className on
+        // hydration, wiping our static injection. Re-apply the target class/data-theme/
+        // color-scheme on any <html>/<body> attribute change for ~5s (covers boot + settle),
+        // then disconnect. Idempotent (only mutates when state differs) so it can't thrash.
+        scripts += '<script>(function(){try{var T="' + _tgt + '",O="' + (wantDark ? 'light' : 'dark') + '";function ap(){try{var de=document.documentElement;if(de){if(de.classList.contains(O))de.classList.remove(O);if(!de.classList.contains(T))de.classList.add(T);if(de.getAttribute("data-theme")!==T)de.setAttribute("data-theme",T);if(de.style.colorScheme!==T)de.style.colorScheme=T;}if(document.body&&document.body.classList.contains(O))document.body.classList.remove(O);}catch(e){}}ap();document.addEventListener("DOMContentLoaded",ap);window.addEventListener("load",ap);function obs(n){try{var m=new MutationObserver(function(){ap();});m.observe(n,{attributes:true,attributeFilter:["class","data-theme","style"]});return m;}catch(e){return null;}}var mo=obs(document.documentElement),bo=null;function sb(){if(!bo&&document.body)bo=obs(document.body);}sb();document.addEventListener("DOMContentLoaded",sb);setTimeout(function(){try{if(mo)mo.disconnect();if(bo)bo.disconnect();}catch(e){}},5000);}catch(e){}})();</' + 'script>';
         if (wantDark) {
           // Promote prefers-color-scheme:dark rules to plain CSS after load.
           scripts += '<script>setTimeout(function(){try{Array.prototype.forEach.call(document.styleSheets,function(ss){try{var dr=[];Array.prototype.forEach.call(ss.cssRules,function(r){if(r instanceof CSSMediaRule&&/prefers-color-scheme\\s*:\\s*dark/i.test(r.conditionText||"")){Array.prototype.forEach.call(r.cssRules,function(x){dr.push(x.cssText)})}});if(dr.length){var s=document.createElement("style");s.setAttribute("data-milg-dark","1");s.textContent=dr.join("\\n");document.head.appendChild(s)}}catch(e){}})}catch(e){}},150);</' + 'script>';
