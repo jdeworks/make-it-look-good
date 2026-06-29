@@ -57,7 +57,10 @@ window.MilgReport = (function() {
     }
     var ctxType = (report.raw.context && report.raw.context.pageType) || 'unknown';
     var ctxLabel = { marketing: 'Marketing / Landing', pricing: 'Pricing Page', form: 'Form Page', app: 'Application', content: 'Content Page', component: 'Component / Snippet', unknown: 'General' }[ctxType] || ctxType;
-    html += '<p class="report-timestamp">' + new Date(report.meta.timestamp).toLocaleString() + ' &middot; ' + report.meta.viewportWidth + '&times;' + report.meta.viewportHeight + 'px &middot; Detected: ' + ctxLabel + '</p>';
+    // Color-scheme badge: shown only when the page was forced into a single mode.
+    var _cs = report.meta._colorScheme;
+    var _csBadge = (_cs === 'dark' || _cs === 'light') ? ' &middot; <span style="font-weight:600">Analyzed in ' + _cs + ' mode</span>' : '';
+    html += '<p class="report-timestamp">' + new Date(report.meta.timestamp).toLocaleString() + ' &middot; ' + report.meta.viewportWidth + '&times;' + report.meta.viewportHeight + 'px &middot; Detected: ' + ctxLabel + _csBadge + '</p>';
     html += '</div>';
 
     // Overall score gauge
@@ -570,22 +573,6 @@ window.MilgReport = (function() {
     html += '<p>For a full design review with context-aware judgment, use this report as input for a <a href="index.html" style="color:var(--primary)">design consultation</a> — the findings give an AI or human reviewer concrete data to work from.</p>';
     html += '</div>';
 
-    // Deep scan: dark mode test results (viewport data now shown via tabs above)
-    if (report.raw.deepScan) {
-      var ds = report.raw.deepScan;
-      if (ds.darkMode && ds.darkMode.tested) {
-        html += '<div class="report-summary" style="margin-top:16px">';
-        html += '<h4 style="font-size:13px;margin-bottom:8px">Dark Mode Test</h4>';
-        var dmFails = ds.darkMode.contrastFails;
-        if (dmFails === 0) {
-          html += '<p style="font-size:13px"><span style="color:#16a34a">No contrast failures in dark mode</span></p>';
-        } else {
-          html += '<p style="font-size:13px"><span style="color:#dc2626">' + dmFails + ' contrast failure(s) in dark mode (' + ds.darkMode.contrastTotal + ' pairs checked)</span></p>';
-        }
-        html += '</div>';
-      }
-    }
-
     return html;
   }
 
@@ -669,77 +656,6 @@ window.MilgReport = (function() {
       lines.push('- **Hidden panels:** ' + mhpc + ' detected' + (mhpi && mhpi.length > 0 ? ', ' + mhpi.length + ' overflow when revealed' : ', all fit viewport'));
     }
     lines.push('');
-
-    // Deep scan: viewport results
-    if (report.raw.deepScan && report.raw.deepScan.viewports) {
-      var dsVps = report.raw.deepScan.viewports;
-      var dsVpData = report.raw.deepScan.viewportData;
-      lines.push('## Multi-Viewport Analysis');
-      lines.push('');
-      lines.push('Analyzed across ' + dsVps.length + ' viewports:');
-      lines.push('');
-      lines.push('| Viewport | Width | Contrast Fails | Touch Targets | Overflow |');
-      lines.push('|----------|-------|---------------|---------------|----------|');
-      dsVps.forEach(function(vp, vi) {
-        lines.push('| ' + vp.label + ' | ' + vp.width + 'px | ' + (vp.contrastFails || 0) + ' | ' + (vp.touchTargets || 0) + ' | ' + (vp.overflow ? 'Yes' : 'No') + ' |');
-      });
-      lines.push('');
-      // Per-viewport detailed findings
-      if (dsVpData) {
-        dsVpData.forEach(function(vd, vi) {
-          if (!vd || !vd.data) return;
-          var vpData = vd.data;
-          var contrastFails = (vpData.colors && vpData.colors.contrastPairs || []).filter(function(p) { return !p.passes; });
-          var touchIssues = vpData.interaction && vpData.interaction.touchTargets || [];
-          if (contrastFails.length === 0 && touchIssues.length === 0) return;
-          lines.push('### ' + vd.label + ' (' + vd.width + 'px)');
-          lines.push('');
-          if (contrastFails.length > 0) {
-            lines.push('**Contrast failures (' + contrastFails.length + '):**');
-            contrastFails.slice(0, 10).forEach(function(cf) {
-              lines.push('- `' + (cf.selector || 'unknown') + '` — ratio ' + cf.ratio + ':1 (needs ' + (cf.neededRatio || 4.5) + ':1)');
-            });
-            if (contrastFails.length > 10) lines.push('- ...and ' + (contrastFails.length - 10) + ' more');
-            lines.push('');
-          }
-          if (touchIssues.length > 0) {
-            lines.push('**Touch target issues (' + touchIssues.length + '):**');
-            touchIssues.slice(0, 10).forEach(function(tt) {
-              lines.push('- `' + (tt.selector || tt.element || 'unknown') + '` — ' + tt.width + '×' + tt.height + 'px');
-            });
-            if (touchIssues.length > 10) lines.push('- ...and ' + (touchIssues.length - 10) + ' more');
-            lines.push('');
-          }
-          // Pixel verify results
-          if (vpData._contrastVerifyResults && vpData._contrastVerifyResults.length > 0) {
-            var fp = vpData._contrastVerifyResults.filter(function(r) { return r.cssPasses && !r.pixelPasses && !r.demoted; });
-            var dem = vpData._contrastVerifyResults.filter(function(r) { return !!r.demoted; });
-            var ff = vpData._contrastVerifyResults.filter(function(r) { return !r.cssPasses && r.pixelPasses; });
-            if (fp.length > 0 || ff.length > 0 || dem.length > 0) {
-              lines.push('**Pixel verification:**');
-              if (fp.length > 0) lines.push('- ' + fp.length + ' hidden failure(s) — pass CSS but fail in pixels');
-              if (dem.length > 0) lines.push('- ' + dem.length + ' small-text failure(s) demoted to warning/info (anti-aliasing)');
-              if (ff.length > 0) lines.push('- ' + ff.length + ' false positive(s) — fail CSS but pass in pixels');
-              lines.push('');
-            }
-          }
-        });
-      }
-    }
-
-    // Deep scan: dark mode test results
-    if (report.raw.deepScan && report.raw.deepScan.darkMode && report.raw.deepScan.darkMode.tested) {
-      var dsDm = report.raw.deepScan.darkMode;
-      lines.push('## Dark Mode Test');
-      lines.push('');
-      var dmFails = dsDm.contrastFails;
-      if (dmFails === 0) {
-        lines.push('No contrast failures in dark mode.');
-      } else {
-        lines.push(dmFails + ' contrast failure(s) in dark mode (' + dsDm.contrastTotal + ' pairs checked).');
-      }
-      lines.push('');
-    }
 
     // Pixel contrast verification results (top-level, for single-URL reports)
     if (report._contrastVerifyResults && report._contrastVerifyResults.length > 0) {
@@ -868,9 +784,6 @@ window.MilgReport = (function() {
 
     // Overall stats
     html += '<h2>Site Overview</h2>';
-    if (summary.viewportSummary) {
-      html += '<div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">Analyzed across ' + summary.viewportSummary.viewportCount + ' viewports: ' + summary.viewportSummary.viewportLabels.map(function(l) { return escapeHtml(l); }).join(', ') + '</div>';
-    }
     html += '<div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:24px">';
     html += '<div style="padding:12px 20px;border-radius:10px;background:var(--surface);border:1px solid var(--border);text-align:center">';
     html += '<div style="font-size:32px;font-weight:700;font-variant-numeric:tabular-nums">' + summary.averageScore + '</div>';
@@ -878,11 +791,6 @@ window.MilgReport = (function() {
     html += '<div style="padding:12px 20px;border-radius:10px;background:var(--surface);border:1px solid var(--border);text-align:center">';
     html += '<div style="font-size:32px;font-weight:700">' + summary.pagesAnalyzed + '</div>';
     html += '<div style="font-size:12px;color:var(--text-secondary)">Pages Analyzed</div></div>';
-    if (summary.viewportSummary) {
-      html += '<div style="padding:12px 20px;border-radius:10px;background:var(--surface);border:1px solid var(--border);text-align:center">';
-      html += '<div style="font-size:32px;font-weight:700">' + summary.viewportSummary.viewportCount + '</div>';
-      html += '<div style="font-size:12px;color:var(--text-secondary)">Viewports</div></div>';
-    }
     if (summary.pagesFailed > 0) {
       html += '<div style="padding:12px 20px;border-radius:10px;background:#fef2f2;border:1px solid #fecaca;text-align:center">';
       html += '<div style="font-size:32px;font-weight:700;color:#dc2626">' + summary.pagesFailed + '</div>';
@@ -989,52 +897,6 @@ window.MilgReport = (function() {
         html += '</div>';
       });
       html += '</div>';
-    }
-
-    // Viewport breakdown (deep scan)
-    var vs = summary.viewportSummary;
-    if (vs) {
-      html += '<h3>Viewport Breakdown</h3>';
-      html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;margin-bottom:16px">';
-      vs.viewportStats.forEach(function(vp) {
-        html += '<div style="padding:10px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);font-size:13px">';
-        html += '<div style="font-weight:600;margin-bottom:4px">' + escapeHtml(vp.label) + ' <span style="color:var(--text-secondary);font-weight:400">(' + vp.width + 'px)</span></div>';
-        if (vp.contrastFails > 0) html += '<div style="color:#ef4444">Contrast fails: ' + vp.contrastFails + '</div>';
-        if (vp.touchTargets > 0) html += '<div style="color:#f59e0b">Touch targets: ' + vp.touchTargets + '</div>';
-        if (vp.overflowPages > 0) html += '<div style="color:#ef4444">Overflow on ' + vp.overflowPages + ' page' + (vp.overflowPages > 1 ? 's' : '') + '</div>';
-        if (vp.contrastFails === 0 && vp.touchTargets === 0 && vp.overflowPages === 0) {
-          html += '<div style="color:#16a34a">No issues found</div>';
-        }
-        html += '</div>';
-      });
-      html += '</div>';
-
-      // Universal issues (appear in ALL viewports)
-      if (vs.universalIssues.length > 0) {
-        html += '<h3>Universal Issues <span style="font-size:12px;color:var(--text-secondary);font-weight:400">(all viewports)</span></h3>';
-        html += '<div style="font-size:13px;line-height:1.6">';
-        vs.universalIssues.slice(0, 10).forEach(function(issue) {
-          html += '<div style="padding:6px 10px;margin-bottom:4px;border-radius:6px;background:var(--surface);border:1px solid var(--border)">';
-          html += '<span style="font-weight:500">' + escapeHtml(issue.title) + '</span>';
-          html += ' <span style="color:var(--text-secondary);font-size:12px">' + issue.pageCount + ' page' + (issue.pageCount > 1 ? 's' : '') + '</span>';
-          html += '</div>';
-        });
-        html += '</div>';
-      }
-
-      // Viewport-specific issues (only some viewports)
-      if (vs.viewportSpecific.length > 0) {
-        html += '<h3>Viewport-Specific Issues</h3>';
-        html += '<div style="font-size:13px;line-height:1.6">';
-        vs.viewportSpecific.slice(0, 10).forEach(function(issue) {
-          html += '<div style="padding:6px 10px;margin-bottom:4px;border-radius:6px;background:var(--surface);border:1px solid var(--border)">';
-          html += '<span style="font-weight:500">' + escapeHtml(issue.title) + '</span>';
-          html += ' <span style="font-size:12px;padding:1px 6px;border-radius:4px;background:var(--bg-alt);color:var(--text-secondary)">' + issue.viewports.map(function(v) { return escapeHtml(v); }).join(', ') + ' only</span>';
-          html += ' <span style="color:var(--text-secondary);font-size:12px">' + issue.pageCount + ' page' + (issue.pageCount > 1 ? 's' : '') + '</span>';
-          html += '</div>';
-        });
-        html += '</div>';
-      }
     }
 
     html += '</div>';

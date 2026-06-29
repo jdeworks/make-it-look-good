@@ -74,12 +74,14 @@ async function analyze(page, target) {
 }
 
 // Set the analyzer's option toggles before an analysis run (screenshots/pixel-verify always
-// off; spa/crawl/deep per the mode under test).
+// off; spa/crawl + color scheme per the mode under test).
 async function setToggles(page, t) {
   await page.evaluate((t) => {
     function set(id, on) { const c = document.getElementById(id); if (c && !!c.checked !== on) { c.checked = on; c.dispatchEvent(new Event('change')); } }
+    function sel(id, val) { const c = document.getElementById(id); if (c && val != null && c.value !== val) { c.value = val; c.dispatchEvent(new Event('change')); } }
     set('screenshotCheck', false); set('pixelVerifyCheck', false);
-    set('spaExploreCheck', !!t.spa); set('crawlSiteCheck', !!t.crawl); set('deepScanCheck', !!t.deep);
+    set('spaExploreCheck', !!t.spa); set('crawlSiteCheck', !!t.crawl);
+    sel('colorSchemeSelect', t.colorScheme || 'auto');
   }, t);
 }
 
@@ -106,17 +108,19 @@ async function runSpaOrCrawl(page, target, toggles) {
   });
 }
 
-// Deep scan: analyze a fixture with multi-viewport on, assert the viewport count.
-async function runDeepScan(page, target) {
+// Color scheme: force a single mode on a dark-capable fixture, assert it was applied and
+// the page rendered in that scheme (the fixture's .dark CSS vars flip the accent color).
+async function runColorScheme(page, target, scheme) {
   await page.goto(`http://localhost:${PORT}/analyzer.html`, { waitUntil: 'networkidle' });
-  await setToggles(page, { deep: true });
+  await setToggles(page, { colorScheme: scheme }); // spa OFF → single-page analysis
   await page.fill('#urlInput', `http://localhost:${PORT}/${target}`);
   await page.click('#analyzeUrlBtn');
   await page.waitForSelector('.report-gauge', { timeout: 90000 });
-  await new Promise((r) => setTimeout(r, 600));
+  await new Promise((r) => setTimeout(r, 400));
   return page.evaluate(() => {
-    const r = window.__milgLastReport, ds = r && r.raw && r.raw.deepScan;
-    return { viewports: (ds && ds.viewports && ds.viewports.length) || 0 };
+    const r = window.__milgLastReport, raw = r && r.raw;
+    const pairs = (raw && raw.colors && raw.colors.contrastPairs) || [];
+    return { applied: raw && raw.meta && raw.meta._colorScheme, pairs: pairs.length, firstBg: pairs.length ? pairs[0].bg : null };
   });
 }
 
@@ -171,10 +175,17 @@ measured.crawl = { count: crawl.count, spaPages: crawl.spaPages };
 if (!checkMode('SPA(crawl)', crawl, baseline.crawl || { count: 4, spaPages: 3 },
     [{ key: 'count', label: 'pages' }, { key: 'spaPages', label: 'folded SPA views' }])) failed = true;
 
-const deep = await runDeepScan(page, FIXTURE_PLAIN);
-measured.deepScan = { viewports: deep.viewports };
-if (!checkMode('deep-scan', deep, baseline.deepScan || { viewports: 3 },
-    [{ key: 'viewports', label: 'viewports' }])) failed = true;
+// Force dark on the dark-capable SPA fixture and confirm it was applied + rendered.
+const csDark = await runColorScheme(page, FIXTURE_SPA, 'dark');
+{
+  const problems = [];
+  if (csDark.applied !== 'dark') problems.push(`_colorScheme="${csDark.applied}" (expected "dark")`);
+  if ((csDark.pairs || 0) < 1) problems.push('no contrast pairs (page did not render)');
+  const tag = problems.length ? 'FAIL' : 'ok';
+  console.log(`${tag}  color-scheme(dark)  applied=${csDark.applied}  pairs=${csDark.pairs}`);
+  problems.forEach((p) => console.log('      ' + p));
+  if (problems.length) failed = true;
+}
 
 await browser.close();
 server.kill();

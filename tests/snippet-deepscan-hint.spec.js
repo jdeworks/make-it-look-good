@@ -1,12 +1,12 @@
 // @ts-check
-// Guards that the console-snippet overlay surfaces the "deep scan needs URL mode" hint.
-// The snippet is assembled by loadSnippet() from the shell files; the hint lives in the
-// shell source, so the rendered #snippetCode must contain it for both screenshot modes.
+// Guards that the console-snippet overlay surfaces the single-viewport caveat (the snippet
+// captures one viewport; to check another, use the analyzer's viewport selector and re-run).
+// The hint lives in the shell source, so the rendered #snippetCode must contain it.
 const { test, expect } = require('@playwright/test');
 const ANALYZER_URL = 'http://localhost:8384/analyzer.html';
-const HINT = /multi-viewport \(deep scan\)/i;
+const HINT = /viewport selector/i;
 
-test('snippet code surfaces the multi-viewport / deep-scan hint', async ({ page }) => {
+test('snippet code surfaces the single-viewport hint', async ({ page }) => {
   test.setTimeout(60000);
   await page.goto(ANALYZER_URL);
   await page.click('[data-tab="tabSnippet"]');

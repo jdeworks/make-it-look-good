@@ -9,6 +9,7 @@ window.MilgIframe = (function() {
   var _screenshotCDN = '';
   var _proxyUrl = ''; // CORS proxy for font routing in iframes
   var _getViewport = function() { return { w: 1280, h: 900 }; };
+  var _getColorScheme = function() { return 'auto'; }; // 'auto' | 'light' | 'dark'
   var _showProgress = function() {};
   var _updateFocusModal = function() {};
   // --- Screenshot settings ---
@@ -21,6 +22,7 @@ window.MilgIframe = (function() {
     if (opts.screenshotCDN) _screenshotCDN = opts.screenshotCDN;
     if (opts.proxyUrl) _proxyUrl = opts.proxyUrl;
     if (opts.getViewport) _getViewport = opts.getViewport;
+    if (opts.getColorScheme) _getColorScheme = opts.getColorScheme;
     if (opts.showProgress) _showProgress = opts.showProgress;
     if (opts.updateFocusModal) _updateFocusModal = opts.updateFocusModal;
   }
@@ -326,6 +328,42 @@ window.MilgIframe = (function() {
         });
       }
 
+      // 6. Forced color scheme (Auto/Light/Dark). Merge into the EXISTING <html> attrs
+      //    (a duplicate class=/style= attribute is ignored by the browser), override
+      //    matchMedia so JS-driven theming honors the forced mode, and for dark promote
+      //    @media(prefers-color-scheme:dark) rules to plain CSS (the iframe's OS scheme is
+      //    usually light, so media-query dark wouldn't otherwise apply).
+      var colorScheme = opts.colorScheme || _getColorScheme();
+      if (colorScheme === 'dark' || colorScheme === 'light') {
+        var wantDark = colorScheme === 'dark';
+        html = html.replace(/<html\b([^>]*)>/i, function(m, attrs) {
+          // merge a class token
+          var cm = /\bclass\s*=\s*("([^"]*)"|'([^']*)')/i.exec(attrs);
+          if (cm) {
+            var toks = ((cm[2] != null ? cm[2] : cm[3]) || '').split(/\s+/).filter(function(t) { return t && t !== 'dark'; });
+            if (wantDark) toks.push('dark');
+            attrs = attrs.replace(cm[0], 'class="' + toks.join(' ') + '"');
+          } else if (wantDark) { attrs += ' class="dark"'; }
+          // data-theme
+          var tm = /\bdata-theme\s*=\s*("[^"]*"|'[^']*')/i.exec(attrs);
+          if (tm) attrs = attrs.replace(tm[0], 'data-theme="' + (wantDark ? 'dark' : 'light') + '"');
+          else attrs += ' data-theme="' + (wantDark ? 'dark' : 'light') + '"';
+          // style color-scheme
+          var sm = /\bstyle\s*=\s*("([^"]*)"|'([^']*)')/i.exec(attrs);
+          if (sm) {
+            var cur = ((sm[2] != null ? sm[2] : sm[3]) || '').replace(/color-scheme\s*:[^;]*;?/i, '').trim();
+            attrs = attrs.replace(sm[0], 'style="' + (cur ? cur.replace(/;?$/, ';') : '') + 'color-scheme:' + colorScheme + '"');
+          } else { attrs += ' style="color-scheme:' + colorScheme + '"'; }
+          return '<html' + attrs + '>';
+        });
+        // matchMedia override (runs before page JS — injected before the first <script>)
+        scripts += '<script>(function(){try{var _mm=window.matchMedia?window.matchMedia.bind(window):null;var WD=' + (wantDark ? 'true' : 'false') + ';window.matchMedia=function(q){q=String(q||"");if(/prefers-color-scheme/i.test(q)){var dq=/dark/i.test(q);var mm=dq?WD:!WD;return{matches:mm,media:q,onchange:null,addListener:function(){},removeListener:function(){},addEventListener:function(){},removeEventListener:function(){},dispatchEvent:function(){return false}}}return _mm?_mm(q):{matches:false,media:q,addListener:function(){},removeListener:function(){},addEventListener:function(){},removeEventListener:function(){}}};}catch(e){}})();</' + 'script>';
+        if (wantDark) {
+          // Promote prefers-color-scheme:dark rules to plain CSS after load.
+          scripts += '<script>setTimeout(function(){try{Array.prototype.forEach.call(document.styleSheets,function(ss){try{var dr=[];Array.prototype.forEach.call(ss.cssRules,function(r){if(r instanceof CSSMediaRule&&/prefers-color-scheme\\s*:\\s*dark/i.test(r.conditionText||"")){Array.prototype.forEach.call(r.cssRules,function(x){dr.push(x.cssText)})}});if(dr.length){var s=document.createElement("style");s.setAttribute("data-milg-dark","1");s.textContent=dr.join("\\n");document.head.appendChild(s)}}catch(e){}})}catch(e){}},150);</' + 'script>';
+        }
+      }
+
       if (!scripts) return html;
 
       // Injection point: for JS mode (sandbox/fetchPatch), inject BEFORE first <script>
@@ -436,14 +474,22 @@ window.MilgIframe = (function() {
     var forceBodyDarkUi = !!opts.forceBodyDarkUi;
     var editorEffectCSS = opts.editorEffectCSS || '';
 
+    // Resolve the forced color scheme once so preprocessHtml and the stamp agree.
+    var colorScheme = opts.colorScheme || _getColorScheme();
+
     // Preprocess HTML based on mode
     html = preprocessHtml(html, sourceUrl, {
       baseTag: !!sourceUrl,
       urlPatch: !!sourceUrl && !jsEnabled,
       fontProxy: !!_proxyUrl && !jsEnabled,
       sandbox: jsEnabled,
-      fetchPatch: jsEnabled && !!sourceUrl
+      fetchPatch: jsEnabled && !!sourceUrl,
+      colorScheme: colorScheme
     });
+
+    // Record the scheme the page was analyzed in (the report shows a badge when not 'auto').
+    var _cb = callback;
+    callback = function(data) { if (data && data.meta) data.meta._colorScheme = colorScheme; _cb(data); };
 
     _analyzeHtmlInIframe(html, callback, sourceUrl, excludeSelector, captureScreenshots, viewportOverride, editorDark, editorEffectCSS, jsEnabled, forceBodyDarkUi);
   }
@@ -643,8 +689,16 @@ window.MilgIframe = (function() {
   function analyzeSpaViews(html, opts, callback) {
     opts = opts || {};
     var sourceUrl = opts.url || null;
+    var spaColorScheme = opts.colorScheme || _getColorScheme();
     // SPAs require JS — preprocess like jsEnabled mode (sandbox + fetch patch, no urlPatch).
-    html = preprocessHtml(html, sourceUrl, { baseTag: !!sourceUrl, urlPatch: false, fontProxy: false, sandbox: true, fetchPatch: !!sourceUrl });
+    // The forced color scheme applies to every discovered view (one srcdoc, all views).
+    html = preprocessHtml(html, sourceUrl, { baseTag: !!sourceUrl, urlPatch: false, fontProxy: false, sandbox: true, fetchPatch: !!sourceUrl, colorScheme: spaColorScheme });
+    // Stamp each view's data so the per-view report shows the color-scheme badge.
+    var _origCb = callback;
+    callback = function(result) {
+      try { if (result && result.views) result.views.forEach(function(v) { if (v && v.data && v.data.meta) v.data.meta._colorScheme = spaColorScheme; }); } catch (e) {}
+      _origCb(result);
+    };
 
     var iframe = document.createElement('iframe');
     var _iframeId = 'milg-spa-' + Date.now() + '-' + Math.random().toString(36).substr(2, 8);

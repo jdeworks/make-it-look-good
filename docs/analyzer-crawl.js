@@ -218,7 +218,6 @@ window.MilgCrawl = (function() {
       options: {
         maxPages: Math.min(Math.max(opts.maxPages || 5, 1), 25),
         blacklist: opts.blacklist || [],
-        deepScan: !!opts.deepScan,
         jsEnabled: !!opts.jsEnabled,
         screenshots: !!opts.screenshots,
         excludeSelector: opts.excludeSelector || '',
@@ -825,81 +824,6 @@ window.MilgCrawl = (function() {
       };
     });
 
-    // Deep scan viewport aggregation
-    var viewportSummary = null;
-    var deepPages = donePages.filter(function(p) { return p.rawData && p.rawData.deepScan && p.rawData.deepScan.viewports; });
-    if (deepPages.length > 0) {
-      var vpLabels = deepPages[0].rawData.deepScan.viewports.map(function(v) { return v.label; });
-      var vpCount = vpLabels.length;
-      // Per-viewport aggregated findings
-      var vpStats = vpLabels.map(function(label, vi) {
-        var touchTotal = 0, contrastTotal = 0, overflowCount = 0;
-        deepPages.forEach(function(p) {
-          var vp = p.rawData.deepScan.viewports[vi];
-          if (!vp || vp.error) return;
-          touchTotal += vp.touchTargets || 0;
-          contrastTotal += vp.contrastFails || 0;
-          if (vp.overflow) overflowCount++;
-        });
-        return { label: label, width: deepPages[0].rawData.deepScan.viewports[vi].width, touchTargets: touchTotal, contrastFails: contrastTotal, overflowPages: overflowCount };
-      });
-
-      // Cross-viewport issue matching: identify universal vs viewport-specific issues
-      var vpIssueMap = {}; // issueKey → Set of viewport labels where it appears
-      deepPages.forEach(function(p) {
-        var vds = p.rawData.deepScan.viewportData;
-        if (!vds) return;
-        vds.forEach(function(vd, vi) {
-          if (!vd || !vd.data) return;
-          var scored = p.reportData; // primary viewport scoring
-          // Use per-viewport data to find issues
-          var vpData = vd.data;
-          // Touch target fails per viewport
-          var touches = (vpData.interaction && vpData.interaction.touchTargets) || [];
-          touches.forEach(function(t) {
-            var key = 'touch|' + (t.selector || t.element || 'unknown');
-            if (!vpIssueMap[key]) vpIssueMap[key] = { title: 'Touch target: ' + (t.selector || t.element || '').substring(0, 60), type: 'touch', viewports: [], pages: [] };
-            if (vpIssueMap[key].viewports.indexOf(vpLabels[vi]) === -1) vpIssueMap[key].viewports.push(vpLabels[vi]);
-            vpIssueMap[key].pages.push(p.url);
-          });
-          // Contrast fails per viewport
-          var pairs = (vpData.colors && vpData.colors.contrastPairs) || [];
-          pairs.forEach(function(cp) {
-            if (cp.passes) return;
-            var key = 'contrast|' + (cp.selector || '') + '|' + (cp.text || '').substring(0, 20);
-            if (!vpIssueMap[key]) vpIssueMap[key] = { title: 'Contrast: ' + (cp.selector || '').substring(0, 40) + ' "' + (cp.text || '').substring(0, 20) + '"', type: 'contrast', viewports: [], pages: [] };
-            if (vpIssueMap[key].viewports.indexOf(vpLabels[vi]) === -1) vpIssueMap[key].viewports.push(vpLabels[vi]);
-            vpIssueMap[key].pages.push(p.url);
-          });
-        });
-      });
-
-      // Classify issues: universal (all viewports) vs viewport-specific
-      var universalIssues = [];
-      var viewportSpecific = [];
-      Object.keys(vpIssueMap).forEach(function(k) {
-        var issue = vpIssueMap[k];
-        var uniquePages = []; issue.pages.forEach(function(u) { if (uniquePages.indexOf(u) === -1) uniquePages.push(u); });
-        issue.pageCount = uniquePages.length;
-        if (issue.viewports.length >= vpCount) {
-          universalIssues.push(issue);
-        } else {
-          viewportSpecific.push(issue);
-        }
-      });
-      // Sort by page count desc
-      universalIssues.sort(function(a, b) { return b.pageCount - a.pageCount; });
-      viewportSpecific.sort(function(a, b) { return b.pageCount - a.pageCount; });
-
-      viewportSummary = {
-        viewportCount: vpCount,
-        viewportLabels: vpLabels,
-        viewportStats: vpStats,
-        universalIssues: universalIssues.slice(0, 20),
-        viewportSpecific: viewportSpecific.slice(0, 20),
-        deepPageCount: deepPages.length
-      };
-    }
 
     return {
       pagesAnalyzed: donePages.length,
@@ -910,7 +834,6 @@ window.MilgCrawl = (function() {
       scoreGrid: scoreGrid,
       crossPageIssues: crossPageIssues,
       categoryAverages: categoryAverages,
-      viewportSummary: viewportSummary,
       consistency: buildConsistencyReport(donePages)
     };
   }
@@ -939,9 +862,6 @@ window.MilgCrawl = (function() {
     lines.push('**Date:** ' + new Date(session.startedAt).toLocaleString());
     lines.push('**Pages analyzed:** ' + summary.pagesAnalyzed + ' (failed: ' + summary.pagesFailed + ')');
     lines.push('**Average score:** ' + summary.averageScore + '/100');
-    if (summary.viewportSummary) {
-      lines.push('**Viewports:** ' + summary.viewportSummary.viewportCount + ' (' + summary.viewportSummary.viewportLabels.join(', ') + ')');
-    }
     if (severityFilter && severityFilter !== 'all') {
       lines.push('**Filter:** ' + (severityFilter === 'error' ? 'Errors only' : 'Warnings + Errors'));
     }
@@ -984,35 +904,6 @@ window.MilgCrawl = (function() {
       lines.push('');
       lines.push(window.MilgReport.consistencyMarkdown(summary.consistency, severityFilter));
       lines.push('');
-    }
-
-    // Viewport breakdown (deep scan)
-    if (summary.viewportSummary) {
-      var vs = summary.viewportSummary;
-      lines.push('## Viewport Breakdown');
-      lines.push('');
-      lines.push('| Viewport | Width | Contrast Fails | Touch Targets | Overflow Pages |');
-      lines.push('|----------|-------|---------------|---------------|----------------|');
-      vs.viewportStats.forEach(function(vp) {
-        lines.push('| ' + vp.label + ' | ' + vp.width + 'px | ' + vp.contrastFails + ' | ' + vp.touchTargets + ' | ' + vp.overflowPages + ' |');
-      });
-      lines.push('');
-      if (vs.universalIssues.length > 0) {
-        lines.push('### Universal Issues (all viewports)');
-        lines.push('');
-        vs.universalIssues.forEach(function(issue) {
-          lines.push('- ' + issue.title + ' (' + issue.pageCount + ' page' + (issue.pageCount > 1 ? 's' : '') + ')');
-        });
-        lines.push('');
-      }
-      if (vs.viewportSpecific.length > 0) {
-        lines.push('### Viewport-Specific Issues');
-        lines.push('');
-        vs.viewportSpecific.forEach(function(issue) {
-          lines.push('- ' + issue.title + ' — *' + issue.viewports.join(', ') + ' only* (' + issue.pageCount + ' page' + (issue.pageCount > 1 ? 's' : '') + ')');
-        });
-        lines.push('');
-      }
     }
 
     // Per-page reports
@@ -1062,10 +953,9 @@ window.MilgCrawl = (function() {
     return lines.join('\n');
   }
 
-  function renderCrawlJSON(session, severityFilter, includeViewportData) {
-    // Break circular refs and strip debug data — keep screenshots, masks, verify for full export
-    // Only strip circular refs and transient state — keep ALL analysis data for full reimport
-    var _skipKeys = { deepScan: 1, _cachedReportData: 1, _vpCacheIdx: 1 };
+  function renderCrawlJSON(session, severityFilter) {
+    // Strip transient state — keep ALL analysis data (screenshots, masks, verify) for full reimport.
+    var _skipKeys = { _cachedReportData: 1 };
     var _replacer = function(k, v) { return _skipKeys[k] ? undefined : v; };
     var out = {
       _milgCrawl: true,
@@ -1077,17 +967,7 @@ window.MilgCrawl = (function() {
       // results: re-importable raw extraction data (loadCrawlResults compatible)
       results: session.pages.filter(function(p) { return p.status === 'done' && p.rawData; }).map(function(p) {
         var rawClone = JSON.parse(JSON.stringify(p.rawData, _replacer));
-        // Include deep scan summary. Full per-viewport extraction (viewportData) is
-        // large, so it's only kept when includeViewportData is set — that's what lets a
-        // re-imported crawl reconstruct the page×viewport matrix in the LLM pack.
-        if (p.rawData.deepScan) {
-          rawClone.deepScan = { viewports: p.rawData.deepScan.viewports, darkMode: p.rawData.deepScan.darkMode || null };
-          if (includeViewportData && p.rawData.deepScan.viewportData) {
-            rawClone.deepScan.viewportData = JSON.parse(JSON.stringify(p.rawData.deepScan.viewportData, _replacer));
-          }
-        }
-        // Pixel verify results are included automatically via the clone
-        // (samplePoints and _debug already stripped by replacer)
+        // Pixel verify results are included automatically via the clone.
         return { url: p.url, data: rawClone };
       }),
       pages: session.pages.map(function(p) {
@@ -1104,31 +984,6 @@ window.MilgCrawl = (function() {
             return { label: c.label, score: c.score, findings: c.findings };
           })
         };
-        // Include deep scan viewport data if available
-        if (p.rawData && p.rawData.deepScan && p.rawData.deepScan.viewports) {
-          pageOut.deepScan = {
-            viewports: p.rawData.deepScan.viewports,
-            darkMode: p.rawData.deepScan.darkMode || null
-          };
-          if (p.rawData.deepScan.viewportData) {
-            pageOut.deepScan.viewportData = p.rawData.deepScan.viewportData.map(function(vd) {
-              if (!vd || !vd.data) return null;
-              var vpOut = { label: vd.label, width: vd.width };
-              var d = vd.data;
-              vpOut.contrastFails = (d.colors && d.colors.contrastPairs || []).filter(function(cp) { return !cp.passes; }).length;
-              vpOut.touchTargets = (d.interaction && d.interaction.touchTargets || []).length;
-              vpOut.overflow = (d.structure && d.structure.hasHorizontalOverflow) || false;
-              if (d._contrastVerifyResults) {
-                vpOut.pixelVerify = {
-                  total: d._contrastVerifyResults.length,
-                  falsePass: d._contrastVerifyResults.filter(function(r) { return r.cssPasses && !r.pixelPasses; }).length,
-                  falseFail: d._contrastVerifyResults.filter(function(r) { return !r.cssPasses && r.pixelPasses; }).length
-                };
-              }
-              return vpOut;
-            });
-          }
-        }
         // Include pixel verify if available
         if (p.rawData && p.rawData._contrastVerifyResults) {
           pageOut.pixelVerify = {

@@ -584,7 +584,7 @@
         : '<button id="milg-copy-btn" style="padding:14px 32px;font-size:15px;font-weight:600;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-bottom:8px;min-width:200px">Copy to Clipboard</button>' +
           '<button id="milg-download-btn" style="padding:10px 24px;font-size:13px;font-weight:500;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.2);border-radius:8px;cursor:pointer;margin-bottom:12px;min-width:200px">Download JSON</button>') +
       '<div style="color:rgba(255,255,255,0.4);font-size:11px">Then ' + (jsonKB > 2048 ? 'import' : 'paste') + ' into the analyzer</div>' +
-      '<div style="color:rgba(255,255,255,0.35);font-size:10px;margin-top:10px;line-height:1.45;max-width:360px">Captured at this window’s width only. For multi-viewport (deep scan) findings, analyze the URL in the analyzer instead.</div>' +
+      '<div style="color:rgba(255,255,255,0.35);font-size:10px;margin-top:10px;line-height:1.45;max-width:360px">Captured at this window’s width. To analyze another viewport, pick it in the analyzer’s viewport selector and re-run.</div>' +
       '</div>';
     document.body.appendChild(_copyOverlay);
 
@@ -897,7 +897,7 @@
                   : '<button id="milg-crawl-copy-btn" style="padding:12px 28px;font-size:14px;font-weight:600;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-bottom:8px;min-width:220px">Copy to Clipboard</button><br>' +
                     '<button id="milg-crawl-dl-btn" style="padding:10px 24px;font-size:13px;font-weight:500;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.2);border-radius:8px;cursor:pointer;margin-bottom:10px;min-width:220px">Download JSON</button>') +
                 '<div style="color:rgba(255,255,255,0.5);font-size:11px;margin-top:8px">Then ' + (_crawlKB > 2048 ? 'import' : 'paste') + ' into the analyzer</div>' +
-                '<div style="color:rgba(255,255,255,0.35);font-size:10px;margin-top:8px;line-height:1.45;max-width:380px">Each page captured at one viewport. For multi-viewport (deep scan) per page, run the crawl from the analyzer’s URL mode.</div>' +
+                '<div style="color:rgba(255,255,255,0.35);font-size:10px;margin-top:8px;line-height:1.45;max-width:380px">Each page captured at one viewport. To analyze another viewport, set it in the analyzer’s viewport selector and re-run.</div>' +
                 '</div>';
               function _crawlDoneAction() {
                 // Close overlay and reload page to restore styles corrupted by mask capture

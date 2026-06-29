@@ -6,7 +6,7 @@
   <title>make-it-look-good — Design Analyzer</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='2' y='2' width='12' height='12' rx='2' fill='%232563eb'/><rect x='18' y='2' width='12' height='12' rx='2' fill='%2393c5fd'/><rect x='2' y='18' width='12' height='12' rx='2' fill='%2393c5fd'/><rect x='18' y='18' width='12' height='12' rx='2' fill='%232563eb'/></svg>">
   <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="analyzer.css?v=3.11.101">
+  <link rel="stylesheet" href="analyzer.css?v=3.11.102">
 </head>
 <body class="analyzer-body">
 
@@ -35,7 +35,7 @@
   <!-- Input Section -->
   <div class="input-section" id="inputSection">
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.11.101</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.11.102</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -100,6 +100,12 @@
           <option value="1280x900">Desktop (1280×900)</option>
           <option value="1920x1080">Large (1920×1080)</option>
         </select>
+        <label style="font-size:12px;color:var(--text-secondary);white-space:nowrap" title="Force the page into a single color scheme for this analysis (if the page supports dark mode). Run again in the other mode to check both.">Color scheme:</label>
+        <select id="colorSchemeSelect" class="btn" aria-label="Color scheme" style="padding:4px 24px 4px 8px;font-size:12px;appearance:auto;cursor:pointer;min-height:36px">
+          <option value="auto" selected>Auto (as rendered)</option>
+          <option value="light">Force light</option>
+          <option value="dark">Force dark</option>
+        </select>
       </div>
       <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
         <label style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:6px;cursor:pointer">
@@ -127,11 +133,6 @@
         </details>
       </div>
       <div style="display:flex;align-items:center;gap:8px 24px;margin-top:6px;flex-wrap:wrap">
-        <label style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:6px;cursor:pointer">
-          <input type="checkbox" id="deepScanCheck" style="width:16px;height:16px;cursor:pointer">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><rect x="2" y="3" width="20" height="14" rx="2"/><rect x="6" y="7" width="12" height="8" rx="1" stroke-dasharray="2 2"/><line x1="8" y1="21" x2="16" y2="21"/></svg>
-          Deep scan (multi-viewport + dark mode)
-        </label>
         <label style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:6px;cursor:pointer">
           <input type="checkbox" id="crawlSiteCheck" style="width:16px;height:16px;cursor:pointer">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/><path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10A15.3 15.3 0 0112 2z"/></svg>
@@ -407,10 +408,6 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><line x1="12" y1="22" x2="12" y2="12"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/></svg>
         <span class="btn-label">LLM pack (.zip)</span>
       </button>
-      <label id="crawlIncludeViewportsLabel" style="display:none;align-items:center;gap:5px;font-size:11px;color:var(--text-secondary);cursor:pointer" title="Crawl export only: keep full per-viewport data so a re-imported deep-scan crawl can rebuild the page×viewport LLM pack. Larger file.">
-        <input type="checkbox" id="crawlIncludeViewports" style="width:14px;height:14px;cursor:pointer">
-        Include per-viewport data
-      </label>
       <input type="file" id="importJsonFile" accept=".json,.milg" style="display:none" aria-label="Import JSON report file">
     </div>
     </details>
@@ -420,8 +417,6 @@
   <div id="crawlResults" style="display:none">
     <div class="crawl-page-tabs" id="crawlPageTabs"></div>
   </div>
-  <!-- Viewport tabs for deep scan (rendered dynamically by runAnalysis) -->
-  <div id="viewportTabs" style="display:none;padding:0 16px"></div>
   <!-- Report container (used for both single-page and crawl per-page reports) -->
   <div class="report-container" id="reportContainer"></div>
   <!-- Crawl summary content (shown when summary tab is active) -->
@@ -497,34 +492,34 @@
   <div class="toast" id="toast" aria-live="polite" aria-atomic="true" role="status"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=3.11.101"></script>
-  <script src="scoring/contrast.js?v=3.11.101"></script>
-  <script src="scoring/typography.js?v=3.11.101"></script>
-  <script src="scoring/spacing.js?v=3.11.101"></script>
-  <script src="scoring/touch.js?v=3.11.101"></script>
-  <script src="scoring/accessibility.js?v=3.11.101"></script>
-  <script src="scoring/responsive.js?v=3.11.101"></script>
-  <script src="scoring/consistency.js?v=3.11.101"></script>
-  <script src="scoring/cognitive.js?v=3.11.101"></script>
-  <script src="scoring/layout.js?v=3.11.101"></script>
-  <script src="scoring/performance.js?v=3.11.101"></script>
-  <script src="scoring/readability.js?v=3.11.101"></script>
-  <script src="scoring/filters.js?v=3.11.101"></script>
-  <script src="scoring/balance.js?v=3.11.101"></script>
-  <script src="scoring/polish.js?v=3.11.101"></script>
+  <script src="scoring/registry.js?v=3.11.102"></script>
+  <script src="scoring/contrast.js?v=3.11.102"></script>
+  <script src="scoring/typography.js?v=3.11.102"></script>
+  <script src="scoring/spacing.js?v=3.11.102"></script>
+  <script src="scoring/touch.js?v=3.11.102"></script>
+  <script src="scoring/accessibility.js?v=3.11.102"></script>
+  <script src="scoring/responsive.js?v=3.11.102"></script>
+  <script src="scoring/consistency.js?v=3.11.102"></script>
+  <script src="scoring/cognitive.js?v=3.11.102"></script>
+  <script src="scoring/layout.js?v=3.11.102"></script>
+  <script src="scoring/performance.js?v=3.11.102"></script>
+  <script src="scoring/readability.js?v=3.11.102"></script>
+  <script src="scoring/filters.js?v=3.11.102"></script>
+  <script src="scoring/balance.js?v=3.11.102"></script>
+  <script src="scoring/polish.js?v=3.11.102"></script>
   <!-- Queue + Report rendering + UI -->
-  <script src="analyzer-queue.js?v=3.11.101"></script>
-  <script src="analyzer-report.js?v=3.11.101"></script>
-  <script src="analyzer-crawl.js?v=3.11.101"></script>
-  <script src="analyzer-extract.js?v=3.11.101"></script>
-  <script src="analyzer-spa.js?v=3.11.101"></script>
-  <script src="analyzer-region.js?v=3.11.101"></script>
-  <script src="analyzer-capture.js?v=3.11.101"></script>
-  <script src="analyzer-iframe.js?v=3.11.101"></script>
-  <script src="analyzer-proxy.js?v=3.11.101"></script>
-  <script src="analyzer-crawl-ui.js?v=3.11.101"></script>
-  <script src="analyzer-contrast-verify.js?v=3.11.101"></script>
-  <script src="analyzer-viewer.js?v=3.11.101"></script>
-  <script src="analyzer.js?v=3.11.101"></script>
+  <script src="analyzer-queue.js?v=3.11.102"></script>
+  <script src="analyzer-report.js?v=3.11.102"></script>
+  <script src="analyzer-crawl.js?v=3.11.102"></script>
+  <script src="analyzer-extract.js?v=3.11.102"></script>
+  <script src="analyzer-spa.js?v=3.11.102"></script>
+  <script src="analyzer-region.js?v=3.11.102"></script>
+  <script src="analyzer-capture.js?v=3.11.102"></script>
+  <script src="analyzer-iframe.js?v=3.11.102"></script>
+  <script src="analyzer-proxy.js?v=3.11.102"></script>
+  <script src="analyzer-crawl-ui.js?v=3.11.102"></script>
+  <script src="analyzer-contrast-verify.js?v=3.11.102"></script>
+  <script src="analyzer-viewer.js?v=3.11.102"></script>
+  <script src="analyzer.js?v=3.11.102"></script>
 </body>
 </html>

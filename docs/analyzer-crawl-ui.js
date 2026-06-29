@@ -12,7 +12,7 @@ window.MilgCrawlUI = (function() {
   var CRAWL_HARD_MAX = 25;
 
   // Dependencies injected via setup()
-  var _showToast, _runAnalysis, _restoreCachedAnalysis, _analyzeUrlBtn, _runDeepScanLoop;
+  var _showToast, _runAnalysis, _restoreCachedAnalysis, _analyzeUrlBtn;
   var _showFocusModal, _updateFocusModal, _hideFocusModal;
 
   // DOM refs queried during setup
@@ -41,17 +41,6 @@ window.MilgCrawlUI = (function() {
 
   function isCrawlMode() { return crawlSiteCheck && crawlSiteCheck.checked; }
   function isCrawlActive() { return _crawlSession && _crawlSession.pages.length > 0 && crawlResults && crawlResults.style.display !== 'none'; }
-  // Show the "Include per-viewport data" export option only for crawls that actually
-  // carry deep-scan viewport data (so re-import can rebuild the page×viewport matrix).
-  function _toggleViewportExportOption() {
-    var lbl = document.getElementById('crawlIncludeViewportsLabel');
-    if (!lbl) return;
-    var hasVp = !!(_crawlSession && _crawlSession.pages && _crawlSession.pages.some(function(p) {
-      return p.rawData && p.rawData.deepScan && p.rawData.deepScan.viewportData && p.rawData.deepScan.viewportData.filter(Boolean).length > 1;
-    }));
-    lbl.style.display = hasVp ? 'inline-flex' : 'none';
-  }
-
   function crawlStatusIcon(status) {
     if (status === 'done') return '<span class="status-icon done"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></span>';
     if (status === 'error') return '<span class="status-icon error"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>';
@@ -104,7 +93,6 @@ window.MilgCrawlUI = (function() {
     // Show export/actions only after crawl is complete (not during progress)
     var crawlDone = _crawlSession && _crawlSession.status === 'complete';
     if (reportActions) reportActions.style.display = crawlDone ? 'flex' : 'none';
-    if (crawlDone) _toggleViewportExportOption();
     if (crawlDone && window.milgUpdateExportCounts) window.milgUpdateExportCounts();
     if (key === 'summary') {
       var summary = _crawlSession.summary || MilgCrawl.buildSummary(_crawlSession);
@@ -135,9 +123,6 @@ window.MilgCrawlUI = (function() {
       crawlPageContent.style.display = 'none';
       crawlPageContent.className = 'report-container';
       if (reportContainer) reportContainer.style.display = '';
-
-      // Clear viewport cache when switching crawl pages (viewport indices collide across pages)
-      if (typeof window.__milgClearViewportCache === 'function') window.__milgClearViewportCache();
 
       // Cache hit: re-run with cached scoring + precomputed verify (fast, preserves overlays)
       if (_crawlPageReports[idx]) {
@@ -200,7 +185,6 @@ window.MilgCrawlUI = (function() {
     crawlResults.style.display = '';
     var reportActions = document.getElementById('reportActions');
     if (reportActions) reportActions.style.display = '';
-    _toggleViewportExportOption();
     if (window.milgUpdateExportCounts) window.milgUpdateExportCounts();
     document.getElementById('inputSection').style.display = 'none';
     renderCrawlTabs();
@@ -426,7 +410,6 @@ window.MilgCrawlUI = (function() {
     maxPages = Math.min(Math.max(maxPages, 1), CRAWL_HARD_MAX);
 
     var blacklist = (crawlBlacklist.value || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
-    var deepScan = document.getElementById('deepScanCheck') && document.getElementById('deepScanCheck').checked;
     var jsCheck = document.getElementById('jsEnabledCheck');
     var jsAck = document.getElementById('jsRiskAck');
     var wantJs = jsCheck && jsCheck.checked && jsAck && jsAck.checked;
@@ -435,7 +418,6 @@ window.MilgCrawlUI = (function() {
     _crawlSession = MilgCrawl.createSession(url, {
       maxPages: maxPages,
       blacklist: blacklist,
-      deepScan: deepScan,
       jsEnabled: wantJs,
       profile: profile ? profile.value : 'general'
     });
@@ -480,42 +462,28 @@ window.MilgCrawlUI = (function() {
       },
       analyzePage: function(html, pageUrl, opts, cb) {
         var wantShots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
-        var isDeep = _crawlSession && _crawlSession.options && _crawlSession.options.deepScan && _runDeepScanLoop;
         var jsOn = _crawlSession && _crawlSession.options && _crawlSession.options.jsEnabled;
-        var analysisOpts = { jsEnabled: jsOn, screenshots: wantShots, exclude: opts.excludeSelector || null };
-        if (isDeep) {
-          _runDeepScanLoop(html, pageUrl, analysisOpts, null, function(primary) {
-            if (primary) {
-              primary.meta.url = pageUrl;
-              primary.meta._inputMethod = 'crawl';
-              if (jsOn) primary.meta._jsEnabled = true;
-              if (opts.profile) primary.profile = opts.profile;
+        function _doCrawlAnalysis() {
+          MilgIframe.analyzeHtml(html, {
+            url: pageUrl,
+            jsEnabled: jsOn,
+            screenshots: wantShots,
+            exclude: opts.excludeSelector || null
+          }, function(data) {
+            if (data) {
+              data.meta.url = pageUrl;
+              data.meta._inputMethod = 'crawl';
+              if (jsOn) data.meta._jsEnabled = true;
+              if (opts.profile) data.profile = opts.profile;
             }
-            cb(primary);
+            cb(data);
           });
+        }
+        // Prefetch fonts for crawl pages (first page warms cache, subsequent get hits)
+        if (wantShots) {
+          MilgIframe.prefetchFonts(html, pageUrl, _doCrawlAnalysis);
         } else {
-          function _doCrawlAnalysis() {
-            MilgIframe.analyzeHtml(html, {
-              url: pageUrl,
-              jsEnabled: jsOn,
-              screenshots: wantShots,
-              exclude: opts.excludeSelector || null
-            }, function(data) {
-              if (data) {
-                data.meta.url = pageUrl;
-                data.meta._inputMethod = 'crawl';
-                if (jsOn) data.meta._jsEnabled = true;
-                if (opts.profile) data.profile = opts.profile;
-              }
-              cb(data);
-          });
-          }
-          // Prefetch fonts for crawl pages (first page warms cache, subsequent get hits)
-          if (wantShots) {
-            MilgIframe.prefetchFonts(html, pageUrl, _doCrawlAnalysis);
-          } else {
-            _doCrawlAnalysis();
-          }
+          _doCrawlAnalysis();
         }
       },
       scorePage: function(data) { return MilgScoring.runScoring(data); },
@@ -646,8 +614,7 @@ window.MilgCrawlUI = (function() {
         requestAnimationFrame(function() { setTimeout(function() {
           try {
             var filter = exportSeverityFilter ? exportSeverityFilter.value : 'all';
-            var _incVp = document.getElementById('crawlIncludeViewports');
-            var json = MilgCrawl.renderCrawlJSON(_crawlSession, filter, !!(_incVp && _incVp.checked));
+            var json = MilgCrawl.renderCrawlJSON(_crawlSession, filter);
             // Compress with gzip
             if (typeof CompressionStream !== 'undefined') {
               exportJsonBtn.innerHTML = '<span style="display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:milg-spin 0.8s linear infinite;vertical-align:middle"></span> <span class="btn-label">Compressing\u2026</span>';
@@ -694,7 +661,6 @@ window.MilgCrawlUI = (function() {
     _runAnalysis = deps.runAnalysis;
     _restoreCachedAnalysis = deps.restoreCachedAnalysis;
     _analyzeUrlBtn = deps.analyzeUrlBtn;
-    _runDeepScanLoop = deps.runDeepScanLoop;
     _showFocusModal = deps.showFocusModal;
     _updateFocusModal = deps.updateFocusModal;
     _hideFocusModal = deps.hideFocusModal;
