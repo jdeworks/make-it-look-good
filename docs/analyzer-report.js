@@ -815,6 +815,39 @@ window.MilgReport = (function() {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
+  // Visible log of the SPA/region exploration: which controls were clicked, which were
+  // skipped (and why), notes, and whether discovery was capped.
+  function renderSpaExplorationLog(prov) {
+    var REASONS = {
+      destructive: 'unsafe — destructive control', submit: 'form submit', input: 'form input',
+      'in-form': 'inside a form', external: 'external link', 'click-error': 'click failed',
+      'change-too-small': 'change too small', 'duplicate-content': 'duplicate content', 'empty-region': 'empty panel'
+    };
+    var clicked = prov.clicked || [], skipped = prov.skipped || [], notes = prov.notes || [];
+    var changedN = clicked.filter(function(c) { return c.changed; }).length;
+    var h = '<details style="margin:0 0 20px;border:1px solid var(--border);border-radius:10px;background:var(--surface);padding:0 14px">';
+    h += '<summary style="cursor:pointer;user-select:none;font-weight:600;padding:12px 0">SPA exploration log';
+    h += ' <span style="font-weight:400;color:var(--text-secondary);font-size:12px">— ' + clicked.length + ' control' + (clicked.length !== 1 ? 's' : '') + ' clicked, ' + changedN + ' changed a view; ' + skipped.length + ' skipped' + (prov.truncated ? ' · capped' : '') + '</span></summary>';
+    h += '<div style="padding:4px 0 14px;font-size:12px;color:var(--text-secondary);line-height:1.7">';
+    if (clicked.length) {
+      h += '<div style="margin-bottom:6px"><strong style="color:var(--text)">Clicked:</strong> ' +
+        clicked.map(function(c) { return escapeHtml(c.label || '?') + (c.changed ? ' <span style="color:#16a34a">✓</span>' : ' <span style="opacity:.5">(no change)</span>'); }).join(', ') + '</div>';
+    }
+    if (skipped.length) {
+      var byReason = {};
+      skipped.forEach(function(s) { (byReason[s.reason] = byReason[s.reason] || []).push(s.label || '?'); });
+      h += '<div style="margin-bottom:6px"><strong style="color:var(--text)">Skipped:</strong><ul style="margin:4px 0 0;padding-left:18px">';
+      Object.keys(byReason).forEach(function(r) {
+        h += '<li>' + escapeHtml(REASONS[r] || r) + ' <span style="opacity:.7">(' + byReason[r].length + ')</span>: ' + byReason[r].slice(0, 6).map(escapeHtml).join(', ') + (byReason[r].length > 6 ? '…' : '') + '</li>';
+      });
+      h += '</ul></div>';
+    }
+    if (notes.length) h += '<div><strong style="color:var(--text)">Notes:</strong> ' + notes.map(escapeHtml).join('; ') + '</div>';
+    if (prov.truncated) h += '<div style="color:#ca8a04;margin-top:4px">Discovery was capped (max views / time budget) — more states may exist.</div>';
+    h += '</div></details>';
+    return h;
+  }
+
   function renderCrawlSummary(summary) {
     if (!summary || summary.pagesAnalyzed === 0) {
       return '<div class="crawl-summary"><p style="color:var(--text-secondary)">No pages analyzed yet.</p></div>';
@@ -845,6 +878,9 @@ window.MilgReport = (function() {
       html += '<div style="font-size:12px;color:#dc2626">Failed</div></div>';
     }
     html += '</div>';
+
+    // SPA exploration log — what the interaction-driven explorer clicked, skipped, and why.
+    if (summary._spaProvenance) html += renderSpaExplorationLog(summary._spaProvenance);
 
     // Cross-page consistency — directly under Site Overview (pixel-verify summary
     // injects after this, before Page Scores).
@@ -1000,6 +1036,13 @@ window.MilgReport = (function() {
     if (path === '/') path = '/ (home)';
     var label = page.title ? page.title.substring(0, 25) : path;
 
+    // SPA region/view provenance in the tab tooltip (how this state was reached).
+    var _tip = page.url;
+    var _m = page.rawData && page.rawData.meta;
+    if (_m && _m._spaView) {
+      _tip += (_m._spaTrigger ? '\nvia ' + _m._spaTrigger : '') + (_m._spaRegionAnchor ? ' → ' + _m._spaRegionAnchor : '') + (_m._spaKind === 'region' ? '\n(mid-page panel — scoped analysis)' : '');
+    }
+
     var dotClass = 'pending';
     if (page.status === 'done' && page.reportData) {
       dotClass = 'grade-' + page.reportData.grade.toLowerCase();
@@ -1007,7 +1050,7 @@ window.MilgReport = (function() {
       dotClass = 'error';
     }
 
-    return '<button class="crawl-page-tab' + (isActive ? ' active' : '') + '" data-crawl-page="' + index + '" title="' + escapeHtml(page.url) + '">' +
+    return '<button class="crawl-page-tab' + (isActive ? ' active' : '') + '" data-crawl-page="' + index + '" title="' + escapeHtml(_tip) + '">' +
       '<span class="score-dot ' + dotClass + '"></span>' +
       escapeHtml(label) +
       (page.status === 'done' && page.reportData ? ' <span style="font-size:11px;color:var(--text-secondary)">' + page.reportData.overall + '</span>' : '') +

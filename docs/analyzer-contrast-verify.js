@@ -736,9 +736,13 @@ window.MilgContrastVerify = (function() {
     var scale = meta.scale;
     var sectionH = Math.round(meta.viewportHeight * scale);
 
-    // Map bbox to canvas coordinates
-    var canvasX = pair.bbox.left * scale;
-    var canvasY = pair.bbox.top * scale;
+    // Map bbox (page coordinates) to canvas pixels. Subtract cropOffset so region
+    // screenshots (canvas = just the cropped panel, cropOffset = panel page-position)
+    // sample the right pixels — without this the grid path was misaligned for any
+    // cropped/region capture. Full-page shots have cropOffset 0 (unchanged).
+    var cropOX = meta.cropOffsetX || 0, cropOY = meta.cropOffsetY || 0;
+    var canvasX = pair.bbox.left * scale - cropOX;
+    var canvasY = pair.bbox.top * scale - cropOY;
     var canvasW = pair.bbox.width * scale;
     var canvasH = pair.bbox.height * scale;
 

@@ -190,6 +190,13 @@ window.MilgCrawlUI = (function() {
     });
     _crawlSession.status = 'complete';
     _crawlSession.summary = MilgCrawl.buildSummary(_crawlSession);
+    // Carry SPA exploration provenance (clicked/skipped/notes/truncated) onto the session
+    // + summary so renderCrawlSummary can show the exploration log. (loadCrawlResults
+    // otherwise drops crawlState fields beyond results/startUrl/profile.)
+    if (crawlState._spaProvenance) {
+      _crawlSession._spaProvenance = crawlState._spaProvenance;
+      if (_crawlSession.summary) _crawlSession.summary._spaProvenance = crawlState._spaProvenance;
+    }
     crawlResults.style.display = '';
     var reportActions = document.getElementById('reportActions');
     if (reportActions) reportActions.style.display = '';
@@ -224,6 +231,17 @@ window.MilgCrawlUI = (function() {
     });
   }
 
+  // After pixel-verify sets rawData._contrastVerifyResults, the score must be recomputed
+  // (contrast.js only consumes verdicts when scoring re-runs) and BOTH the rendered-report
+  // cache (_crawlPageReports) and the data-level cache (_cachedReportData) invalidated, or
+  // the displayed grade stays pre-verify. Mirrors rescorePages().
+  function _rescoreAfterVerify(page, pageIdx) {
+    if (!page || !page.rawData) return;
+    delete page.rawData._cachedReportData;
+    if (pageIdx >= 0) delete _crawlPageReports[pageIdx];
+    page.reportData = MilgScoring.runScoring(page.rawData);
+  }
+
   function _preComputePixelVerify() {
     if (!_crawlSession || !window.MilgContrastVerify || !window.MilgQueue) return;
     var pagesToVerify = _crawlSession.pages.filter(function(p) {
@@ -250,7 +268,7 @@ window.MilgCrawlUI = (function() {
           if (!page.rawData._contrastVerifyResults) {
             page.rawData._contrastVerifyResults = results;
             page.rawData._bboxEdgeResults = bboxEdgeResults || [];
-            if (pageIdx >= 0) delete _crawlPageReports[pageIdx];
+            _rescoreAfterVerify(page, pageIdx); // score now reflects pixel verdicts
           }
           _verifyPageRegions(page, pageIdx, function() { done(results); });
         });
@@ -258,7 +276,14 @@ window.MilgCrawlUI = (function() {
         doneCount++;
         _crawlModal('Pixel verify ' + doneCount + '/' + totalCount + ' pages');
         _updateVerifySummary(doneCount, totalCount, doneCount === totalCount ? _crawlSession : null);
-        if (doneCount === totalCount) setTimeout(_crawlModalClose, 2000);
+        if (doneCount === totalCount) {
+          // Rebuild summary + re-render so verified grades/scores show in the grid + tabs.
+          _crawlSession.summary = MilgCrawl.buildSummary(_crawlSession);
+          if (_crawlSession.summary && _crawlSession._spaProvenance) _crawlSession.summary._spaProvenance = _crawlSession._spaProvenance;
+          renderCrawlTabs();
+          showCrawlPageContent(_crawlActivePageTab || 'summary');
+          setTimeout(_crawlModalClose, 2000);
+        }
       }, priority);
     });
   }
@@ -474,6 +499,7 @@ window.MilgCrawlUI = (function() {
           MilgContrastVerify.verify(report, function(results, bboxEdgeResults) {
             page.rawData._contrastVerifyResults = results;
             page.rawData._bboxEdgeResults = bboxEdgeResults || [];
+            _rescoreAfterVerify(page, _crawlSession.pages.indexOf(page));
             _verifyPageRegions(page, _crawlSession.pages.indexOf(page), null);
           });
         }

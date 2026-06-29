@@ -1,4 +1,4 @@
-// make-it-look-good — SPA View Explorer v3.11.96
+// make-it-look-good — SPA View Explorer v3.11.97
 // Runs INSIDE the analysis iframe (injected alongside MilgExtract). Discovers the
 // hidden "views" of a single-page app — reached by hash/History routes (Tier 1) or
 // by clicking nav controls (Tier 2, opt-in) — and re-runs MilgExtract on each so the
@@ -79,11 +79,19 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
     return (el.textContent || el.getAttribute('aria-label') || el.getAttribute('title') || '').trim();
   }
 
-  // Live nav-control candidates (re-queried each step so framework re-renders are handled).
+  // Live clickable candidates (re-queried each step so framework re-renders + newly
+  // revealed nested controls are handled). Includes generic buttons/[role=button] —
+  // NOT just nav — because mid-page tab strips are often plain content buttons with no
+  // role/aria/data hints (e.g. React tabs). Safety denylist + dedup + caps gate the
+  // blast radius; disabled controls are skipped (clicking is a no-op anyway).
   function liveCandidates() {
     var out = [], seen = [];
-    var sel = 'nav button, header button, aside button, [role="navigation"] button, [role="tab"], [role="menuitem"], [aria-controls], [aria-selected], [data-page], [data-view], [data-tab], [data-step], [data-nav], .nav-link, .tab';
-    function add(el) { if (!el || seen.indexOf(el) !== -1) return; seen.push(el); out.push(el); }
+    var sel = 'button, [role="button"], [role="tab"], [role="menuitem"], [aria-controls], [aria-selected], a[href^="#"], [data-page], [data-view], [data-tab], [data-step], [data-nav], .nav-link, .tab';
+    function add(el) {
+      if (!el || seen.indexOf(el) !== -1) return;
+      if (el.disabled || el.getAttribute('aria-disabled') === 'true') return;
+      seen.push(el); out.push(el);
+    }
     try { Array.prototype.forEach.call(document.querySelectorAll(sel), add); } catch (e) {}
     try { Array.prototype.forEach.call(document.querySelectorAll('[onclick]'), function(el) { try { if (getComputedStyle(el).cursor === 'pointer') add(el); } catch (e) {} }); } catch (e) {}
     return out;
@@ -313,10 +321,17 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
   // Tier 2 — click safe controls, re-enumerating each step. Classifies each change as a
   // full-view PAGE or a bounded REGION, keys it deterministically, and dedups by content.
   function clickLoop() {
-    var triedKeys = {}, guard = 0;
+    var triedKeys = {}, everSeen = {}, guard = 0;
+    // Depth-first via "newly-appeared first": clicking a nav reveals a view's inner tab
+    // strip — those controls weren't candidates before, so prioritize them over the
+    // already-seen sibling navs. This explores a view's nested tabs BEFORE navigating
+    // away, and is robust to sidebar layouts (nav + content in one container) where a
+    // containment-based scope can't separate nav from inner tabs.
     function step() {
-      if (capExceeded() || guard++ > 60) { if (guard > 60) notes.push('exploration guard limit'); return; }
+      if (capExceeded() || guard++ > 200) { if (guard > 200) notes.push('exploration guard limit'); return; }
       var cands = liveCandidates(), next = null, nextKey = null;
+      cands.sort(function(a, b) { return (everSeen[candKey(a)] ? 1 : 0) - (everSeen[candKey(b)] ? 1 : 0); });
+      cands.forEach(function(c) { everSeen[candKey(c)] = 1; });
       for (var i = 0; i < cands.length; i++) {
         var key = candKey(cands[i]);
         if (triedKeys[key]) continue;

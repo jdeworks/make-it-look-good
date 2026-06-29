@@ -1,8 +1,8 @@
-// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.96
+// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.97
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.96 loaded');
+console.log('[milg] analyzer.js v3.11.97 loaded');
 
 (function() {
   "use strict";
@@ -1415,7 +1415,7 @@ console.log('[milg] analyzer.js v3.11.96 loaded');
             urlStatus.textContent = 'Single-page app detected — exploring views...';
             showProgress(70, 'Exploring SPA views...');
             updateFocusModal('Exploring SPA views');
-            MilgIframe.analyzeSpaViews(html, { url: url, exploreClicks: _wantClicks, maxViews: 8, screenshots: wantShots }, function(r) {
+            MilgIframe.analyzeSpaViews(html, { url: url, exploreClicks: _wantClicks, maxViews: 20, screenshots: wantShots }, function(r) {
               analyzeUrlBtn.disabled = false;
               analyzeUrlBtn.innerHTML = _analyzeUrlIcon;
               hideFocusModal();
