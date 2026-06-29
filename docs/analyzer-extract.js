@@ -985,13 +985,23 @@ window.MilgExtract = (function() {
         var ox = getComputedStyle(anc).overflowX;
         if (ox === 'auto' || ox === 'scroll') {
           var ancTag = anc.tagName.toLowerCase();
-          var isData = !!_iframeDataContentTags[ancTag] || !!anc.closest('table,pre,code');
+          // Data content = a table/pre/code itself, inside one, OR a wrapper AROUND one
+          // (the common `div[overflow-x:auto] > table` pattern — a full-width data table
+          // that scrolls internally).
+          var isData = !!_iframeDataContentTags[ancTag] || !!anc.closest('table,pre,code') || !!anc.querySelector('table,pre');
           var isWide = anc.clientWidth >= vpW * 0.8;
           // A short horizontal STRIP (toolbar, chip row, carousel) that scrolls
           // sideways is intentional UI — its content is reachable by design.
           // Only tall, page-wide scrollers indicate accidental horizontal scroll.
           var isStrip = anc.clientHeight > 0 && anc.clientHeight <= 200;
-          if ((isData && !isWide) || isStrip) { inIntentionalScroll = true; break; }
+          // A data scroller whose OWN box stays within the viewport scrolls its content
+          // INTERNALLY — the page itself does not overflow, so cells pushed past the
+          // container edge are reachable by scrolling, not a layout bug. This is the case
+          // even when the scroller is full-width (a wide data table). Genuine page-level
+          // overflow leaves the scroller's own box extending past vpW, so it is NOT exempt.
+          var _ancRect = anc.getBoundingClientRect();
+          var ownBoxInViewport = _ancRect.left >= -2 && _ancRect.right <= vpW + 2;
+          if ((isData && (ownBoxInViewport || !isWide)) || isStrip) { inIntentionalScroll = true; break; }
           break;
         }
         anc = anc.parentElement;
@@ -1272,8 +1282,13 @@ window.MilgExtract = (function() {
         if (oelStyle.overflowX === 'hidden') return;
         var hasOverflowCSS = oelStyle.overflowX === 'auto' || oelStyle.overflowX === 'scroll' ||
           /overflow-x-(auto|scroll)/.test(oel.className || '');
-        var isDataContent = !!_iframeDataContentTags[tag] || !!oel.closest('table,pre,code');
-        var hasStructuralChildren = !isDataContent && oel.querySelector(_iframeStructuralSel);
+        var isDataTag = !!_iframeDataContentTags[tag] || !!oel.closest('table,pre,code');
+        var hasStructuralChildren = !isDataTag && oel.querySelector(_iframeStructuralSel);
+        // A wrapper AROUND a table/pre (no page-section children) is a data scroller too —
+        // the `div[overflow-x:auto] > table` pattern for full-width tables that scroll
+        // internally. A wrapper that ALSO contains nav/form/headings stays a structural bug.
+        var wrapsData = !isDataTag && !hasStructuralChildren && !!oel.querySelector('table,pre');
+        var isDataContent = isDataTag || wrapsData;
         var isWideContainer = oel.clientWidth >= vpW * 0.8;
 
         var classification = 'bug';
