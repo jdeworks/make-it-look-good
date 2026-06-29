@@ -1398,15 +1398,64 @@ console.log('[milg] analyzer.js v3.11.92 loaded');
         // Helper: finish single-page URL analysis
         var _analyzeUrlIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze URL';
         function _finishUrl(data) {
+          data.meta.url = url;
+          data.meta._inputMethod = 'url';
+          if (wantJs) data.meta._jsEnabled = true;
+
+          // SPA view discovery: when the page is a single-page app with hidden views,
+          // explore them and render as a multi-page crawl (per-view + cross-view
+          // consistency). Tier-1 hash routes are always safe; clicking nav controls is
+          // opt-in via the "Explore SPA views" toggle.
+          var _spa = data.structure && data.structure.spa;
+          var _spaToggle = document.getElementById('spaExploreCheck');
+          var _wantClicks = !!(_spaToggle && _spaToggle.checked);
+          var _wantSpa = _spa && _spa.isLikelyHiddenViews && (((_spa.routes || []).length >= 1) || _wantClicks);
+          if (_wantSpa) {
+            urlStatus.style.display = 'block';
+            urlStatus.textContent = 'Single-page app detected — exploring views...';
+            showProgress(70, 'Exploring SPA views...');
+            updateFocusModal('Exploring SPA views');
+            MilgIframe.analyzeSpaViews(html, { url: url, exploreClicks: _wantClicks, maxViews: 8 }, function(r) {
+              analyzeUrlBtn.disabled = false;
+              analyzeUrlBtn.innerHTML = _analyzeUrlIcon;
+              hideFocusModal();
+              showProgress(100, 'Done!');
+              setTimeout(hideProgress, 500);
+              urlStatus.style.display = 'none';
+              if (r && r.views && r.views.length > 1) {
+                var _base = url.replace(/#.*$/, '');
+                var results = r.views.map(function(v) {
+                  var sk = String(v.stateKey || '').replace(/^#/, '');
+                  v.data.meta = v.data.meta || {};
+                  v.data.meta.url = _base + (sk ? '#' + sk : '');
+                  v.data.meta.title = ((data.meta.title || '') + ' › ' + (v.label || 'view')).trim();
+                  v.data.meta._inputMethod = 'url';
+                  v.data.meta._spaView = true;
+                  v.data.meta._spaTrigger = v.trigger || null;
+                  return { url: v.data.meta.url, data: v.data };
+                });
+                var _skipN = (r.skipped || []).length;
+                showToast(r.views.length + ' SPA views analyzed' + (_skipN ? ', ' + _skipN + ' unsafe control' + (_skipN > 1 ? 's' : '') + ' skipped' : '') + (r.truncated ? ' (capped)' : ''));
+                MilgCrawlUI.loadCrawlResults({ startUrl: url, results: results, _spaProvenance: { clicked: r.clicked, skipped: r.skipped, notes: r.notes, truncated: r.truncated } }, 'SPA views');
+              } else {
+                if (r && r.error) showToast('SPA explore failed (' + r.error + ') — showing single view');
+                else showToast('No additional SPA views found — showing single view');
+                runAnalysis(data);
+              }
+            });
+            return;
+          }
+
           analyzeUrlBtn.disabled = false;
           analyzeUrlBtn.innerHTML = _analyzeUrlIcon;
           urlStatus.style.display = 'none';
           showProgress(100, 'Done!');
           setTimeout(hideProgress, 500);
-          data.meta.url = url;
-          data.meta._inputMethod = 'url';
-          if (wantJs) data.meta._jsEnabled = true;
           hideFocusModal();
+          // SPA detected but exploration not enabled — nudge the user to turn it on.
+          if (_spa && _spa.isLikelyHiddenViews && !_wantClicks && (_spa.routes || []).length === 0) {
+            showToast('Single-page app detected (' + ((_spa.navCandidates || []).length) + ' nav controls) — enable "Explore SPA views" to analyze all views');
+          }
           runAnalysis(data);
         }
 
