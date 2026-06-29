@@ -1,0 +1,110 @@
+name: "🔍 Analysis looks off"
+description: The analyzer scored something wrong, rendered a page incorrectly, or a forced light/dark mode didn't apply. Tell us the page + the settings you used so we can reproduce and fix it.
+title: "[looks off] "
+labels: ["looks-off"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve the analyzer! It's a best-effort heuristic tool, so some sites (especially JS-driven theming and unusual markup) won't be perfect. The two things that make a report **actually fixable** are: **the page** and **the exact settings** you ran. Please fill those in.
+
+  - type: input
+    id: page
+    attributes:
+      label: Page analyzed
+      description: The URL you analyzed (or describe the page if it's behind login / localhost / a pasted snippet).
+      placeholder: https://example.com/pricing
+    validations:
+      required: true
+
+  - type: textarea
+    id: whats-off
+    attributes:
+      label: What looks off?
+      description: What did the analyzer get wrong — a score, a finding (false positive / missed issue), a bad screenshot, a mode that didn't apply, a missing SPA view, etc.?
+      placeholder: "e.g. I forced Light mode but the report still shows the dark theme, so the contrast findings are wrong."
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+      placeholder: "e.g. The page should have been analyzed in light mode with light backgrounds."
+    validations:
+      required: false
+
+  - type: dropdown
+    id: input-method
+    attributes:
+      label: Input method
+      options:
+        - URL (Enter URL tab)
+        - Console Snippet
+        - Paste HTML
+        - Load Saved (re-opened analysis)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: color-scheme
+    attributes:
+      label: Color scheme setting
+      description: The "Color scheme" dropdown in the analyzer options bar.
+      options:
+        - "Auto (as rendered)"
+        - Force light
+        - Force dark
+    validations:
+      required: true
+
+  - type: dropdown
+    id: viewport
+    attributes:
+      label: Viewport setting
+      description: The "Viewport" dropdown in the analyzer options bar.
+      options:
+        - Current window size
+        - "Phone (375×812)"
+        - "Tablet (768×1024)"
+        - "Desktop (1280×900)"
+        - "Large (1920×1080)"
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: options
+    attributes:
+      label: Options enabled
+      description: Tick the toggles you had ON for this run.
+      options:
+        - label: Screenshots
+        - label: Pixel Verify
+        - label: Explore SPA views
+        - label: Crawl site (multi-page)
+        - label: JavaScript enabled (URL mode)
+
+  - type: input
+    id: version
+    attributes:
+      label: Analyzer version
+      description: Shown next to "Design Analyzer" in the header (and in the browser console as `[milg] analyzer.js vX.Y.Z`).
+      placeholder: v3.11.105
+    validations:
+      required: true
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser & OS
+      placeholder: "e.g. Chrome 124 on macOS 14"
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshots / extra context
+      description: Drag in a screenshot of the report vs. the real page, console errors (the "Diag" button copies logs), or anything else useful.
+    validations:
+      required: false
