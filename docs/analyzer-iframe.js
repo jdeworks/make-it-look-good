@@ -332,7 +332,10 @@ window.MilgIframe = (function() {
       // so patches run before any framework JS. For non-JS mode, inject after <head>.
       if (wantSandbox || wantFetchPatch) {
         if (/<script[\s>]/i.test(html)) {
-          return html.replace(/<script[\s>]/i, scripts + '<script ');
+          // Preserve the original delimiter (capture group via function replacement) —
+          // a string replacement would (a) consume the `>` of an inline `<script>`,
+          // mangling it into `<script code…`, and (b) mis-interpret any `$` in `scripts`.
+          return html.replace(/<script([\s>])/i, function(m, d) { return scripts + '<script' + d; });
         }
       }
       if (/<head[\s>]/i.test(html)) {
@@ -583,7 +586,10 @@ window.MilgIframe = (function() {
       var fallbackDelay = jsEnabled ? 8000 : 8000;
       var extractScript = idVar + excludeVar + fragmentVar + darkUiVar + screenshotScript + '<script>window.MilgExtract=(' + _extractFnSrc + ');window.addEventListener("load",function(){setTimeout(function(){window.MilgExtract()},' + postLoadDelay + ')});setTimeout(function(){if(!window.__milgData)window.MilgExtract()},' + fallbackDelay + ');</' + 'script>';
       if (/<\/body>/i.test(html)) {
-        srcdoc = html.replace(/<\/body>/i, extractScript + '</body>');
+        // Function replacement: the serialized extractor can contain `$` sequences
+        // (e.g. React __reactContainer$ keys) that String.replace would otherwise
+        // mis-interpret as $&/$'/$` patterns and corrupt the injected script.
+        srcdoc = html.replace(/<\/body>/i, function() { return extractScript + '</body>'; });
       } else {
         srcdoc = html + extractScript;
       }
@@ -627,10 +633,72 @@ window.MilgIframe = (function() {
     }, captureScreenshots ? 480000 : (isFullDoc ? 15000 : 8000));
   }
 
+  // --- SPA view exploration -------------------------------------------------
+  // Loads the page once in a same-origin srcdoc iframe, lets its JS boot, then runs
+  // the injected explorer (window.MilgSpaExplore) to discover hidden views by setting
+  // hash routes and (opt-in) clicking safe nav controls. Each view carries its own
+  // MilgExtract rawData. callback({ views, clicked, skipped, notes, truncated,
+  // navCandidateCount }) — or { views: [], error } on failure. No per-view screenshots
+  // (rawData/scoring only); per-view capture is a future enhancement.
+  function analyzeSpaViews(html, opts, callback) {
+    opts = opts || {};
+    var sourceUrl = opts.url || null;
+    // SPAs require JS — preprocess like jsEnabled mode (sandbox + fetch patch, no urlPatch).
+    html = preprocessHtml(html, sourceUrl, { baseTag: !!sourceUrl, urlPatch: false, fontProxy: false, sandbox: true, fetchPatch: !!sourceUrl });
+
+    var iframe = document.createElement('iframe');
+    var _iframeId = 'milg-spa-' + Date.now() + '-' + Math.random().toString(36).substr(2, 8);
+    var vp = opts.viewport || _getViewport();
+    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:' + vp.w + 'px;height:' + vp.h + 'px;border:none;';
+    iframe.sandbox = 'allow-scripts allow-same-origin';
+    document.body.appendChild(iframe);
+
+    var handled = false;
+    function finish(result) {
+      if (handled) return;
+      handled = true;
+      window.removeEventListener('message', onMsg);
+      if (iframe.parentNode) document.body.removeChild(iframe);
+      callback(result);
+    }
+    function onMsg(e) {
+      if (!e.data || (e.data._iframeId && e.data._iframeId !== _iframeId)) return;
+      if (e.data.type === 'milg-spa-views') finish(e.data.result || { views: [] });
+    }
+    window.addEventListener('message', onMsg);
+
+    var spaOpts = {
+      exploreClicks: !!opts.exploreClicks,
+      maxViews: opts.maxViews || 8,
+      timeBudgetMs: opts.timeBudgetMs || 18000,
+      settleMs: opts.settleMs || 250,
+      settleMaxMs: opts.settleMaxMs || 1500
+    };
+    // Inject MilgExtract (no auto-run — the explorer drives extraction itself) + the
+    // explorer + a bootstrap that runs after the SPA boots and batches all views back.
+    var extractSrc = window.MilgExtract.toString();
+    var exploreSrc = window.MilgSpaExplore.toString();
+    var bootDelay = 2000;
+    var inject =
+      '<script>window.__milgIframeId="' + _iframeId + '";</' + 'script>' +
+      '<script>window.MilgExtract=(' + extractSrc + ');</' + 'script>' +
+      '<script>window.MilgSpaExplore=(' + exploreSrc + ');</' + 'script>' +
+      '<script>(function(){function go(){try{window.MilgSpaExplore(' + JSON.stringify(spaOpts) + ').then(function(r){parent.postMessage({type:"milg-spa-views",result:r,_iframeId:"' + _iframeId + '"},"*")}).catch(function(e){parent.postMessage({type:"milg-spa-views",result:{views:[],error:String(e&&e.message||e)},_iframeId:"' + _iframeId + '"},"*")})}catch(e){parent.postMessage({type:"milg-spa-views",result:{views:[],error:String(e)},_iframeId:"' + _iframeId + '"},"*")}}window.addEventListener("load",function(){setTimeout(go,' + bootDelay + ')});})();</' + 'script>';
+
+    // Function replacement so `$` sequences in the serialized source (e.g. React's
+    // __reactContainer$ keys) are never interpreted as String.replace special patterns.
+    var srcdoc = /<\/body>/i.test(html) ? html.replace(/<\/body>/i, function() { return inject + '</body>'; }) : html + inject;
+    iframe.srcdoc = srcdoc;
+
+    // Hard timeout: boot delay + explorer budget + margin.
+    setTimeout(function() { finish({ views: [], error: 'spa-explore-timeout' }); }, bootDelay + spaOpts.timeBudgetMs + 8000);
+  }
+
   return {
     init: init,
     preprocessHtml: preprocessHtml,
     prefetchFonts: prefetchFonts,
-    analyzeHtml: analyzeHtml
+    analyzeHtml: analyzeHtml,
+    analyzeSpaViews: analyzeSpaViews
   };
 })();

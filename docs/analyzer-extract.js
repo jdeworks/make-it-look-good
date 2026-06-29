@@ -244,6 +244,61 @@ window.MilgExtract = (function() {
     }
     data.structure.responsiveClasses = /class="[^"]*(?:sm:|md:|lg:|xl:)/.test(htmlStr) || Array.from(document.styleSheets).some(function(ss) { try { return Array.from(ss.cssRules).some(function(r) { return r instanceof CSSMediaRule && /max-width|min-width/.test(r.conditionText || ''); }); } catch(e) { return false; } });
 
+    // --- SPA detection --------------------------------------------------------
+    // Single-page apps reach their views via routing/clicks, not distinct <a> URLs,
+    // so a plain crawl sees only the initial view. Record signals here so the crawler
+    // can decide whether to run the view explorer (analyzer-spa.js). Best-effort +
+    // fully defensive — detection only GATES an opt-in feature, so mild over-detection
+    // (an info note) is acceptable; a thrown error must never break extraction.
+    (function() {
+      var spa = { framework: 'none', router: 'none', routes: [], navCandidates: [], internalAnchorPages: 0, isLikelyHiddenViews: false };
+      try {
+        var b = document.body;
+        // Framework (best-effort; #__next is strong, #root common for CRA/Vite SPAs)
+        if (window.React || document.querySelector('[data-reactroot]') || Object.keys(b).some(function(k) { return k.indexOf('__reactContainer') === 0 || k.indexOf('__reactFiber') === 0; }) || document.querySelector('#__next, #root')) spa.framework = 'react';
+        else if (window.__VUE__ || document.querySelector('[data-v-app]') || b.__vue_app__) spa.framework = 'vue';
+        else if (document.querySelector('[ng-version]') || window.ng) spa.framework = 'angular';
+        else if (Array.prototype.some.call(b.querySelectorAll('*'), function(el) { return Array.prototype.some.call(el.classList || [], function(c) { return /^svelte-/.test(c); }); })) spa.framework = 'svelte';
+
+        // Hash routes (a[href^="#"], [data-route], [data-href^="#"])
+        var routeSet = {};
+        Array.prototype.forEach.call(document.querySelectorAll('a[href^="#"], [data-route], [data-href^="#"]'), function(el) {
+          var r = el.getAttribute('href') || el.getAttribute('data-href') || (el.getAttribute('data-route') ? '#' + el.getAttribute('data-route') : '');
+          if (r && r.length > 1 && r !== '#') routeSet[r] = 1;
+        });
+        spa.routes = Object.keys(routeSet).slice(0, 20);
+        if (spa.routes.some(function(r) { return /^#!?\//.test(r); }) || /^#!?\//.test(location.hash)) spa.router = 'hash';
+        else if (spa.framework !== 'none') spa.router = 'history';
+
+        // Nav candidates — clickable navigation controls that are NOT a real <a href> page link
+        var seen = new Set();
+        function pushCand(el) {
+          if (!el || seen.has(el)) return;
+          var href = el.tagName === 'A' ? (el.getAttribute('href') || '') : '';
+          if (href && href.charAt(0) !== '#') return; // real link, not in-app SPA nav
+          seen.add(el);
+          if (spa.navCandidates.length >= 30) return;
+          var label = (el.textContent || el.getAttribute('aria-label') || el.getAttribute('title') || '').trim().substring(0, 40);
+          spa.navCandidates.push({ selector: cssSelector(el), label: label, tag: el.tagName.toLowerCase() });
+        }
+        var navSel = 'nav button, header button, aside button, [role="navigation"] button, [role="tab"], [role="menuitem"], [data-page], [data-view], [data-tab], [data-step], [data-nav], .nav-link, .tab';
+        Array.prototype.forEach.call(document.querySelectorAll(navSel), pushCand);
+        Array.prototype.forEach.call(document.querySelectorAll('[onclick]'), function(el) { try { if (getComputedStyle(el).cursor === 'pointer') pushCand(el); } catch(e) {} });
+
+        // Internal anchor "pages" — real multi-page <a> nav lowers SPA likelihood
+        var internalPages = 0;
+        Array.prototype.forEach.call(document.querySelectorAll('a[href]'), function(a) {
+          var h = a.getAttribute('href') || '';
+          if (!h || h.charAt(0) === '#' || /^(javascript|mailto|tel):/i.test(h) || a.target === '_blank') return;
+          internalPages++;
+        });
+        spa.internalAnchorPages = internalPages;
+
+        spa.isLikelyHiddenViews = spa.framework !== 'none' || spa.routes.length >= 2 || (internalPages <= 1 && spa.navCandidates.length >= 2);
+      } catch (e) { spa._error = String((e && e.message) || e); }
+      data.structure.spa = spa;
+    })();
+
     // Decorative element detection — only skip aria-hidden if actually hidden
     var decorativeEls = new Set();
     // Includes the analyzer's own capture artifacts (iframe placeholders, capture
