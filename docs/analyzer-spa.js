@@ -1,4 +1,4 @@
-// make-it-look-good — SPA View Explorer v3.11.93
+// make-it-look-good — SPA View Explorer v3.11.94
 // Runs INSIDE the analysis iframe (injected alongside MilgExtract). Discovers the
 // hidden "views" of a single-page app — reached by hash/History routes (Tier 1) or
 // by clicking nav controls (Tier 2, opt-in) — and re-runs MilgExtract on each so the

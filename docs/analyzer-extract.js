@@ -227,7 +227,15 @@ window.MilgExtract = (function() {
       structure: { totalElements: 0, darkModeClasses: false, responsiveClasses: false, tailwindDetected: false, cssFramework: 'unknown' }
     };
 
-    var allElements = document.body.querySelectorAll('*');
+    // Region-scoped extraction: when an interaction-driven REGION unit is analyzed,
+    // window.__milgScopeRoot points at the changed subtree so we analyze ONLY it (not the
+    // repeated page chrome). Absent/null on the normal path → _scopeRoot stays null and
+    // every query resolves to document/document.body exactly as before (byte-identical).
+    var _scopeRoot = null;
+    try { var _sr = window.__milgScopeRoot; if (_sr && _sr.nodeType === 1 && document.body && document.body.contains(_sr)) _scopeRoot = _sr; } catch (e) {}
+    function _qa(sel) { try { return (_scopeRoot || document).querySelectorAll(sel); } catch (e) { return (document).querySelectorAll(sel); } }
+
+    var allElements = (_scopeRoot || document.body).querySelectorAll('*');
     data.structure.totalElements = allElements.length;
     var htmlStr = document.body.innerHTML;
     if (/class="[^"]*(?:sm:|md:|lg:|xl:)/.test(htmlStr) || /class="[^"]*(?:flex|grid|text-|bg-|p-|m-)/.test(htmlStr)) { data.structure.tailwindDetected = true; data.structure.cssFramework = 'tailwind'; }
@@ -262,7 +270,7 @@ window.MilgExtract = (function() {
 
         // Hash routes (a[href^="#"], [data-route], [data-href^="#"])
         var routeSet = {};
-        Array.prototype.forEach.call(document.querySelectorAll('a[href^="#"], [data-route], [data-href^="#"]'), function(el) {
+        Array.prototype.forEach.call(_qa('a[href^="#"], [data-route], [data-href^="#"]'), function(el) {
           var r = el.getAttribute('href') || el.getAttribute('data-href') || (el.getAttribute('data-route') ? '#' + el.getAttribute('data-route') : '');
           if (r && r.length > 1 && r !== '#') routeSet[r] = 1;
         });
@@ -282,12 +290,12 @@ window.MilgExtract = (function() {
           spa.navCandidates.push({ selector: cssSelector(el), label: label, tag: el.tagName.toLowerCase() });
         }
         var navSel = 'nav button, header button, aside button, [role="navigation"] button, [role="tab"], [role="menuitem"], [data-page], [data-view], [data-tab], [data-step], [data-nav], .nav-link, .tab';
-        Array.prototype.forEach.call(document.querySelectorAll(navSel), pushCand);
-        Array.prototype.forEach.call(document.querySelectorAll('[onclick]'), function(el) { try { if (getComputedStyle(el).cursor === 'pointer') pushCand(el); } catch(e) {} });
+        Array.prototype.forEach.call(_qa(navSel), pushCand);
+        Array.prototype.forEach.call(_qa('[onclick]'), function(el) { try { if (getComputedStyle(el).cursor === 'pointer') pushCand(el); } catch(e) {} });
 
         // Internal anchor "pages" — real multi-page <a> nav lowers SPA likelihood
         var internalPages = 0;
-        Array.prototype.forEach.call(document.querySelectorAll('a[href]'), function(a) {
+        Array.prototype.forEach.call(_qa('a[href]'), function(a) {
           var h = a.getAttribute('href') || '';
           if (!h || h.charAt(0) === '#' || /^(javascript|mailto|tel):/i.test(h) || a.target === '_blank') return;
           internalPages++;
@@ -309,7 +317,7 @@ window.MilgExtract = (function() {
     var userExclude = window.__milgExclude || '';
     var fullExclude = userExclude ? defaultExclude + ', ' + userExclude : defaultExclude;
     try {
-      document.querySelectorAll(fullExclude).forEach(function(el) {
+      _qa(fullExclude).forEach(function(el) {
         decorativeEls.add(el);
         el.querySelectorAll('*').forEach(function(child) { decorativeEls.add(child); });
       });
@@ -334,8 +342,8 @@ window.MilgExtract = (function() {
     data.context = { pageType: 'unknown' };
     var hasHero = !!document.querySelector('.hero, [class*="hero"], section:first-of-type h1');
     var hasPricing = !!document.querySelector('[class*="pricing"], [class*="price"], .plan, .tier');
-    var formCount = document.querySelectorAll('form').length;
-    var sectionCount = document.querySelectorAll('section').length;
+    var formCount = _qa('form').length;
+    var sectionCount = _qa('section').length;
     if (hasPricing) data.context.pageType = 'pricing';
     else if (formCount > 0 && data.structure.totalElements < 80) data.context.pageType = 'form';
     else if (hasHero && sectionCount >= 3) data.context.pageType = 'marketing';
@@ -475,7 +483,7 @@ window.MilgExtract = (function() {
       }
     }
     // Placeholder text contrast — inputs/textareas with placeholder attribute
-    document.querySelectorAll('input[placeholder],textarea[placeholder]').forEach(function(inp) {
+    _qa('input[placeholder],textarea[placeholder]').forEach(function(inp) {
       var ph = inp.getAttribute('placeholder');
       if (!ph || !ph.trim()) return;
       var inpRect = inp.getBoundingClientRect();
@@ -637,7 +645,7 @@ window.MilgExtract = (function() {
     data.spacing.gaps = mapToSorted(gapMap);
     data.spacing.maxContentWidth = Math.round(maxContentW) + 'px';
 
-    document.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(function(h) {
+    _qa('h1,h2,h3,h4,h5,h6').forEach(function(h) {
       var hs = getComputedStyle(h);
       var _hEntry = { tag: h.tagName.toLowerCase(), text: h.textContent.trim().substring(0, 60), fontSize: hs.fontSize, fontWeight: hs.fontWeight, lineHeight: hs.lineHeight, fontFamily: hs.fontFamily.split(',')[0].trim().replace(/['"]/g, ''), selector: cssSelector(h), bbox: null };
       trackBbox(h, _hEntry, 'bbox');
@@ -646,7 +654,7 @@ window.MilgExtract = (function() {
     });
 
     // Layout: section gaps, alignment edges, visual hierarchy
-    var sections = document.querySelectorAll('section, [class*="section"], main > div, article');
+    var sections = _qa('section, [class*="section"], main > div, article');
     var sortedSections = Array.from(sections).filter(function(el) { return isVisible(el); }).sort(function(a, b) { return a.getBoundingClientRect().top - b.getBoundingClientRect().top; });
     var sectionGaps = [];
     for (var si = 1; si < sortedSections.length; si++) {
@@ -655,7 +663,7 @@ window.MilgExtract = (function() {
     }
     data.layout.sectionGaps = sectionGaps;
 
-    var alignTargets = document.querySelectorAll('h1,h2,h3,h4,p,ul,ol,table,form,img,figure,blockquote');
+    var alignTargets = _qa('h1,h2,h3,h4,p,ul,ol,table,form,img,figure,blockquote');
     var leftEdges = [];
     var alignmentElements = []; // elements with their edges for bbox tracking
     Array.from(alignTargets).forEach(function(el) {
@@ -682,7 +690,7 @@ window.MilgExtract = (function() {
       bodySize: bodyFS
     };
 
-    var interactive = document.querySelectorAll('a,button,input,select,textarea,[role="button"],[tabindex]');
+    var interactive = _qa('a,button,input,select,textarea,[role="button"],[tabindex]');
     var touchIssues = [];
     interactive.forEach(function(el) {
       if (!isVisible(el) || isDecorative(el) || _isScreenReaderOnly(el) || _isHiddenAtCapture(el)) return;
@@ -734,7 +742,7 @@ window.MilgExtract = (function() {
     // Checks whether buttons, cards, inputs, etc. visually stand out from surroundings
     var bgEdgePairs = [];
     var bgEdgeSeen = new Set();
-    var bgEdgeCandidates = document.querySelectorAll('button,a,[role="button"],input:not([type="hidden"]),select,textarea,details,summary,.card,[class*="card"],[class*="btn"],[class*="button"],[class*="chip"],[class*="badge"],[class*="tag"],[class*="alert"],[class*="toast"],[class*="banner"]');
+    var bgEdgeCandidates = _qa('button,a,[role="button"],input:not([type="hidden"]),select,textarea,details,summary,.card,[class*="card"],[class*="btn"],[class*="button"],[class*="chip"],[class*="badge"],[class*="tag"],[class*="alert"],[class*="toast"],[class*="banner"]');
     bgEdgeCandidates.forEach(function(el) {
       if (!isVisible(el) || isDecorative(el)) return;
       var rect = el.getBoundingClientRect();
@@ -871,7 +879,7 @@ window.MilgExtract = (function() {
     try {
       var _srSel = ['[data-aos]', '.wow', '[data-sr]', '.reveal', '.scroll-reveal', '.animate-on-scroll', '[data-scroll]', '[data-animate]'];
       for (var _ssi = 0; _ssi < _srSel.length; _ssi++) {
-        var _n = 0; try { _n = document.querySelectorAll(_srSel[_ssi]).length; } catch (e) {}
+        var _n = 0; try { _n = _qa(_srSel[_ssi]).length; } catch (e) {}
         if (_n > 0) _anim.scrollRevealPatterns.push({ selector: _srSel[_ssi], count: _n });
       }
     } catch (e) {}
@@ -888,11 +896,11 @@ window.MilgExtract = (function() {
     // lang attribute — scoring (accessibility.js) reads this; it was never set
     // before, so EVERY page got a false "Missing lang attribute" error.
     data.accessibility.langAttribute = (document.documentElement.getAttribute('lang') || '').trim();
-    var navEls = document.querySelectorAll('nav'); var navItemCount = 0;
+    var navEls = _qa('nav'); var navItemCount = 0;
     navEls.forEach(function(nav) { var topLinks = nav.querySelectorAll(':scope > a, :scope > ul > li > a, :scope > ol > li > a, :scope > button, :scope > ul > li > button'); navItemCount += topLinks.length; });
     data.accessibility.navItemCount = navItemCount;
     var noAlt = 0; var noAltElements = [];
-    document.querySelectorAll('img').forEach(function(img) {
+    _qa('img').forEach(function(img) {
       if (!img.hasAttribute('alt')) {
         noAlt++;
         if (isVisible(img) && noAltElements.length < 10) {
@@ -904,7 +912,7 @@ window.MilgExtract = (function() {
     });
     data.accessibility.imagesWithoutAlt = noAlt;
     data.accessibility.imagesWithoutAltElements = noAltElements;
-    var inputs = document.querySelectorAll('input:not([type="hidden"]):not([type="submit"]):not([type="button"]),select,textarea');
+    var inputs = _qa('input:not([type="hidden"]):not([type="submit"]):not([type="button"]),select,textarea');
     var labeled = 0; var unlabeledElements = [];
     inputs.forEach(function(inp) {
       data.accessibility.formLabels.total++;
@@ -926,7 +934,7 @@ window.MilgExtract = (function() {
     // Skip link detection: an <a href="#..."> among the first focusable elements.
     // Detected by structure (internal anchor link early in tab order), not by text content (multilingual).
     data.accessibility.hasSkipLink = false;
-    var _firstFocusable = document.querySelectorAll('a[href],button,input,select,textarea,[tabindex]');
+    var _firstFocusable = _qa('a[href],button,input,select,textarea,[tabindex]');
     for (var _fi = 0; _fi < Math.min(_firstFocusable.length, 5); _fi++) {
       var _fe = _firstFocusable[_fi];
       if (_fe.tagName === 'A' && _fe.getAttribute('href') && /^#\w/.test(_fe.getAttribute('href'))) {
@@ -938,14 +946,14 @@ window.MilgExtract = (function() {
     data.typography.fontSmoothingAntialiased = false;
     try { var bs = getComputedStyle(document.body).webkitFontSmoothing; if (bs === 'antialiased') data.typography.fontSmoothingAntialiased = true; } catch(e) {}
     data.accessibility.bgImageBehindText = 0;
-    document.querySelectorAll('p,h1,h2,h3,h4,h5,h6,li,span').forEach(function(el) { if (!isVisible(el)) return; var bgi = getComputedStyle(el).backgroundImage; if (bgi && bgi !== 'none' && bgi.indexOf('url(') !== -1 && el.textContent.trim().length > 10) data.accessibility.bgImageBehindText++; });
+    _qa('p,h1,h2,h3,h4,h5,h6,li,span').forEach(function(el) { if (!isVisible(el)) return; var bgi = getComputedStyle(el).backgroundImage; if (bgi && bgi !== 'none' && bgi.indexOf('url(') !== -1 && el.textContent.trim().length > 10) data.accessibility.bgImageBehindText++; });
 
     // --- Viewport visibility: detect elements positioned off-screen on x-axis ---
     var vpW = window.innerWidth;
     var _iframeDataContentTags = { table: 1, pre: 1, code: 1 };
     data.layout.offscreenElements = [];
     var meaningfulSel = 'button,a,[role="menuitem"],[role="menu"],li,p,h1,h2,h3,h4,h5,h6,img,input,select,textarea,td,th,label,span,div';
-    document.querySelectorAll(meaningfulSel).forEach(function(el) {
+    _qa(meaningfulSel).forEach(function(el) {
       if (!isVisible(el) || isDecorative(el)) return;
       var r = el.getBoundingClientRect();
       if (r.width < 4 || r.height < 4) return;
@@ -993,7 +1001,7 @@ window.MilgExtract = (function() {
     // --- Second pass: check hidden fixed/sticky elements for potential overflow ---
     // Elements like scroll-triggered headers may be hidden (opacity:0) at extraction time
     // but overflow the viewport when they become visible after scrolling
-    document.querySelectorAll('*').forEach(function(el) {
+    _qa('*').forEach(function(el) {
       var s = getComputedStyle(el);
       if (s.position !== 'fixed' && s.position !== 'sticky') return;
       // Only check elements that are currently hidden
@@ -1044,7 +1052,7 @@ window.MilgExtract = (function() {
     // --- Table cell readability on narrow viewports ---
     data.layout.tableCellIssues = [];
     if (vpW < 768) {
-      document.querySelectorAll('table').forEach(function(table) {
+      _qa('table').forEach(function(table) {
         var cells = table.querySelectorAll('td, th');
         var cramped = 0, wrappedCells = 0;
         cells.forEach(function(cell) {
@@ -1083,7 +1091,7 @@ window.MilgExtract = (function() {
       function parseColor(str) { var m = str.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/); return m ? { r: +m[1], g: +m[2], b: +m[3] } : null; }
 
       // Sample section background colors at different scroll positions
-      var sections = document.querySelectorAll('section,main>div,[class*="bg-"]');
+      var sections = _qa('section,main>div,[class*="bg-"]');
       var sectionBgs = [];
       sections.forEach(function(sec) {
         var bg = getComputedStyle(sec).backgroundColor;
@@ -1095,7 +1103,7 @@ window.MilgExtract = (function() {
 
       // Check visible fixed elements for contrast risk (report per container, not per child)
       // Only position:fixed — sticky elements are anchored within their section context
-      document.querySelectorAll('header,nav,[class*="fixed"]').forEach(function(el) {
+      _qa('header,nav,[class*="fixed"]').forEach(function(el) {
         var s = getComputedStyle(el);
         if (s.position !== 'fixed') return;
         // If the element has a solid (non-transparent) background, its children
@@ -1197,7 +1205,7 @@ window.MilgExtract = (function() {
     var _iframeStructuralSel = 'nav,form,section,header,footer,article,aside,main,h1,h2,h3,h4,h5,h6';
     data.layout.horizontalScrollContainers = [];
     data.layout.nestedScrollbars = 0;
-    var overflowEls = document.querySelectorAll('[style*="overflow"],[class*="overflow"]');
+    var overflowEls = _qa('[style*="overflow"],[class*="overflow"]');
     overflowEls.forEach(function(oel) {
       // Virtual scrollers (Monaco, canvas-based editors/grids) report absurd
       // scrollWidth (millions of px) as an implementation trick — no real
@@ -1306,7 +1314,7 @@ window.MilgExtract = (function() {
     // These won't cause page-level scrollbar in Chromium but can on iOS Safari
     data.layout.clippedOverflow = [];
     if (vpW < 768) {
-      document.querySelectorAll('div,section,nav,footer,header').forEach(function(el) {
+      _qa('div,section,nav,footer,header').forEach(function(el) {
         if (!isVisible(el)) return;
         if (el.scrollWidth <= el.clientWidth + 4 || el.clientWidth < 50) return;
         var s = getComputedStyle(el);
@@ -1358,11 +1366,11 @@ window.MilgExtract = (function() {
       } catch (_le) { label = el.tagName ? el.tagName.toLowerCase() : 'panel'; }
       _iframeHiddenPanelMeta.push({ kind: kind, label: label, triggerEl: triggerEl || null });
     }
-    document.querySelectorAll('[role="menu"], [role="listbox"], [role="dialog"], [role="tooltip"], [role="alertdialog"]').forEach(function(el) {
+    _qa('[role="menu"], [role="listbox"], [role="dialog"], [role="tooltip"], [role="alertdialog"]').forEach(function(el) {
       if (!isVisible(el)) _hpAddPanel(el, 'aria-role', null);
     });
     var _iframeInlineRoles = { region: 1, tabpanel: 1, tab: 1 };
-    document.querySelectorAll('[aria-controls]').forEach(function(trigger) {
+    _qa('[aria-controls]').forEach(function(trigger) {
       var targetId = trigger.getAttribute('aria-controls');
       if (targetId) {
         var target = document.getElementById(targetId);
@@ -1372,7 +1380,7 @@ window.MilgExtract = (function() {
         }
       }
     });
-    document.querySelectorAll('[aria-haspopup="true"], [aria-haspopup="menu"], [aria-haspopup="dialog"], [aria-haspopup="listbox"]').forEach(function(trigger) {
+    _qa('[aria-haspopup="true"], [aria-haspopup="menu"], [aria-haspopup="dialog"], [aria-haspopup="listbox"]').forEach(function(trigger) {
       var ctrlId = trigger.getAttribute('aria-controls');
       if (ctrlId) {
         var t = document.getElementById(ctrlId);
@@ -1388,15 +1396,15 @@ window.MilgExtract = (function() {
     // Comprehensive hidden-panel detection: closed <details>, [hidden], aria-expanded=false targets,
     // and Tailwind-collapsed containers (max-h-0 + overflow-hidden, .hidden class).
     // Closed <details>: the <details> element itself is the "panel" container.
-    document.querySelectorAll('details:not([open])').forEach(function(el) {
+    _qa('details:not([open])').forEach(function(el) {
       _hpAddPanel(el, 'details', null);
     });
     // Elements with [hidden] attribute (not already caught above)
-    document.querySelectorAll('[hidden]').forEach(function(el) {
+    _qa('[hidden]').forEach(function(el) {
       _hpAddPanel(el, 'hidden-attr', null);
     });
     // aria-expanded=false targets via aria-controls
-    document.querySelectorAll('[aria-expanded="false"][aria-controls]').forEach(function(trigger) {
+    _qa('[aria-expanded="false"][aria-controls]').forEach(function(trigger) {
       var tid = trigger.getAttribute('aria-controls');
       if (!tid) return;
       var tgt = document.getElementById(tid);
@@ -1405,7 +1413,7 @@ window.MilgExtract = (function() {
     // Tailwind-collapsed: max-h-0 + overflow-hidden with clientHeight === 0,
     // or elements with literal class "hidden" (Tailwind utility).
     // Note: overflow-hidden-only (carousels) is handled by region pipeline — skip those here.
-    document.querySelectorAll('[class]').forEach(function(el) {
+    _qa('[class]').forEach(function(el) {
       if (_iframeHiddenPanels.indexOf(el) !== -1) return;
       // Decorative elements (aria-hidden) are never interactive panels — skip them
       if (el.getAttribute('aria-hidden') === 'true') return;
@@ -1504,7 +1512,7 @@ window.MilgExtract = (function() {
 
     // Fixed-width and truncated elements
     data.structure.fixedWidthElements = 0;
-    document.querySelectorAll('[style*="width"]').forEach(function(el) {
+    _qa('[style*="width"]').forEach(function(el) {
       if (!isVisible(el)) return;
       var w = el.style.width;
       if (w && /^\d+(px)?$/.test(w) && parseFloat(w) > 300) {
@@ -1513,7 +1521,7 @@ window.MilgExtract = (function() {
       }
     });
     data.structure.truncatedElements = 0;
-    document.querySelectorAll('[class*="truncate"],[class*="ellipsis"],[style*="text-overflow"]').forEach(function(tel) {
+    _qa('[class*="truncate"],[class*="ellipsis"],[style*="text-overflow"]').forEach(function(tel) {
       if (!isVisible(tel)) return;
       if (tel.scrollWidth > tel.clientWidth + 2) data.structure.truncatedElements++;
     });
@@ -1536,7 +1544,7 @@ window.MilgExtract = (function() {
       // image stub fulfills network requests only — it never adds inline styles.
       var DESIGN_PROP = /\b(font-size|font-family|font-weight|font-style|color|background|padding|margin|border(?!-box)|border-radius|box-shadow|text-align|text-transform|letter-spacing|line-height)\s*:/i;
       try {
-        var styled = document.querySelectorAll('[style]');
+        var styled = _qa('[style]');
         for (var si = 0; si < styled.length; si++) {
           var sel = styled[si];
           if (sel.hasAttribute('data-milg-iframe-ph') || sel.hasAttribute('data-milg-overlay') || sel.hasAttribute('data-decorative')) continue;
@@ -1546,9 +1554,9 @@ window.MilgExtract = (function() {
       // Interactive element count (gate for the interaction-affordance check) +
       // unstyled native controls (button/input/select with no class at all).
       try {
-        var interactives = document.querySelectorAll('button, a[href], input:not([type=hidden]), select, textarea, [role="button"], [onclick]');
+        var interactives = _qa('button, a[href], input:not([type=hidden]), select, textarea, [role="button"], [onclick]');
         for (var ii = 0; ii < interactives.length; ii++) { if (isVisible(interactives[ii])) craft.interactiveCount++; }
-        var ctrls = document.querySelectorAll('button, input:not([type=hidden]), select, textarea');
+        var ctrls = _qa('button, input:not([type=hidden]), select, textarea');
         for (var kc = 0; kc < ctrls.length; kc++) {
           var c = ctrls[kc];
           var ccls = (c.className && typeof c.className === 'string') ? c.className.trim() : '';
@@ -1563,7 +1571,7 @@ window.MilgExtract = (function() {
       // consistency without punishing restraint. We compare PADDING (not size) so bento /
       // asymmetric grids that vary card SIZE are not flagged.
       try {
-        var all = document.querySelectorAll('*');
+        var all = _qa('*');
         var groupsChecked = 0;
         for (var ai = 0; ai < all.length && groupsChecked < 400; ai++) {
           var cont = all[ai];
