@@ -102,19 +102,23 @@
     }
 
     // --- S4. Light/dark support -------------------------------------------------------
-    // Modern crafted UIs support both color schemes. EXEMPT dark-design pages: a page
-    // that is intentionally single-mode dark (isDarkPage) has no light variant by design
-    // and must not be penalized. Gate to larger pages to spare small components.
-    if (isSubstantial && totalEls >= 40 && !isDarkPage) {
+    // Modern crafted UIs support BOTH color schemes. Single-mode in either direction is
+    // the gap: a light-only page lacks a dark variant, and a dark-by-design page
+    // (isDarkPage) lacks a light variant — both are penalized symmetrically. The genuine
+    // dual-scheme signal is darkModeClasses (dark: utilities / theme toggle / a
+    // prefers-color-scheme rule). Gate to larger pages to spare small components.
+    if (isSubstantial && totalEls >= 40) {
       checks++;
       if (darkMode) { passed++; }
       else {
         deduct += 30;
         findings.push({
           severity: 'warning',
-          title: 'No light/dark mode support',
+          title: isDarkPage ? 'No light mode support' : 'No dark mode support',
           detail: 'The design offers only one color scheme. Polished UIs adapt to the user\'s system preference.',
-          fix: 'Add a dark variant. In Tailwind, pair backgrounds/text with dark: utilities (bg-white dark:bg-slate-900, text-slate-900 dark:text-slate-100).',
+          fix: isDarkPage
+            ? 'Add a light variant. In Tailwind, give every dark surface/text a light default (e.g. bg-white dark:bg-slate-900, text-slate-900 dark:text-slate-100) rather than hard-coding dark.'
+            : 'Add a dark variant. In Tailwind, pair backgrounds/text with dark: utilities (bg-white dark:bg-slate-900, text-slate-900 dark:text-slate-100).',
           presetRef: 'Polished presets ship both light and dark.',
           source: 'Apple HIG Dark Mode — https://developer.apple.com/design/human-interface-guidelines/dark-mode'
         });

@@ -438,14 +438,31 @@ window.MilgCrawl = (function() {
   // 10px→16px into one bogus "near-duplicate" — total spread within a cluster is
   // bounded by tol. Returns only clusters holding >=2 distinct values from >=2 pages
   // (pages using slightly different values instead of one shared scale step).
+  // tol is a number (absolute px) OR {abs, rel}: the cluster's max spread from its MIN
+  // anchor is max(abs, min*rel), so allowed drift scales with size — 48 vs 49.5px is not
+  // "drift", but 13.6 vs 14px is. Still MIN-anchored (never chained), so a real ramp can't merge.
   function _consNumericNearDups(entries, tol) {
+    var abs = typeof tol === 'number' ? tol : (tol && tol.abs) || 0;
+    var rel = (tol && typeof tol === 'object' && tol.rel) || 0;
+    function bound(anchor) { return Math.max(abs, anchor * rel); }
     var sorted = entries.slice().sort(function(a, b) { return a.value - b.value; });
     var clusters = [], cur = null;
     sorted.forEach(function(e) {
-      if (cur && e.value - cur.min <= tol) { cur.values[e.value] = 1; cur.pages[e.page] = 1; cur.members.push(e); }
+      if (cur && e.value - cur.min <= bound(cur.min)) { cur.values[e.value] = 1; cur.pages[e.page] = 1; cur.members.push(e); }
       else { cur = { min: e.value, values: {}, pages: {}, members: [e] }; cur.values[e.value] = 1; cur.pages[e.page] = 1; clusters.push(cur); }
     });
     return clusters.filter(function(c) { return Object.keys(c.values).length >= 2 && Object.keys(c.pages).length >= 2; });
+  }
+
+  // Cross-page prominence: keep only entries whose EXACT value is used >= minTotal times
+  // site-wide (counts summed across pages). Catches a token used 2x/page across many pages
+  // — a per-page count>=3 filter would wrongly drop it — while still dropping a true 1x
+  // one-off. Aggregating by exact value is safe: an identical fractional value repeating
+  // across pages is a shared deterministic token, not per-page sub-pixel rendering noise.
+  function _consProminentByTotal(entries, minTotal) {
+    var totals = {};
+    entries.forEach(function(e) { totals[e.value] = (totals[e.value] || 0) + (e.count || 0); });
+    return entries.filter(function(e) { return totals[e.value] >= minTotal; });
   }
 
   // Format up to 4 cluster values as a compact "13.3px/13.6px/14px…" example.
@@ -454,18 +471,38 @@ window.MilgCrawl = (function() {
     return vs.slice(0, 4).map(function(v) { return v + (unit || ''); }).join('/') + (vs.length > 4 ? '…' : '');
   }
 
-  // Cluster colors by Euclidean RGB distance. Same near-duplicate criterion: a cluster
-  // spanning 2+ distinct hexes from 2+ pages = a color that should be one token.
+  // sRGB (0-255) → CIE-L*a*b* (D65). Equal RGB steps are NOT equally visible, so we cluster
+  // colors in LAB where Euclidean distance (ΔE76) tracks PERCEIVED difference.
+  function _consRgbToLab(rgb) {
+    function lin(c) { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); }
+    var r = lin(rgb.r), g = lin(rgb.g), b = lin(rgb.b);
+    var x = (r * 0.4124 + g * 0.3576 + b * 0.1805) / 0.95047; // → XYZ (D65), white-normalized
+    var y = (r * 0.2126 + g * 0.7152 + b * 0.0722) / 1.0;
+    var z = (r * 0.0193 + g * 0.1192 + b * 0.9505) / 1.08883;
+    function f(t) { return t > 0.008856 ? Math.cbrt(t) : (7.787 * t + 16 / 116); }
+    var fx = f(x), fy = f(y), fz = f(z);
+    return { L: 116 * fy - 16, a: 500 * (fx - fy), b: 200 * (fy - fz) };
+  }
+  // ΔE*76 — Euclidean distance in L*a*b*. ~JND ≈ 2.3; a small ΔE means "same token".
+  function _consDeltaE(a, b) {
+    var dL = a.L - b.L, da = a.a - b.a, db = a.b - b.b;
+    return Math.sqrt(dL * dL + da * da + db * db);
+  }
+
+  // Cluster colors by PERCEPTUAL distance (ΔE in CIE-Lab). Same near-duplicate criterion:
+  // a cluster spanning 2+ distinct hexes from 2+ pages = a color that should be one token.
+  // LAB/ΔE (not raw RGB) so near-white shades still merge while two genuinely distinct
+  // accents that happen to land RGB-close are kept apart.
   function _consColorNearDups(entries, threshold) {
     var clusters = [];
     entries.forEach(function(e) {
+      var lab = e.lab || (e.lab = _consRgbToLab(e.rgb));
       var found = null;
       for (var i = 0; i < clusters.length; i++) {
-        var s = clusters[i].seed, dr = s.r - e.rgb.r, dg = s.g - e.rgb.g, db = s.b - e.rgb.b;
-        if (Math.sqrt(dr * dr + dg * dg + db * db) <= threshold) { found = clusters[i]; break; }
+        if (_consDeltaE(clusters[i].seedLab, lab) <= threshold) { found = clusters[i]; break; }
       }
       if (found) { found.values[e.hex] = 1; found.pages[e.page] = 1; found.members.push(e); }
-      else { var c = { seed: e.rgb, values: {}, pages: {}, members: [e] }; c.values[e.hex] = 1; c.pages[e.page] = 1; clusters.push(c); }
+      else { var c = { seed: e.rgb, seedLab: lab, values: {}, pages: {}, members: [e] }; c.values[e.hex] = 1; c.pages[e.page] = 1; clusters.push(c); }
     });
     return clusters.filter(function(c) { return Object.keys(c.values).length >= 2 && Object.keys(c.pages).length >= 2; });
   }
@@ -536,16 +573,19 @@ window.MilgCrawl = (function() {
           'Set one base font-size on body and let pages inherit it.', [], bodyLocs);
         notes.push(sizes.length + ' body sizes');
       }
-      // Prominence filter: only sizes actually used a few times count toward "scale"
+      // Prominence filter: only sizes used a few times site-wide count toward "scale"
       // drift. This drops rem/em-derived fractional one-offs (a single heading at
       // 14.72px) so we flag drift between REAL scale steps, not rendering artifacts.
+      // Counts are aggregated ACROSS pages (_consProminentByTotal) so a step used
+      // twice per page on many pages still qualifies.
       var entries = [];
       pages.forEach(function(p) {
         ((p.rawData.typography && p.rawData.typography.fontSizes) || []).slice(0, 12).forEach(function(e) {
-          var v = _consPx(e.value); if (v != null && (e.count || 0) >= 3) entries.push({ value: v, page: _consPath(p.url), selector: e.sampleSelector || '', text: e.sampleText || '' });
+          var v = _consPx(e.value); if (v != null) entries.push({ value: v, count: e.count || 0, page: _consPath(p.url), selector: e.sampleSelector || '', text: e.sampleText || '' });
         });
       });
-      var dups = _consNumericNearDups(entries, 1.0);
+      entries = _consProminentByTotal(entries, 3);
+      var dups = _consNumericNearDups(entries, { abs: 1.0, rel: 0.04 });
       if (dups.length > 0) {
         score -= Math.min(20, dups.length * 4);
         var ex = dups.slice(0, 3).map(function(c) { return _consClusterEx(c.values, 'px'); });
@@ -560,15 +600,18 @@ window.MilgCrawl = (function() {
     (function() {
       // Prominence filter (same rationale as type): ignore rarely-used fractional
       // values so we compare the real spacing grid, not rem-derived padding noise.
+      // Counts are aggregated ACROSS pages so a value used twice per page on many
+      // pages still qualifies.
       var entries = [];
       pages.forEach(function(p) {
         var sp = p.rawData.spacing || {};
         [].concat(sp.paddings || [], sp.margins || [], sp.gaps || []).forEach(function(e) {
-          var v = _consPx(e.value); if (v != null && v > 0 && (e.count || 0) >= 3) entries.push({ value: v, page: _consPath(p.url) });
+          var v = _consPx(e.value); if (v != null && v > 0) entries.push({ value: v, count: e.count || 0, page: _consPath(p.url) });
         });
       });
+      entries = _consProminentByTotal(entries, 3);
       if (entries.length < 2) return;
-      var dups = _consNumericNearDups(entries, 1.5);
+      var dups = _consNumericNearDups(entries, { abs: 1.5, rel: 0.05 });
       var score = 100, note = 'Consistent';
       if (dups.length > 0) {
         score -= Math.min(24, dups.length * 4);
@@ -620,7 +663,7 @@ window.MilgCrawl = (function() {
         });
       });
       if (entries.length < 2) return;
-      var dups = _consColorNearDups(entries, 18);
+      var dups = _consColorNearDups(entries, 4); // ΔE76 (~JND 2.3); 4 = "should be one token"
       var score = 100, note = 'Consistent';
       if (dups.length > 0) {
         score -= Math.min(30, dups.length * 5);
@@ -632,28 +675,37 @@ window.MilgCrawl = (function() {
       sub('palette', 'Palette', score, note);
     })();
 
-    // Dark mode — coverage should be all-or-nothing.
+    // Color scheme — a crafted site supports BOTH light and dark. Single-mode in
+    // EITHER direction (light-only OR dark-only) is the gap, mirroring per-page
+    // Design Polish. We rely only on the genuine implementation signal
+    // (darkModeClasses) and deliberately ignore darkModeMethod's 'media-query'
+    // (which reflects the ANALYZER machine's own prefers-color-scheme, not the
+    // site — the source of the old "all pages support dark mode" false positive)
+    // and 'inferred-from-colors' (a dark-by-design page is single-mode, not dual).
     (function() {
-      var withDark = [], without = [], darkLocs = [];
+      var both = [], single = [], lightOnly = [], darkOnly = [], locs = [];
       pages.forEach(function(p) {
         var st = p.rawData.structure || {};
-        var has = (st.darkModeMethod && st.darkModeMethod !== 'none') || st.darkModeClasses;
+        var supportsBoth = !!st.darkModeClasses;
         var path = _consPath(p.url);
-        (has ? withDark : without).push(path);
-        darkLocs.push({ path: path, selector: '', value: has ? (st.darkModeMethod || 'dark') : 'none' });
+        var mode = supportsBoth ? 'light+dark' : (st.isDarkPage ? 'dark-only' : 'light-only');
+        (supportsBoth ? both : single).push(path);
+        if (!supportsBoth) (st.isDarkPage ? darkOnly : lightOnly).push(path);
+        locs.push({ path: path, selector: '', value: mode });
       });
-      if (withDark.length + without.length < 2) return;
-      if (withDark.length > 0 && without.length > 0) {
-        add('warning', 'Dark mode coverage is inconsistent', withDark.length + ' page(s) support dark mode, ' + without.length + ' do not (' + without.join(', ') + ').',
-          'Either add dark-mode variants to all pages or none.', without, darkLocs);
-        sub('darkMode', 'Dark mode', Math.round(100 * Math.max(withDark.length, without.length) / N), withDark.length + '/' + N + ' support dark mode');
-      } else if (withDark.length > 0) {
-        sub('darkMode', 'Dark mode', 100, 'All support dark mode');
+      if (both.length + single.length < 2) return;
+      if (both.length > 0 && single.length > 0) {
+        add('warning', 'Color-scheme support is inconsistent', both.length + ' page(s) support both light and dark, ' + single.length + ' are single-mode (' + single.join(', ') + ').',
+          'Support both light and dark on every page (e.g. Tailwind dark: utilities) — or none.', single, locs);
+        sub('darkMode', 'Color scheme (light + dark)', Math.round(100 * Math.max(both.length, single.length) / N), both.length + '/' + N + ' support light + dark');
+      } else if (single.length === 0) {
+        sub('darkMode', 'Color scheme (light + dark)', 100, 'All pages support light + dark');
       } else {
-        // No page offers a dark scheme — a site-wide gap, mirroring per-page Design Polish.
-        add('warning', 'No pages support dark mode', 'None of the ' + N + ' crawled pages offer a dark color scheme.',
-          'Add dark-mode variants site-wide (e.g. Tailwind dark: utilities).', without, darkLocs);
-        sub('darkMode', 'Dark mode', 70, 'None use dark mode');
+        // No page offers both schemes — a site-wide gap, mirroring per-page Design Polish.
+        var dir = darkOnly.length === 0 ? 'all are light-only' : lightOnly.length === 0 ? 'all are dark-only' : 'all are single-mode';
+        add('warning', 'No pages support both light and dark', 'None of the ' + N + ' crawled pages offer both color schemes — ' + dir + '.',
+          'Add the missing scheme site-wide — light-only pages need dark variants; dark-only pages need a light variant.', single, locs);
+        sub('darkMode', 'Color scheme (light + dark)', 70, dir);
       }
     })();
 
