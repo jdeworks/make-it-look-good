@@ -151,13 +151,17 @@ function scoreCognitiveLoad(data) {
     if (!hierarchyBroken) {
       passed++;
     } else {
+      // App/SPA fragment views often omit the shell <h1>; a level skip here isn't a
+      // reliable "broken mental model" signal. Demote to info for app-like views.
+      var cogAppLike = !!(data.context && data.context.appLike);
       findings.push({
-        severity: 'warning',
-        title: 'Heading hierarchy gaps break mental model',
+        severity: cogAppLike ? 'info' : 'warning',
+        title: cogAppLike ? 'Heading levels skip within this app view' : 'Heading hierarchy gaps break mental model',
         detail: 'Skipped heading levels (e.g., h1 → h3) make it harder for users to understand content structure.',
         fix: 'Use headings in order: h1 → h2 → h3. Don\'t skip levels.',
         source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships'
       });
+      if (cogAppLike) passed++;
     }
   }
 

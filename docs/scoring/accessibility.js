@@ -46,14 +46,19 @@ function scoreAccessibility(data) {
     passed++;
   } else {
     var hdgBboxes = (data.typography && data.typography.headings || []).filter(function(h) { return h.bbox; }).map(function(h) { return h.bbox; });
+    // App / SPA views are captured as fragments — the document <h1> often lives in
+    // an app shell outside the view, so a level skip here usually isn't a real
+    // document-outline defect. Demote to info; real pages keep the warning.
+    var a11yAppLike = !!(data.context && data.context.appLike);
     findings.push({
-      severity: 'warning',
-      title: 'Heading hierarchy has gaps (e.g., h1 → h3)',
-      detail: 'Heading order: ' + headingOrder.join(' → '),
+      severity: a11yAppLike ? 'info' : 'warning',
+      title: a11yAppLike ? 'Heading levels skip within this app view (e.g., h1 → h3)' : 'Heading hierarchy has gaps (e.g., h1 → h3)',
+      detail: 'Heading order: ' + headingOrder.join(' → ') + (a11yAppLike ? ' — app/SPA fragment; the page <h1> may live in the shell.' : ''),
       fix: 'Use headings in order: h1 → h2 → h3. Never skip levels. Style with classes instead of heading tags.', source: 'WCAG 2.2 §1.3.1 — https://www.w3.org/TR/WCAG22/#info-and-relationships',
       presetRef: null,
       locator: hdgBboxes.length > 0 ? { selector: '', text: '', bboxes: hdgBboxes } : undefined
     });
+    if (a11yAppLike) passed++;
   }
 
   // Images with alt

@@ -349,6 +349,24 @@ window.MilgExtract = (function() {
     else if (hasHero && sectionCount >= 3) data.context.pageType = 'marketing';
     else if (sectionCount >= 2) data.context.pageType = 'content';
 
+    // App / data-dense view detection. Dashboards, data tables and dev tools
+    // legitimately use compact heading scales, sub-12px data labels, and
+    // fragment-style heading order (the document <h1> often lives in an app shell
+    // outside the captured SPA view). We detect a STRONG app signature so a few
+    // craft heuristics can soften for these views — WITHOUT relaxing real
+    // marketing/content pages (those keep full strictness via the pageType guard).
+    var _ctrlCount = _qa('button, [role="button"], input, select, textarea, [role="tab"], [role="menuitem"], [role="switch"]').length;
+    var _tableRows = _qa('table tr, [role="row"]').length;
+    var _gridCells = _qa('td, th, [role="gridcell"]').length;
+    var _totalEls = data.structure.totalElements || 1;
+    data.context.controlCount = _ctrlCount;
+    data.context.appLike = (data.context.pageType !== 'marketing' && data.context.pageType !== 'pricing') && (
+      _tableRows >= 6 ||          // a real data table (header + ≥5 rows)
+      _gridCells >= 20 ||         // a dense data grid
+      _ctrlCount >= 12 ||         // control-dense UI (toolbars, filter bars)
+      (_ctrlCount / _totalEls) >= 0.10  // controls dominate the DOM
+    );
+
     var bodyStyle = getComputedStyle(document.body);
     data.typography.bodyFontSize = bodyStyle.fontSize;
     data.typography.bodyLineHeight = bodyStyle.lineHeight;

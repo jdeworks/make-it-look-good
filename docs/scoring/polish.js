@@ -59,26 +59,46 @@
       var maxH = 0;
       headings.forEach(function(h) { var s = parseFloat(h.fontSize); if (s > maxH) maxH = s; });
       var ratio = maxH > 0 ? maxH / bodyFS : 0;
+      // App / data-dense views (dashboards, data tools) legitimately use a compact
+      // heading scale — a big marketing hero would be wrong there. Demote to an
+      // info note and don't penalize. Real marketing/content pages keep the warning.
+      var appLike = !!(data.context && data.context.appLike);
       if (ratio > 0 && ratio < 1.2) {
-        deduct += 25;
-        findings.push({
-          severity: 'warning',
-          title: 'Flat type hierarchy — largest heading is only ' + (Math.round(ratio * 100) / 100) + 'x body text',
-          detail: 'No clear visual hierarchy: headings and body are nearly the same size, so the eye has nothing to anchor to.',
-          fix: 'Establish a type scale. In Tailwind give the main heading text-3xl/4xl over a text-base body (≈2–3x).',
-          presetRef: 'Polished presets use a clear modular scale (hero ≥ 2x body).',
-          source: 'Modular type scales — https://typescale.com/'
-        });
+        if (appLike) {
+          findings.push({
+            severity: 'info',
+            title: 'Compact type hierarchy — largest heading is ' + (Math.round(ratio * 100) / 100) + 'x body text',
+            detail: 'A flat heading scale is normal for a data-dense app/dashboard view. Flagged for awareness only.',
+            fix: 'If this is a content page rather than an app surface, give the main heading a larger scale (≈2–3x body).',
+            presetRef: null,
+            source: 'Modular type scales — https://typescale.com/'
+          });
+          passed++;
+        } else {
+          deduct += 25;
+          findings.push({
+            severity: 'warning',
+            title: 'Flat type hierarchy — largest heading is only ' + (Math.round(ratio * 100) / 100) + 'x body text',
+            detail: 'No clear visual hierarchy: headings and body are nearly the same size, so the eye has nothing to anchor to.',
+            fix: 'Establish a type scale. In Tailwind give the main heading text-3xl/4xl over a text-base body (≈2–3x).',
+            presetRef: 'Polished presets use a clear modular scale (hero ≥ 2x body).',
+            source: 'Modular type scales — https://typescale.com/'
+          });
+        }
       } else if (ratio > 0 && ratio < 1.4) {
-        deduct += 12;
-        findings.push({
-          severity: 'warning',
-          title: 'Weak type hierarchy — largest heading is ' + (Math.round(ratio * 100) / 100) + 'x body text',
-          detail: 'Hierarchy is present but shallow; the page reads flat.',
-          fix: 'Increase the heading scale. In Tailwind: text-2xl/3xl headings over a text-base body.',
-          presetRef: null,
-          source: 'Modular type scales — https://typescale.com/'
-        });
+        if (appLike) {
+          passed++;
+        } else {
+          deduct += 12;
+          findings.push({
+            severity: 'warning',
+            title: 'Weak type hierarchy — largest heading is ' + (Math.round(ratio * 100) / 100) + 'x body text',
+            detail: 'Hierarchy is present but shallow; the page reads flat.',
+            fix: 'Increase the heading scale. In Tailwind: text-2xl/3xl headings over a text-base body.',
+            presetRef: null,
+            source: 'Modular type scales — https://typescale.com/'
+          });
+        }
       } else { passed++; }
     }
 

@@ -66,8 +66,22 @@
     if (smallTextCount > 0 && totalElements > 20) {
       checks++;
       var smallRatio = smallTextCount / totalElements;
+      // Data-dense app views (treemaps, tables, metric chips) intentionally use
+      // sub-12px labels for compact data. Demote to info and don't penalize; real
+      // marketing/content pages keep the readability warning.
+      var rdAppLike = !!(data.context && data.context.appLike);
       if (smallRatio < 0.05) {
         passed++;
+      } else if (rdAppLike) {
+        passed++;
+        findings.push({
+          severity: 'info',
+          title: smallTextCount + ' element(s) with text smaller than 12px (data-dense view)',
+          detail: 'Sub-12px text is common for data labels in dashboards/tables. Flagged for awareness — ensure essential copy is ≥12px.',
+          fix: 'Keep body/essential text at ≥12px; reserve smaller sizes for dense secondary data.',
+          presetRef: null,
+          source: 'WCAG 2.2 §1.4.4 — https://www.w3.org/TR/WCAG22/#resize-text'
+        });
       } else {
         var smallBboxes = [];
         var smallSelectors = [];
