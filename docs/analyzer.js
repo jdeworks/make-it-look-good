@@ -1,8 +1,8 @@
-// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.105
+// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.106
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.105 loaded');
+console.log('[milg] analyzer.js v3.11.106 loaded');
 
 (function() {
   "use strict";
@@ -903,6 +903,13 @@ console.log('[milg] analyzer.js v3.11.105 loaded');
     window.__milgBannerDismiss = function() { var b = document.getElementById('bestEffortBanner'); if (b) b.style.display = 'none'; };
     window.__milgBannerNever = function() { window.__milgBannerDismiss(); try { localStorage.setItem('milg-besteffort-dismissed', '1'); } catch (e) {} };
     try { if (localStorage.getItem('milg-besteffort-dismissed') === '1') window.__milgBannerDismiss(); } catch (e) {}
+
+    // Settings help modal: open/close (inline onclick handlers in analyzer.html) + Esc to close.
+    window.__milgOpenSettingsHelp = function() { var m = document.getElementById('settingsHelpModal'); if (m) { m.style.display = 'flex'; var c = m.querySelector('button[aria-label="Close"]'); if (c) c.focus(); } };
+    window.__milgCloseSettingsHelp = function() { var m = document.getElementById('settingsHelpModal'); if (m) m.style.display = 'none'; var b = document.getElementById('settingsHelpBtn'); if (b) b.focus(); };
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') { var m = document.getElementById('settingsHelpModal'); if (m && m.style.display !== 'none') window.__milgCloseSettingsHelp(); }
+    });
 
     var pasteInput = document.getElementById('pasteInput');
     var analyzeBtn = document.getElementById('analyzeBtn');

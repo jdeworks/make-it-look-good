@@ -77,6 +77,11 @@
 
 ## Completed: Deep Scan Mode
 
+> **REMOVED in v3.11.102.** The multi-viewport "deep scan" was retired in favor of the
+> single-viewport **Viewport** dropdown + the **Color scheme** (Auto/Light/Dark) dropdown —
+> run once per viewport/mode. Dark-mode rule rewriting + class forcing live on in
+> `preprocessHtml` (color-scheme control). History kept below for reference.
+
 - [x] **Multi-viewport testing** — Spawn 3 parallel iframes at 375/768/1280px, merge results
 - [x] **Dark mode class toggle** — Toggle `.dark` on html, re-extract colors. ~95% reliable for Tailwind/class-based sites
 - [x] **Dark mode media query rewriting** — Extract `prefers-color-scheme: dark` rules from stylesheets, inject unconditionally. ~80-90% reliable

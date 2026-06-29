@@ -40,19 +40,24 @@ function startServer() {
   });
 }
 
-async function analyze(page, target) {
+async function analyze(page, target, opts = {}) {
   await page.goto(`http://localhost:${PORT}/analyzer.html`, { waitUntil: 'networkidle' });
   // Screenshots (and the pixel-verify pipeline they feed) are turned OFF here.
   // This gate guards scoring/findings regressions; the screenshot rasterizer
   // (domToCanvas) stalls for minutes on our OWN Monaco-heavy pages
   // (index.html / analyzer.html), blowing past any reasonable wait. The
-  // capture+verify pipeline is better exercised against real external sites.
-  await page.evaluate(() => {
+  // capture+verify pipeline is better exercised against real external sites
+  // (see scripts/eval-analyzer-quality.mjs). Color scheme + viewport DON'T need
+  // screenshots, so we can still cover dark mode + a mobile viewport here cheaply.
+  await page.evaluate((opts) => {
     ['screenshotCheck', 'pixelVerifyCheck'].forEach((id) => {
       const c = document.getElementById(id);
       if (c && c.checked) { c.checked = false; c.dispatchEvent(new Event('change')); }
     });
-  });
+    function sel(id, v) { const c = document.getElementById(id); if (c && v && c.value !== v) { c.value = v; c.dispatchEvent(new Event('change')); } }
+    sel('colorSchemeSelect', opts.colorScheme || 'auto');
+    sel('viewportSelect', opts.viewport || 'current');
+  }, opts);
   await page.fill('#urlInput', `http://localhost:${PORT}/${target}`);
   await page.click('#analyzeUrlBtn');
   await page.waitForSelector('.report-gauge', { timeout: 60000 });
@@ -142,24 +147,30 @@ page.setDefaultTimeout(60000);
 
 let failed = false;
 const measured = {};
-for (const target of PAGES) {
-  const r = await analyze(page, target);
-  measured[target] = { minScore: r.score, maxErrors: r.counts.error, maxWarnings: r.counts.warning };
-  const base = baseline[target];
+
+// Compare one analysis pass against its baseline entry (key = page, or page|mode).
+function checkPage(key, r) {
+  measured[key] = { minScore: r.score, maxErrors: r.counts.error, maxWarnings: r.counts.warning };
+  const base = baseline[key] || { minScore: 0, maxErrors: 999, maxWarnings: 999 }; // unseeded mode → record, don't fail
   const problems = [];
   if (!Number.isFinite(r.score)) problems.push('could not read score from report');
   else if (r.score < base.minScore) problems.push(`score ${r.score} < baseline minimum ${base.minScore}`);
   if (r.counts.error > base.maxErrors) problems.push(`${r.counts.error} error(s) > allowed ${base.maxErrors}`);
   if (r.counts.warning > base.maxWarnings) problems.push(`${r.counts.warning} warning(s) > allowed ${base.maxWarnings}`);
-
   const tag = problems.length ? 'FAIL' : 'ok';
-  console.log(`${tag}  ${target}  score=${r.score}  errors=${r.counts.error}  warnings=${r.counts.warning}  info=${r.counts.info}`);
+  console.log(`${tag}  ${key}  score=${r.score}  errors=${r.counts.error}  warnings=${r.counts.warning}  info=${r.counts.info}`);
   problems.forEach((p) => console.log(`      ${p}`));
-  if (problems.length && r.findings.length) {
-    console.log('      findings at error/warning level:');
-    r.findings.forEach((f) => console.log('        ' + f));
-  }
+  if (problems.length && r.findings.length) { console.log('      findings at error/warning level:'); r.findings.forEach((f) => console.log('        ' + f)); }
   if (problems.length) failed = true;
+}
+
+for (const target of PAGES) {
+  // Light desktop (the original baseline), then dark + a mobile viewport — all
+  // extraction-only (screenshots off) so no Monaco stall. Catches dark-mode contrast
+  // and responsive regressions in our OWN UI that the single light/desktop pass missed.
+  checkPage(target, await analyze(page, target));
+  checkPage(target + '|dark', await analyze(page, target, { colorScheme: 'dark' }));
+  checkPage(target + '|mobile', await analyze(page, target, { viewport: '375x812' }));
 }
 
 // --- Cross-mode coverage: SPA discovery, SPA-in-crawl, deep scan (deterministic fixtures) ---

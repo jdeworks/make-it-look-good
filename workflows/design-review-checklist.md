@@ -216,13 +216,13 @@ Use the [Design Analyzer](../docs/analyzer.html) to automate ~60 checks across 1
 
 - **8 audience profiles** — General, WCAG AAA, Elderly, Low Vision, Motor Impairment, Color Blind (CVD simulation), Children (6-12), Cognitive — each adjusts thresholds
 - **Context-aware touch targets** — nav links, footer links, inline text links, and buttons scored at appropriate severity levels per WCAG 2.5.8 exceptions
-- **Deep scan** — tests at multiple viewports (375/768/1280px) and dark mode in a single pass
+- **Viewport + color-scheme controls** — set the **Viewport** dropdown (375/768/1280px) and the **Color scheme** dropdown (Auto / Force light / Force dark), then re-run for each combination you care about. One run = one viewport + one mode, analyzed fully — re-run for the others (a few targeted combos, not an exhaustive sweep)
 - **Console snippet** for localhost/behind-login pages — most accurate method
 - Works as a complement to manual review, not a replacement (covers ~30% of accessibility issues; keyboard/screen reader testing still required)
 
 ## Common Mistakes
 
-1. **Reviewing on one viewport only** — always check mobile (375px), tablet (768px), and desktop (1280px) at minimum. The analyzer's deep scan mode automates this.
+1. **Reviewing on one viewport only** — always check mobile (375px), tablet (768px), and desktop (1280px) at minimum. In the analyzer, switch the **Viewport** dropdown and re-run for each.
 2. **Skipping keyboard navigation test** — press Tab through the entire page; if you get lost or stuck, it fails
 3. **Relying only on automated tools** — Lighthouse catches ~30% of accessibility issues; manual testing (screen reader, keyboard) is required. The Design Analyzer catches more (gradient contrast, touch context, CVD safety) but still can't replace manual review.
 4. **Checking contrast on only one color combination** — test every text color on every background it appears on (including hover states, selected states, and dark mode)
