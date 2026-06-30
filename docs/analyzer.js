@@ -1,8 +1,8 @@
-// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.121
+// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.122
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.121 loaded');
+console.log('[milg] analyzer.js v3.11.122 loaded');
 
 (function() {
   "use strict";
@@ -24,11 +24,15 @@ console.log('[milg] analyzer.js v3.11.121 loaded');
   window.__milgIsLocal = MILG_IS_LOCAL;
   // def/min + hosted vs local max. The cost-bearing knobs (views/time/passes) cap on the hosted
   // build; the panel-threshold is benign (gated by maxStatePasses) so its bound is the same.
+  // Defaults are sized to FULLY analyze our reference POCs (anvil ~10 views; dead-data ~22 with
+  // 8 state passes) and substantially cover the large one (narratu, 42+ views). Hosted caps give
+  // enough headroom to fully crawl even narratu, while staying bounded so a giant component
+  // gallery can't explode the tab UI. Local clones are effectively uncapped (localMax).
   var MILG_SPA_LIMITS = {
-    maxViews:         { id: 'spaMaxViews',         def: 20, min: 4,  hostMax: 40, localMax: 200 },
-    timeBudgetSec:    { id: 'spaTimeBudget',       def: 60, min: 15, hostMax: 90, localMax: 600 },
-    perPageThreshold: { id: 'spaPerPageThreshold', def: 3,  min: 1,  hostMax: 12, localMax: 12  },
-    maxStatePasses:   { id: 'spaMaxStatePasses',   def: 6,  min: 1,  hostMax: 12, localMax: 50  }
+    maxViews:         { id: 'spaMaxViews',         def: 30, min: 4,  hostMax: 60,  localMax: 250 },
+    timeBudgetSec:    { id: 'spaTimeBudget',       def: 90, min: 15, hostMax: 180, localMax: 600 },
+    perPageThreshold: { id: 'spaPerPageThreshold', def: 3,  min: 1,  hostMax: 12,  localMax: 12  },
+    maxStatePasses:   { id: 'spaMaxStatePasses',   def: 8,  min: 1,  hostMax: 20,  localMax: 60  }
   };
   window.__milgSpaLimits = MILG_SPA_LIMITS;   // exposed for transparency + regression tests
   function milgClampSpa(spec) {
@@ -54,13 +58,19 @@ console.log('[milg] analyzer.js v3.11.121 loaded');
     if (!panel) return;
     var spa = document.getElementById('spaExploreCheck'), st = document.getElementById('stateCaptureCheck');
     panel.style.display = ((spa && spa.checked) || (st && st.checked)) ? '' : 'none';
-    if (MILG_IS_LOCAL && !panel.__milgUnlocked) {
-      panel.__milgUnlocked = true;
-      [MILG_SPA_LIMITS.maxViews, MILG_SPA_LIMITS.timeBudgetSec, MILG_SPA_LIMITS.maxStatePasses].forEach(function(s) {
-        var el = document.getElementById(s.id); if (el) el.max = String(s.localMax);
-      });
+    if (!panel.__milgNoteSet) {
+      panel.__milgNoteSet = true;
       var note = document.getElementById('spaLimitsNote');
-      if (note) note.textContent = 'Running locally — limits unlocked.';
+      if (MILG_IS_LOCAL) {
+        // Local clone: lift the input ceilings to the unlocked caps and say so.
+        [MILG_SPA_LIMITS.maxViews, MILG_SPA_LIMITS.timeBudgetSec, MILG_SPA_LIMITS.maxStatePasses].forEach(function(s) {
+          var el = document.getElementById(s.id); if (el) el.max = String(s.localMax);
+        });
+        if (note) note.textContent = 'Running locally — limits unlocked (caps not enforced on a local clone).';
+      } else if (note) {
+        // Hosted build: make it explicit the caps are a hosted-only guardrail.
+        note.innerHTML = 'Caps apply to the hosted site only — <a href="https://github.com/jdeworks/make-it-look-good" target="_blank" rel="noopener" style="color:var(--primary-strong);text-decoration:underline">clone &amp; run locally</a> to remove them.';
+      }
     }
   };
 

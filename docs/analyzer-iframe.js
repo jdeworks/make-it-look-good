@@ -733,7 +733,7 @@ window.MilgIframe = (function() {
     var spaOpts = {
       exploreClicks: !!opts.exploreClicks,
       maxViews: opts.maxViews || 8,
-      timeBudgetMs: opts.timeBudgetMs || (wantShots ? 60000 : 30000),
+      timeBudgetMs: opts.timeBudgetMs || (wantShots ? 90000 : 45000),
       settleMs: opts.settleMs || 250,
       settleMaxMs: opts.settleMaxMs || 1500,
       pageEnterGraceMs: opts.pageEnterGraceMs != null ? opts.pageEnterGraceMs : 1500,
@@ -744,7 +744,7 @@ window.MilgIframe = (function() {
       // Per-page (P5) holistic expand threshold + total pass budget — looser than the root
       // threshold so nav-gated sub-pages with a small disclosure cluster still get measured.
       perPageStateThreshold: opts.perPageStateThreshold || 3,
-      maxStatePasses: opts.maxStatePasses != null ? opts.maxStatePasses : 6,
+      maxStatePasses: opts.maxStatePasses != null ? opts.maxStatePasses : 8,
       // Aggressive non-semantic click-to-discover (A3/A4). Default ON; the explorer's own
       // sparsity gate (navCandidates < threshold) decides whether it actually fires, so dense-nav
       // pages (our own UI, the fixture) stay semantic-only without a caller opt-out.

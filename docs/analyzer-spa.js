@@ -1,4 +1,4 @@
-// make-it-look-good — SPA View Explorer v3.11.121
+// make-it-look-good — SPA View Explorer v3.11.122
 // Runs INSIDE the analysis iframe (injected alongside MilgExtract). Discovers the
 // hidden "views" of a single-page app — reached by hash/History routes (Tier 1) or
 // by clicking nav controls (Tier 2, opt-in) — and re-runs MilgExtract on each so the
@@ -490,7 +490,7 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
   // Per-page threshold is LOWER than the root threshold: once you've navigated INTO a page, even
   // a small cluster of disclosures (3+) is worth an all-expanded measurement — that's how we reach
   // nav-gated content (narratu's Demo pages carry ~3 panels each). The pass-budget caps the blast.
-  var _statePasses = 0, STATE_PASS_BUDGET = (opts.maxStatePasses != null ? opts.maxStatePasses : 6), _pageStateDone = {};
+  var _statePasses = 0, STATE_PASS_BUDGET = (opts.maxStatePasses != null ? opts.maxStatePasses : 8), _pageStateDone = {};
   function maybeCapturePageState(pageData, pageStateKey, pageNodeId, descriptor, pageSig) {
     if (!opts.stateCapture || capExceeded()) return Promise.resolve();
     if (_statePasses >= STATE_PASS_BUDGET) return Promise.resolve();
