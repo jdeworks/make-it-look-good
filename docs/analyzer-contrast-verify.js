@@ -1330,7 +1330,12 @@ window.MilgContrastVerify = (function() {
       var results = [];
       var _vStats = { total: pairs.length, verified: 0, noFgBg: 0, tooSmall: 0, outOfBounds: 0 };
       var _hasMask = !!maskCanvasData;
-      var BATCH_SIZE = 8; // yield to event loop every N pairs so spinner animates
+      // Yield to the event loop every N pairs so the spinner animates. setTimeout(…,0) is
+      // clamped to ~4ms, so a dense page (hundreds of pairs) would pay that 4ms per batch;
+      // scale the batch with the pair count to bound total yields to ~30 (capped at 40/batch
+      // so a single synchronous run never gets heavy enough to stutter). Typical pages
+      // (≤240 pairs) keep the original batch of 8.
+      var BATCH_SIZE = Math.max(8, Math.min(40, Math.ceil(pairs.length / 30)));
       var qi = 0;
 
       function processBatch() {

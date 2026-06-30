@@ -112,6 +112,7 @@ function scoreContrast(data) {
       bbox: p.bbox,
       backdropFilter: p.backdropFilter,
       minBgAlpha: p.minBgAlpha,
+      hasBlendMode: !!p.hasBlendMode,
       isPlaceholder: !!p.isPlaceholder,
       _wasRecolored: !!p._wasRecolored
     };
@@ -122,6 +123,10 @@ function scoreContrast(data) {
   function isUncertain(p) {
     if (p._wasRecolored) return false;
     if (p.passes) return false;
+    // mix-blend-mode / background-blend-mode: the rendered color is composited against
+    // whatever shows through, so the CSS fg/bg colors here aren't what the eye sees.
+    // Defer to pixel-verify rather than emit a CSS-estimated contrast error.
+    if (p.hasBlendMode) return true;
     if (p.ratio <= 1.01 && p.fg === p.bg) return true;
     // Very low ratio with light fg+bg suggests unresolved gradient background
     if (p.ratio < 1.5) {
@@ -386,6 +391,22 @@ function scoreContrast(data) {
       source: 'WCAG 2.2 §1.4.5 — https://www.w3.org/TR/WCAG22/#images-of-text'
     });
   }
+  // Hover / active state contrast (advisory) — flagged from stylesheet rules, can't be
+  // pixel-verified, so reported as info and excluded from the score.
+  var stateIssues = (data.colors && data.colors.stateContrastIssues) || [];
+  if (stateIssues.length) {
+    var stateSamples = stateIssues.slice(0, 6).map(function(s) {
+      return '"' + (s.text || s.selector) + '" (' + s.state + ' ' + s.ratio + ':1, needs ' + s.needed + ':1)';
+    });
+    findings.push({
+      severity: 'info',
+      title: stateIssues.length + ' element(s) may lose contrast on :hover/:active',
+      detail: 'These elements set a hover/active text color whose contrast against their background falls below the threshold. The static snapshot scores the resting state; verify the interactive state manually. Elements: ' + stateSamples.join('; ') + (stateIssues.length > 6 ? ', …' : ''),
+      fix: 'Pick :hover/:active text colors that also meet 4.5:1 (3:1 for large text) against the background they appear on.',
+      source: 'WCAG 2.2 §1.4.3 — https://www.w3.org/TR/WCAG22/#contrast-minimum'
+    });
+  }
+
   var na = pairs.length === 0;
   return { score: score, findings: findings, checks: checks, passed: passed, weight: 20, label: 'Color & Contrast', icon: 'contrast', notApplicable: na };
 }

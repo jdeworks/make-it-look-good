@@ -124,7 +124,7 @@ Scoring modules: Color & Contrast (WCAG + APCA), Typography, Spacing & Layout, T
 
 Features: 8 audience profiles (General, WCAG AAA, Elderly, Low Vision, Motor Impairment, Color Blind, Children, Cognitive), page context detection, gradient/background-image/CSS-filter contrast resolution, decorative element filtering, context-aware touch targets (nav/footer/inline exemptions per WCAG 2.5.8), CVD palette simulation (Machado et al. 2009), post-analysis exclusion suggestions, extraction caching, viewport size selection, forced light/dark color-scheme analysis (re-run per viewport/mode for multi-mode coverage), SPA view discovery, page screenshots, analysis history, N/A category detection, progress bar, JSON export/import, markdown export. When crawling multiple pages, a **cross-page Site Consistency report** flags design-token drift across the site — divergent fonts, type scale, spacing, palette (near-duplicate colors), corner radius, dark-mode coverage, and CSS framework — scored independently of each page's own grade. Self-hostable CORS proxy (Cloudflare Worker, free tier 100K req/day) — see [`proxy/README.md`](proxy/README.md).
 
-Validated against 125 preset templates via headless browser testing with Puppeteer Chrome or Playwright Chromium fallback — average score 96, min 85, max 100, with all 125 presets completing successfully.
+Validated against 125 preset templates via headless browser testing with Puppeteer Chrome or Playwright Chromium fallback — average score 99, min 90, max 100, with all 125 presets completing successfully (0 errors).
 
 Fresh-clone validation:
 

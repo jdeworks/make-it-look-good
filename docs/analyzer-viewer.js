@@ -21,6 +21,10 @@ window.MilgViewer = (function() {
   var _calibrationOffsetY = 0; // detected offset between DOM positions and canvas positions
   var _showExpanded = false; // always false — clean screenshot with region sections below
   var _regionData = []; // [{findings, svg, img, frame, meta, cropOffset}] per region
+  var _frame = null;        // current main screenshot frame (for keyboard zoom / export)
+  var _zoomSelect = null;   // toolbar zoom <select> (for keyboard zoom)
+  var _navIdx = -1;         // keyboard bbox-nav cursor into the visible overlay rects
+  var _pinch = null;        // {dist, zoom} during a 2-finger pinch
 
   // Severity colors: red / yellow / blue / green
   var COLORS = {
@@ -153,6 +157,7 @@ window.MilgViewer = (function() {
       '<select class="milg-viewer-zoom-select" title="Zoom level">' +
         '<option value="0.75">75%</option><option value="1" selected>100%</option><option value="1.5">150%</option><option value="2">200%</option><option value="2.5">250%</option><option value="3">300%</option>' +
       '</select>' +
+      '<button class="milg-viewer-export" title="Save screenshot with finding overlays as PNG" aria-label="Save as PNG">PNG</button>' +
       '<button class="milg-viewer-close" title="Close (Esc)" aria-label="Close viewer">&times;</button>';
 
     _overlay.appendChild(toolbar);
@@ -162,6 +167,8 @@ window.MilgViewer = (function() {
 
     var frame = document.createElement('div');
     frame.className = 'milg-viewer-frame';
+    _frame = frame;
+    _navIdx = -1;
 
     // Loading indicator
     frame.innerHTML = '<div class="milg-viewer-loading">Stitching screenshots...</div>';
@@ -175,6 +182,7 @@ window.MilgViewer = (function() {
       var btn = e.target.closest('button');
       if (!btn) return;
       if (btn.classList.contains('milg-viewer-close')) { close(); return; }
+      if (btn.classList.contains('milg-viewer-export')) { _exportPng(); return; }
       if (btn.classList.contains('milg-viewer-filter-btn')) {
         var type = btn.getAttribute('data-filter-type');
         var value = btn.getAttribute('data-filter-value');
@@ -196,6 +204,7 @@ window.MilgViewer = (function() {
 
     // Zoom dropdown
     var zoomSelect = toolbar.querySelector('.milg-viewer-zoom-select');
+    _zoomSelect = zoomSelect;
     if (zoomSelect) {
       zoomSelect.addEventListener('change', function() {
         _zoomLevel = parseFloat(zoomSelect.value) || 1;
@@ -237,19 +246,38 @@ window.MilgViewer = (function() {
       _dragStart = null;
       if (content) content.style.cursor = '';
     });
+    function _touchDist(t) { var dx = t[0].clientX - t[1].clientX, dy = t[0].clientY - t[1].clientY; return Math.sqrt(dx * dx + dy * dy); }
     content.addEventListener('touchstart', function(e) {
+      if (e.target.closest('.milg-viewer-toolbar')) return;
+      if (e.touches.length === 2) { _pinch = { dist: _touchDist(e.touches) || 1, zoom: _zoomLevel }; _dragStart = null; return; }
       if (e.touches.length !== 1) return;
-      if (e.target.closest('.milg-viewer-toolbar') || e.target.closest('rect')) return;
+      if (e.target.closest('rect')) return;
       _dragStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
       _scrollStart = { x: content.scrollLeft, y: content.scrollTop };
     }, { passive: true });
     content.addEventListener('touchmove', function(e) {
+      // Two-finger pinch → continuous zoom (clamped to the toolbar's range).
+      if (_pinch && e.touches.length === 2) {
+        var z = _pinch.zoom * (_touchDist(e.touches) / _pinch.dist);
+        _zoomLevel = Math.max(0.75, Math.min(3, z));
+        if (_frame) applyZoom(_frame);
+        applyRegionZoom();
+        e.preventDefault();
+        return;
+      }
       if (!_dragStart || e.touches.length !== 1) return;
       content.scrollLeft = _scrollStart.x - (e.touches[0].clientX - _dragStart.x);
       content.scrollTop = _scrollStart.y - (e.touches[0].clientY - _dragStart.y);
       e.preventDefault();
     }, { passive: false });
-    content.addEventListener('touchend', function() { _dragStart = null; }, { passive: true });
+    content.addEventListener('touchend', function(e) {
+      _dragStart = null;
+      // Pinch ended → snap the toolbar select to the nearest preset for display.
+      if (_pinch && (!e.touches || e.touches.length < 2)) {
+        _pinch = null;
+        _syncZoomSelect();
+      }
+    }, { passive: true });
 
     // Screenshot source: always show clean (page as-rendered). Expanded content is
     // shown via region screenshots below, not a full-page toggle.
@@ -605,7 +633,98 @@ window.MilgViewer = (function() {
 
   function _onKeyDown(e) {
     if (!_overlay) return;
-    if (e.key === 'Escape') close();
+    if (e.key === 'Escape') { close(); return; }
+    // Don't hijack keys while typing in a field (none today, but future-proof).
+    var tag = e.target && e.target.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    if (e.key === '+' || e.key === '=') { _stepZoom(1); e.preventDefault(); }
+    else if (e.key === '-' || e.key === '_') { _stepZoom(-1); e.preventDefault(); }
+    else if (e.key === '0') { _stepZoom(0); e.preventDefault(); }
+    else if (e.key === 'ArrowDown' || e.key === 'j' || (e.key === 'n' && !e.metaKey && !e.ctrlKey)) { _navBbox(1); e.preventDefault(); }
+    else if (e.key === 'ArrowUp' || e.key === 'k' || e.key === 'p') { _navBbox(-1); e.preventDefault(); }
+  }
+
+  // Sync the toolbar zoom <select> to the nearest preset for the current _zoomLevel.
+  function _syncZoomSelect() {
+    if (!_zoomSelect) return;
+    var best = 0, bestDiff = Infinity;
+    for (var i = 0; i < _zoomSelect.options.length; i++) {
+      var v = parseFloat(_zoomSelect.options[i].value);
+      var d = Math.abs(v - _zoomLevel);
+      if (d < bestDiff) { bestDiff = d; best = i; }
+    }
+    _zoomSelect.selectedIndex = best;
+  }
+
+  // Step the discrete zoom select up/down; dir 0 resets to 100%.
+  function _stepZoom(dir) {
+    if (!_zoomSelect) return;
+    var i = _zoomSelect.selectedIndex;
+    if (dir === 0) {
+      for (var k = 0; k < _zoomSelect.options.length; k++) { if (parseFloat(_zoomSelect.options[k].value) === 1) { i = k; break; } }
+    } else {
+      i = Math.max(0, Math.min(_zoomSelect.options.length - 1, i + dir));
+    }
+    if (i === _zoomSelect.selectedIndex && dir !== 0) return;
+    _zoomSelect.selectedIndex = i;
+    _zoomLevel = parseFloat(_zoomSelect.value) || 1;
+    if (_frame) applyZoom(_frame);
+    applyRegionZoom();
+  }
+
+  // Keyboard navigation across the currently-visible finding boxes — scroll each into
+  // the center of view and pulse it. Cycles through main + region overlay rects.
+  function _navBbox(dir) {
+    if (!_overlay) return;
+    var rects = Array.prototype.slice.call(_overlay.querySelectorAll('rect[data-finding]'))
+      .filter(function(r) { var b = r.getBoundingClientRect(); return b.width > 0 && b.height > 0; });
+    if (!rects.length) return;
+    _navIdx = (_navIdx + dir + rects.length) % rects.length;
+    var r = rects[_navIdx];
+    try { r.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' }); } catch (e) { r.scrollIntoView(); }
+    var prevW = r.getAttribute('stroke-width') || '2';
+    r.setAttribute('stroke-width', '5');
+    r.style.transition = 'stroke-width 0.2s';
+    setTimeout(function() { r.setAttribute('stroke-width', prevW); }, 700);
+  }
+
+  // Export the current screenshot with its finding overlays burned in as a single PNG.
+  function _exportPng() {
+    if (!_stitchedCanvas) return;
+    var svg = _overlay && _overlay.querySelector('.milg-viewer-svg');
+    var w = _stitchedCanvas.width, h = _stitchedCanvas.height;
+    var out = document.createElement('canvas');
+    out.width = w; out.height = h;
+    var ctx = out.getContext('2d');
+    ctx.drawImage(_stitchedCanvas, 0, 0);
+    function finish() {
+      try {
+        out.toBlob(function(blob) {
+          if (!blob) return;
+          var a = document.createElement('a');
+          var url = URL.createObjectURL(blob);
+          a.href = url;
+          a.download = 'design-analysis-overlay.png';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(function() { URL.revokeObjectURL(url); }, 2000);
+        }, 'image/png');
+      } catch (e) {}
+    }
+    if (svg) {
+      var clone = svg.cloneNode(true);
+      clone.setAttribute('width', w);
+      clone.setAttribute('height', h);
+      if (!clone.getAttribute('viewBox')) clone.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+      var xml = new XMLSerializer().serializeToString(clone);
+      var img = new Image();
+      img.onload = function() { ctx.drawImage(img, 0, 0, w, h); finish(); };
+      img.onerror = function() { finish(); }; // overlay failed → still export the screenshot
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(xml);
+    } else {
+      finish();
+    }
   }
 
     function updateFilterButtons() {

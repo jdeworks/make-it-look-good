@@ -6,7 +6,7 @@
   <title>make-it-look-good — Design Analyzer</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='2' y='2' width='12' height='12' rx='2' fill='%232563eb'/><rect x='18' y='2' width='12' height='12' rx='2' fill='%2393c5fd'/><rect x='2' y='18' width='12' height='12' rx='2' fill='%2393c5fd'/><rect x='18' y='18' width='12' height='12' rx='2' fill='%232563eb'/></svg>">
   <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="analyzer.css?v=3.11.110">
+  <link rel="stylesheet" href="analyzer.css?v=3.11.111">
 </head>
 <body class="analyzer-body">
 
@@ -42,7 +42,7 @@
       <button type="button" aria-label="Dismiss" title="Dismiss for now" onclick="window.__milgBannerDismiss&&window.__milgBannerDismiss()" style="background:none;border:none;color:var(--text-secondary);font-size:20px;line-height:1;padding:6px 10px;min-height:36px;min-width:36px;cursor:pointer">&times;</button>
     </div>
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.11.110</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.11.111</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -95,6 +95,34 @@
           <dt style="font-weight:600;color:var(--text);margin-top:10px">Explore SPA views</dt><dd style="margin:2px 0 0">For single-page apps: click nav/tabs to discover &amp; analyze hidden views — one tab can pass while another fails. Safe controls only.</dd>
           <dt style="font-weight:600;color:var(--text);margin-top:10px">JavaScript (URL mode)</dt><dd style="margin:2px 0 0">Render the page with JS on — needed for React/Vue/Angular apps. Off by default for safety/speed.</dd>
         </dl>
+        <details style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
+          <summary style="cursor:pointer;user-select:none;font-weight:600;font-size:13px;color:var(--text)">How the score is calculated</summary>
+          <div style="font-size:13px;line-height:1.5;color:var(--text-secondary);margin-top:8px">
+            <p style="margin:0 0 10px">The overall score is a <strong style="color:var(--text)">weighted average</strong> of up to 14 category scores, each 0&ndash;100. Categories that don&rsquo;t apply to the page (marked <em>N/A</em>) are dropped and the remaining weights re-normalize, so a page is never penalized for a category it has no elements for.</p>
+            <p style="margin:0 0 6px;font-weight:600;color:var(--text)">Category weights (relative)</p>
+            <dl style="margin:0 0 10px;display:grid;grid-template-columns:1fr auto;gap:2px 12px;font-size:12px">
+              <dt>Design Polish</dt><dd style="margin:0;text-align:right;font-variant-numeric:tabular-nums">24</dd>
+              <dt>Color &amp; Contrast</dt><dd style="margin:0;text-align:right;font-variant-numeric:tabular-nums">20</dd>
+              <dt>Touch &amp; Interaction</dt><dd style="margin:0;text-align:right;font-variant-numeric:tabular-nums">15</dd>
+              <dt>Typography</dt><dd style="margin:0;text-align:right;font-variant-numeric:tabular-nums">15</dd>
+              <dt>Accessibility</dt><dd style="margin:0;text-align:right;font-variant-numeric:tabular-nums">15</dd>
+              <dt>Spacing &amp; Layout</dt><dd style="margin:0;text-align:right;font-variant-numeric:tabular-nums">15</dd>
+              <dt>Responsive Design</dt><dd style="margin:0;text-align:right;font-variant-numeric:tabular-nums">10</dd>
+              <dt>Cognitive Load</dt><dd style="margin:0;text-align:right;font-variant-numeric:tabular-nums">5</dd>
+              <dt>Visual Consistency</dt><dd style="margin:0;text-align:right;font-variant-numeric:tabular-nums">5</dd>
+              <dt>Layout Quality</dt><dd style="margin:0;text-align:right;font-variant-numeric:tabular-nums">5</dd>
+              <dt>Performance</dt><dd style="margin:0;text-align:right;font-variant-numeric:tabular-nums">5</dd>
+              <dt>Readability</dt><dd style="margin:0;text-align:right;font-variant-numeric:tabular-nums">5</dd>
+              <dt>Visual Balance</dt><dd style="margin:0;text-align:right;font-variant-numeric:tabular-nums">3</dd>
+              <dt>Motion &amp; Animation</dt><dd style="margin:0;text-align:right;font-variant-numeric:tabular-nums">3</dd>
+            </dl>
+            <p style="margin:0 0 10px">Polish and Contrast carry the most weight because they best predict whether a page <em>looks</em> finished and is legible. Weights are tuned heuristics, not a published standard.</p>
+            <p style="margin:0 0 6px;font-weight:600;color:var(--text)">Grade bands</p>
+            <p style="margin:0 0 10px;font-variant-numeric:tabular-nums">A&nbsp;90&ndash;100 &middot; B&nbsp;80&ndash;89 &middot; C&nbsp;70&ndash;79 &middot; D&nbsp;60&ndash;69 &middot; F&nbsp;&lt;60</p>
+            <p style="margin:0 0 4px;font-weight:600;color:var(--text)">Audience profile</p>
+            <p style="margin:0">The profile selector tightens thresholds before scoring &mdash; e.g. <strong style="color:var(--text)">WCAG&nbsp;AAA</strong> and <strong style="color:var(--text)">Low Vision</strong> raise the contrast target to 7:1, <strong style="color:var(--text)">Elderly</strong> requires 18px body text and 48px touch targets, <strong style="color:var(--text)">Color Blind</strong> simulates CVD palettes, and <strong style="color:var(--text)">Cognitive</strong>/<strong style="color:var(--text)">Children</strong> add reading-grade and nav-item limits. The same page can grade differently across profiles.</p>
+          </div>
+        </details>
       </div>
     </div>
 
@@ -522,34 +550,34 @@
   <div class="toast" id="toast" aria-live="polite" aria-atomic="true" role="status"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=3.11.110"></script>
-  <script src="scoring/contrast.js?v=3.11.110"></script>
-  <script src="scoring/typography.js?v=3.11.110"></script>
-  <script src="scoring/spacing.js?v=3.11.110"></script>
-  <script src="scoring/touch.js?v=3.11.110"></script>
-  <script src="scoring/accessibility.js?v=3.11.110"></script>
-  <script src="scoring/responsive.js?v=3.11.110"></script>
-  <script src="scoring/consistency.js?v=3.11.110"></script>
-  <script src="scoring/cognitive.js?v=3.11.110"></script>
-  <script src="scoring/layout.js?v=3.11.110"></script>
-  <script src="scoring/performance.js?v=3.11.110"></script>
-  <script src="scoring/readability.js?v=3.11.110"></script>
-  <script src="scoring/filters.js?v=3.11.110"></script>
-  <script src="scoring/balance.js?v=3.11.110"></script>
-  <script src="scoring/polish.js?v=3.11.110"></script>
+  <script src="scoring/registry.js?v=3.11.111"></script>
+  <script src="scoring/contrast.js?v=3.11.111"></script>
+  <script src="scoring/typography.js?v=3.11.111"></script>
+  <script src="scoring/spacing.js?v=3.11.111"></script>
+  <script src="scoring/touch.js?v=3.11.111"></script>
+  <script src="scoring/accessibility.js?v=3.11.111"></script>
+  <script src="scoring/responsive.js?v=3.11.111"></script>
+  <script src="scoring/consistency.js?v=3.11.111"></script>
+  <script src="scoring/cognitive.js?v=3.11.111"></script>
+  <script src="scoring/layout.js?v=3.11.111"></script>
+  <script src="scoring/performance.js?v=3.11.111"></script>
+  <script src="scoring/readability.js?v=3.11.111"></script>
+  <script src="scoring/filters.js?v=3.11.111"></script>
+  <script src="scoring/balance.js?v=3.11.111"></script>
+  <script src="scoring/polish.js?v=3.11.111"></script>
   <!-- Queue + Report rendering + UI -->
-  <script src="analyzer-queue.js?v=3.11.110"></script>
-  <script src="analyzer-report.js?v=3.11.110"></script>
-  <script src="analyzer-crawl.js?v=3.11.110"></script>
-  <script src="analyzer-extract.js?v=3.11.110"></script>
-  <script src="analyzer-spa.js?v=3.11.110"></script>
-  <script src="analyzer-region.js?v=3.11.110"></script>
-  <script src="analyzer-capture.js?v=3.11.110"></script>
-  <script src="analyzer-iframe.js?v=3.11.110"></script>
-  <script src="analyzer-proxy.js?v=3.11.110"></script>
-  <script src="analyzer-crawl-ui.js?v=3.11.110"></script>
-  <script src="analyzer-contrast-verify.js?v=3.11.110"></script>
-  <script src="analyzer-viewer.js?v=3.11.110"></script>
-  <script src="analyzer.js?v=3.11.110"></script>
+  <script src="analyzer-queue.js?v=3.11.111"></script>
+  <script src="analyzer-report.js?v=3.11.111"></script>
+  <script src="analyzer-crawl.js?v=3.11.111"></script>
+  <script src="analyzer-extract.js?v=3.11.111"></script>
+  <script src="analyzer-spa.js?v=3.11.111"></script>
+  <script src="analyzer-region.js?v=3.11.111"></script>
+  <script src="analyzer-capture.js?v=3.11.111"></script>
+  <script src="analyzer-iframe.js?v=3.11.111"></script>
+  <script src="analyzer-proxy.js?v=3.11.111"></script>
+  <script src="analyzer-crawl-ui.js?v=3.11.111"></script>
+  <script src="analyzer-contrast-verify.js?v=3.11.111"></script>
+  <script src="analyzer-viewer.js?v=3.11.111"></script>
+  <script src="analyzer.js?v=3.11.111"></script>
 </body>
 </html>

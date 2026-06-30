@@ -440,10 +440,17 @@ window.MilgExtract = (function() {
       // Effective opacity (element × ancestors) — CSS `opacity` dims the whole subtree
       // toward its backdrop. Computed before the fg blend so it factors into the ratio.
       var _effOpacity = 1;
+      // Blend mode (element or any ancestor) makes the CSS fg/bg colors unreliable — the
+      // rendered color is composited against whatever shows through, so contrast must be
+      // judged from pixels, not CSS. Detected in the same ancestor walk as opacity.
+      var _hasBlendMode = (style.mixBlendMode && style.mixBlendMode !== 'normal') ||
+        (style.backgroundBlendMode && style.backgroundBlendMode !== 'normal');
       var _opNode = el;
       while (_opNode && _opNode !== document.documentElement) {
-        var _opVal = parseFloat(getComputedStyle(_opNode).opacity);
+        var _opStyle = getComputedStyle(_opNode);
+        var _opVal = parseFloat(_opStyle.opacity);
         if (!isNaN(_opVal) && _opVal < 1) _effOpacity *= _opVal;
+        if (_opStyle.mixBlendMode && _opStyle.mixBlendMode !== 'normal') _hasBlendMode = true;
         _opNode = _opNode.parentElement;
       }
       // Composite fg over the ACTUAL bg (not white) and apply opacity → visible color.
@@ -482,7 +489,7 @@ window.MilgExtract = (function() {
         _bgImgNode = _bgImgNode.parentElement;
       }
       if (ratio < 22) { // capture all pairs including AAA passes for pixel verification
-        var _cpEntry = { fg: rgbStr(fgBlended), bg: rgbStr(bg), ratio: Math.round(ratio * 100) / 100, needed: threshold, passes: ratio >= threshold, fontSize: Math.round(fontSize), fontWeight: fontWeight, isLarge: isLarge, bgHasImage: _bgHasImage, text: (el.textContent || '').trim().substring(0, 200), selector: cssSelector(el), filter: filterValue, backdropFilter: hasBackdropFilter, minBgAlpha: Math.round(minBgAlpha * 100) / 100, effectiveOpacity: Math.round(_effOpacity * 100) / 100, isGradientText: isGradientText, fontFamily: style.fontFamily, fontStyle: style.fontStyle, letterSpacing: style.letterSpacing, textTransform: style.textTransform, lineHeight: style.lineHeight, bbox: null };
+        var _cpEntry = { fg: rgbStr(fgBlended), bg: rgbStr(bg), ratio: Math.round(ratio * 100) / 100, needed: threshold, passes: ratio >= threshold, fontSize: Math.round(fontSize), fontWeight: fontWeight, isLarge: isLarge, bgHasImage: _bgHasImage, text: (el.textContent || '').trim().substring(0, 200), selector: cssSelector(el), filter: filterValue, backdropFilter: hasBackdropFilter, minBgAlpha: Math.round(minBgAlpha * 100) / 100, effectiveOpacity: Math.round(_effOpacity * 100) / 100, isGradientText: isGradientText, hasBlendMode: _hasBlendMode, fontFamily: style.fontFamily, fontStyle: style.fontStyle, letterSpacing: style.letterSpacing, wordSpacing: style.wordSpacing, textTransform: style.textTransform, lineHeight: style.lineHeight, bbox: null };
         var _hac = _isHiddenAtCapture(el);
         if (_hac) _cpEntry._hiddenAtCapture = true;
         trackBbox(el, _cpEntry, 'bbox');
@@ -542,6 +549,71 @@ window.MilgExtract = (function() {
     contrastPairs.sort(function(a, b) { return a.ratio - b.ratio; });
     data.colors.contrastPairs = contrastPairs;
     data.colors._contrastStats = _contrastStats;
+
+    // :hover / :active state contrast — WCAG 1.4.3 applies to ALL states, but a static
+    // snapshot only renders the resting state. Scan stylesheet rules for hover/active
+    // selectors that change text color, then check that color against the element's own
+    // opaque background. Advisory only: pseudo-class states can't be pixel-verified, and
+    // we skip any element whose background can't be resolved opaquely (no guessing).
+    try {
+      var _stateIssues = [];
+      var _stateSeen = {};
+      function _resolveOpaqueBg(node) {
+        var n = node;
+        while (n && n.nodeType === 1 && n !== document.documentElement) {
+          var c = parseColor(getComputedStyle(n).backgroundColor);
+          if (c && c.a >= 0.95) return c;
+          n = n.parentElement;
+        }
+        var hb = document.body ? parseColor(getComputedStyle(document.body).backgroundColor) : null;
+        return (hb && hb.a >= 0.95) ? hb : null;
+      }
+      var _stSheets = document.styleSheets || [];
+      for (var _ssi = 0; _ssi < _stSheets.length && _stateIssues.length < 30; _ssi++) {
+        var _rules;
+        try { _rules = _stSheets[_ssi].cssRules; } catch (e) { continue; } // cross-origin sheet
+        if (!_rules) continue;
+        for (var _ri = 0; _ri < _rules.length && _stateIssues.length < 30; _ri++) {
+          var _rule = _rules[_ri];
+          if (_rule.type !== 1 || !_rule.selectorText) continue; // CSSStyleRule only
+          var _sel = _rule.selectorText;
+          if (_sel.indexOf(':hover') === -1 && _sel.indexOf(':active') === -1) continue;
+          var _ruleColor = (_rule.style && _rule.style.color) ? parseColor(_rule.style.color) : null;
+          var _ruleBg = (_rule.style && _rule.style.backgroundColor) ? parseColor(_rule.style.backgroundColor) : null;
+          if (!_ruleColor) continue; // only flag rules that set a new text color
+          _sel.split(',').forEach(function(part) {
+            part = part.trim();
+            var _state = part.indexOf(':active') !== -1 ? 'active' : (part.indexOf(':hover') !== -1 ? 'hover' : null);
+            if (!_state) return;
+            var _base = part.replace(/:(hover|active|focus|focus-visible|focus-within|visited)/g, '').trim();
+            if (!_base) return;
+            var _matched;
+            try { _matched = _qa(_base); } catch (e) { return; }
+            for (var _mi = 0; _mi < _matched.length && _mi < 12; _mi++) {
+              var _mel = _matched[_mi];
+              if (!isVisible(_mel) || !(_mel.textContent || '').trim()) continue;
+              var _mStyle = getComputedStyle(_mel);
+              var _hBg = (_ruleBg && _ruleBg.a >= 0.95) ? _ruleBg : _resolveOpaqueBg(_mel);
+              if (!_hBg) continue; // can't resolve a solid bg → don't guess
+              var _hFg = _ruleColor;
+              if (_hFg.a !== undefined && _hFg.a < 1) _hFg = blendFgOverBg(_hFg, _hBg, _hFg.a);
+              var _hRatio = contrastRatio(_hFg, _hBg);
+              var _hFontSize = parseFloat(_mStyle.fontSize);
+              var _hWeight = parseInt(_mStyle.fontWeight) || 400;
+              var _hLarge = _hFontSize >= 24 || (_hFontSize >= 18.66 && _hWeight >= 700);
+              var _hNeed = _hLarge ? 3 : 4.5;
+              if (_hRatio + 0.05 < _hNeed) {
+                var _selKey = cssSelector(_mel) + '|' + _state;
+                if (_stateSeen[_selKey]) continue;
+                _stateSeen[_selKey] = true;
+                _stateIssues.push({ selector: cssSelector(_mel), state: _state, ratio: Math.round(_hRatio * 100) / 100, needed: _hNeed, fg: rgbStr(_hFg), bg: rgbStr(_hBg), fontSize: Math.round(_hFontSize), text: (_mel.textContent || '').trim().substring(0, 40) });
+              }
+            }
+          });
+        }
+      }
+      if (_stateIssues.length) data.colors.stateContrastIssues = _stateIssues;
+    } catch (e) {}
 
     // Area-weighted darkness tracking for accurate page brightness measurement
     var darknessAreas = []; // { darkness: 0-1, area: px² }
