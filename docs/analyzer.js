@@ -1,8 +1,8 @@
-// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.120
+// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.121
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.120 loaded');
+console.log('[milg] analyzer.js v3.11.121 loaded');
 
 (function() {
   "use strict";
@@ -26,7 +26,7 @@ console.log('[milg] analyzer.js v3.11.120 loaded');
   // build; the panel-threshold is benign (gated by maxStatePasses) so its bound is the same.
   var MILG_SPA_LIMITS = {
     maxViews:         { id: 'spaMaxViews',         def: 20, min: 4,  hostMax: 40, localMax: 200 },
-    timeBudgetSec:    { id: 'spaTimeBudget',       def: 45, min: 15, hostMax: 90, localMax: 600 },
+    timeBudgetSec:    { id: 'spaTimeBudget',       def: 60, min: 15, hostMax: 90, localMax: 600 },
     perPageThreshold: { id: 'spaPerPageThreshold', def: 3,  min: 1,  hostMax: 12, localMax: 12  },
     maxStatePasses:   { id: 'spaMaxStatePasses',   def: 6,  min: 1,  hostMax: 12, localMax: 50  }
   };

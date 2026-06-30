@@ -733,7 +733,7 @@ window.MilgIframe = (function() {
     var spaOpts = {
       exploreClicks: !!opts.exploreClicks,
       maxViews: opts.maxViews || 8,
-      timeBudgetMs: opts.timeBudgetMs || (wantShots ? 45000 : 22000),
+      timeBudgetMs: opts.timeBudgetMs || (wantShots ? 60000 : 30000),
       settleMs: opts.settleMs || 250,
       settleMaxMs: opts.settleMaxMs || 1500,
       pageEnterGraceMs: opts.pageEnterGraceMs != null ? opts.pageEnterGraceMs : 1500,
