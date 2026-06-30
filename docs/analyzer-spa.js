@@ -1,4 +1,4 @@
-// make-it-look-good — SPA View Explorer v3.11.117
+// make-it-look-good — SPA View Explorer v3.11.118
 // Runs INSIDE the analysis iframe (injected alongside MilgExtract). Discovers the
 // hidden "views" of a single-page app — reached by hash/History routes (Tier 1) or
 // by clicking nav controls (Tier 2, opt-in) — and re-runs MilgExtract on each so the
@@ -478,9 +478,33 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
     var threshold = opts.stateThreshold || 6;
     var hpCount = (views[0] && views[0].data && views[0].data.layout && views[0].data.layout.hiddenPanelCount) || 0;
     if (hpCount < threshold) { notes.push('state-capture skipped (hiddenPanelCount ' + hpCount + ' < ' + threshold + ')'); return Promise.resolve(); }
-    return Promise.resolve().then(runExpandedState).then(runCollapsedState);
+    return Promise.resolve()
+      .then(function() { return runExpandedState({ parentStateKey: (views[0] && views[0].stateKey), parentNodeId: rootNodeId, keySuffix: '', label: 'All expanded' }); })
+      .then(runCollapsedState);
   }
-  function runExpandedState() {
+  // P5 — per-page holistic expand pass. When the click loop enters a NEW PAGE that has its own
+  // disclosure-dense content (e.g. narratu's nav-gated Demo), re-run the all-expanded pass scoped
+  // to THAT page's panels so its hidden content is measured as a state node parented to the page.
+  // Budgeted + deduped per page sig; gated on the same stateCapture flag + per-page panel count.
+  // Per-page threshold is LOWER than the root threshold: once you've navigated INTO a page, even
+  // a small cluster of disclosures (3+) is worth an all-expanded measurement — that's how we reach
+  // nav-gated content (narratu's Demo pages carry ~3 panels each). The pass-budget caps the blast.
+  var _statePasses = 0, STATE_PASS_BUDGET = (opts.maxStatePasses != null ? opts.maxStatePasses : 4), _pageStateDone = {};
+  function maybeCapturePageState(pageData, pageStateKey, pageNodeId, descriptor, pageSig) {
+    if (!opts.stateCapture || capExceeded()) return Promise.resolve();
+    if (_statePasses >= STATE_PASS_BUDGET) return Promise.resolve();
+    if (pageSig && _pageStateDone[pageSig]) return Promise.resolve();
+    var hp = (pageData && pageData.layout && pageData.layout.hiddenPanelCount) || 0;
+    if (hp < (opts.perPageStateThreshold || 3)) return Promise.resolve();
+    if (pageSig) _pageStateDone[pageSig] = 1;
+    _statePasses++;
+    return runExpandedState({ parentStateKey: pageStateKey, parentNodeId: pageNodeId, keySuffix: descriptor, label: 'All expanded' });
+  }
+  // Reveal every in-flow disclosure currently in window.__milgHiddenPanels (rebuilt by the most
+  // recent extract — so this is implicitly scoped to the current page), extract synchronously,
+  // then restore. ctx routes the emitted state node + union edge to the right parent.
+  function runExpandedState(ctx) {
+    ctx = ctx || {};
     if (capExceeded()) return;
     // In-flow disclosures only: opening every menu/dialog/tooltip (aria-role) or any
     // fixed/absolute overlay at once produces an unrealistic pile, not "all content shown".
@@ -490,7 +514,7 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
       var pos; try { pos = getComputedStyle(h.el).position; } catch (e) { return false; }
       return pos !== 'fixed' && pos !== 'absolute';
     });
-    if (!reg.length) { notes.push('all-expanded skipped (no in-flow disclosures)'); return; }
+    if (!reg.length) { if (!ctx.keySuffix) notes.push('all-expanded skipped (no in-flow disclosures)'); return; }
     var saved = [], data;
     try {
       reg.forEach(function(h) {
@@ -513,10 +537,13 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
       void document.body.offsetHeight;
     }
     stateCoverageActive = true;
-    _coveredPanels = reg.map(function(h) { return h.el; });
+    reg.forEach(function(h) { _coveredPanels.push(h.el); });   // suppress per-panel region double-count
+    var sk = 'state:all-expanded' + (ctx.keySuffix ? ':' + ctx.keySuffix : '');
+    var lbl = ctx.label || 'All expanded';
+    var parentNodeId = ctx.parentNodeId != null ? ctx.parentNodeId : rootNodeId;
     // Union node: the all-open extreme as a distinguished summary node OUTSIDE the click graph.
-    recordEdge(rootNodeId, 'all-expanded', 'All expanded', ensureNode('state:all-expanded', { kind: 'state', label: 'All expanded', stateKey: 'state:all-expanded', special: true, depth: 1 }).id, 'union', false);
-    return addState({ stateKey: 'state:all-expanded', kind: 'state', activation: 'all-expanded', label: 'All expanded', parentStateKey: (views[0] && views[0].stateKey), contentSig: 'state:all-expanded', data: data, noShot: true }, null);
+    recordEdge(parentNodeId, 'all-expanded', lbl, ensureNode(sk, { kind: 'state', label: lbl, stateKey: sk, special: true, depth: (ctx.keySuffix ? 2 : 1) }).id, 'union', false);
+    return addState({ stateKey: sk, kind: 'state', activation: 'all-expanded', label: lbl, parentStateKey: (ctx.parentStateKey != null ? ctx.parentStateKey : (views[0] && views[0].stateKey)), contentSig: sk, data: data, noShot: true }, null);
   }
   function runCollapsedState() {
     if (capExceeded()) return;
@@ -733,11 +760,16 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
           var pk2 = 'act:' + descriptor;
           var pNode = ensureNode(res.after, { kind: 'page', label: label, stateKey: pk2, depth: parentDepth + 1 });
           recordEdge(currentNodeId, descriptor, label, pNode.id, 'page', false);
-          return addState({ stateKey: pk2, kind: 'page', activation: (aggClick ? 'aggressive:' : '') + descriptor, label: label, trigger: 'click:' + label, parentStateKey: (discoveredUnder[nextKey] != null ? discoveredUnder[nextKey] : currentStateKey), contentSig: res.after, data: extractNow() }, document.documentElement).then(function() {
+          var pageData = extractNow();
+          return addState({ stateKey: pk2, kind: 'page', activation: (aggClick ? 'aggressive:' : '') + descriptor, label: label, trigger: 'click:' + label, parentStateKey: (discoveredUnder[nextKey] != null ? discoveredUnder[nextKey] : currentStateKey), contentSig: res.after, data: pageData }, document.documentElement).then(function() {
             currentStateKey = pk2; currentNodeId = pNode.id;
-            // Let lazy sub-content (tab strips, etc.) mount before re-enumerating so it
-            // nests under THIS view rather than being missed.
-            return awaitNewCandidates(liveCandidates().length).then(step);
+            // P5 — if this new page carries its own disclosure-dense content (e.g. a nav-gated
+            // Demo), capture its all-expanded state as a child state node before moving on.
+            return maybeCapturePageState(pageData, pk2, pNode.id, descriptor, res.after).then(function() {
+              // Let lazy sub-content (tab strips, etc.) mount before re-enumerating so it
+              // nests under THIS view rather than being missed.
+              return awaitNewCandidates(liveCandidates().length).then(step);
+            });
           });
         }
       });
