@@ -740,7 +740,11 @@ window.MilgIframe = (function() {
       capture: wantShots,
       captureScale: opts.captureScale || 1,
       stateCapture: !!opts.stateCapture,
-      stateThreshold: opts.stateThreshold || 6
+      stateThreshold: opts.stateThreshold || 6,
+      // Aggressive non-semantic click-to-discover (A3/A4). Default ON; the explorer's own
+      // sparsity gate (navCandidates < 3) decides whether it actually fires, so dense-nav
+      // pages (our own UI, the fixture) stay semantic-only without a caller opt-out.
+      aggressive: opts.aggressive !== false
     };
     // Inject MilgExtract (no auto-run — the explorer drives extraction itself) + the
     // explorer + (when capturing) the modern-screenshot lib + a bootstrap that runs after
@@ -763,6 +767,10 @@ window.MilgIframe = (function() {
       // Block anchor navigation + beforeunload during analysis; the explorer drives state via
       // buttons + Tier-1 location.hash (which stays within the srcdoc).
       'try{document.addEventListener("click",function(e){var a=e.target&&e.target.closest&&e.target.closest("a[href]");if(a)e.preventDefault();},true);' +
+      // Aggressive discovery may click custom controls that wrap a form submit or call
+      // window.open — neutralize both so a speculative click can never unload the srcdoc.
+      'document.addEventListener("submit",function(e){e.preventDefault();},true);' +
+      'try{window.open=function(){return null};}catch(_wo){}' +
       'window.addEventListener("beforeunload",function(e){e.preventDefault();e.returnValue="";});}catch(_g){}' +
       'function post(r){parent.postMessage({type:"milg-spa-views",result:r,_iframeId:"' + _iframeId + '"},"*")}' +
       'function run(){try{window.MilgSpaExplore(' + JSON.stringify(spaOpts) + ').then(post).catch(function(e){post({views:[],error:String(e&&e.message||e)})})}catch(e){post({views:[],error:String(e)})}}' +

@@ -1,4 +1,4 @@
-// make-it-look-good — SPA View Explorer v3.11.115
+// make-it-look-good — SPA View Explorer v3.11.116
 // Runs INSIDE the analysis iframe (injected alongside MilgExtract). Discovers the
 // hidden "views" of a single-page app — reached by hash/History routes (Tier 1) or
 // by clicking nav controls (Tier 2, opt-in) — and re-runs MilgExtract on each so the
@@ -125,14 +125,20 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
   // NOT just nav — because mid-page tab strips are often plain content buttons with no
   // role/aria/data hints (e.g. React tabs). Safety denylist + dedup + caps gate the
   // blast radius; disabled controls are skipped (clicking is a no-op anyway).
+  // Aggressive (non-semantic) discovery state — only fires on sparse-markup pages (A4 gate).
+  // _aggSet tags the candidates found ONLY by the aggressive pass so the click loop can rank
+  // them last and apply a per-state sub-budget. Rebuilt fresh each liveCandidates() call.
+  var aggressiveOn = false, _aggSet = null;
+  function isAggCand(el) { try { return !!(_aggSet && _aggSet.has(el)); } catch (e) { return false; } }
   function liveCandidates() {
     var out = [], seen = [];
+    _aggSet = (typeof WeakSet !== 'undefined') ? new WeakSet() : null;
     // NOTE: no a[href] here — with the injected <base> tag, clicking a hash anchor
     // (e.g. a skip-to-content link) resolves against the real URL and navigates the
     // iframe away, tearing down our injected scripts. Hash routes are handled safely by
     // Tier-1 (location.hash=) instead.
     var sel = 'button, [role="button"], [role="tab"], [role="menuitem"], [aria-controls], [aria-selected], [data-page], [data-view], [data-tab], [data-step], [data-nav], .nav-link, .tab';
-    function add(el) {
+    function add(el, agg) {
       if (!el || seen.indexOf(el) !== -1) return;
       if (el.disabled || el.getAttribute('aria-disabled') === 'true') return;
       // Skip controls that aren't currently rendered (display:none / [hidden] / detached):
@@ -145,10 +151,40 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
       var role = (el.getAttribute('role') || '').toLowerCase();
       var ty = (el.getAttribute('type') || '').toLowerCase();
       if (role === 'checkbox' || role === 'radio' || role === 'switch' || ty === 'checkbox' || ty === 'radio') return;
-      seen.push(el); out.push(el);
+      seen.push(el); out.push(el); if (agg && _aggSet) _aggSet.add(el);
     }
-    try { Array.prototype.forEach.call(document.querySelectorAll(sel), add); } catch (e) {}
-    try { Array.prototype.forEach.call(document.querySelectorAll('[onclick]'), function(el) { try { if (getComputedStyle(el).cursor === 'pointer') add(el); } catch (e) {} }); } catch (e) {}
+    try { Array.prototype.forEach.call(document.querySelectorAll(sel), function(el) { add(el, false); }); } catch (e) {}
+    try { Array.prototype.forEach.call(document.querySelectorAll('[onclick]'), function(el) { try { if (getComputedStyle(el).cursor === 'pointer') add(el, false); } catch (e) {} }); } catch (e) {}
+    // Aggressive second pass (A3) — non-semantic handler-wired toggles. Only when the page is
+    // sparse on semantic nav (A4); these get tagged so step() ranks them LAST and budgets them.
+    if (aggressiveOn) {
+      var semCount = out.length;
+      // Toggle-class / tabindex elements that often carry a JS click handler with no a11y hint.
+      try {
+        Array.prototype.forEach.call(document.querySelectorAll('[class*="toggle" i],[class*="accordion" i],[class*="expand" i],[class*="collaps" i],[class*="dropdown" i],[class*="disclos" i],[class*="reveal" i],div[tabindex],span[tabindex],li[tabindex]'), function(el) {
+          var tg = el.tagName;
+          if (tg === 'DIV' || tg === 'SPAN' || tg === 'LI' || tg === 'A' || tg === 'HEADER' || tg === 'H2' || tg === 'H3' || tg === 'H4') add(el, true);
+        });
+      } catch (e) {}
+      // Bounded cursor:pointer sweep over generic containers; innermost-wins (skip a wrapper
+      // that already contains a collected candidate); size-sane; collected count capped.
+      try {
+        var all = document.querySelectorAll('div,span,li'), scanned = 0, collected = 0;
+        for (var ai = 0; ai < all.length && scanned < 1200 && collected < 60; ai++) {
+          var el = all[ai]; scanned++;
+          if (seen.indexOf(el) !== -1) continue;
+          var cs; try { cs = getComputedStyle(el); } catch (e) { continue; }
+          if (cs.cursor !== 'pointer') continue;
+          var r; try { r = el.getBoundingClientRect(); } catch (e) { continue; }
+          if (r.width < 16 || r.height < 12 || r.width > 1700 || r.height > 1200) continue;
+          var wraps = false;
+          for (var wi = 0; wi < out.length; wi++) { if (el !== out[wi] && el.contains(out[wi])) { wraps = true; break; } }
+          if (wraps) continue;
+          add(el, true); collected++;
+        }
+      } catch (e) {}
+      void semCount;
+    }
     return out;
   }
 
@@ -162,7 +198,7 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
     if (el.className && typeof el.className === 'string') {
       var toks = el.className.trim().split(/\s+/);
       for (var i = 0; i < toks.length; i++) {
-        if (toks[i] && !/^(active|selected|current|open|show|shown|expanded|collapsed|is-active|is-selected|is-open)$/i.test(toks[i])) { cls = toks[i]; break; }
+        if (toks[i] && !/^(active|selected|current|open|show|shown|expanded|collapsed|is-active|is-selected|is-open|is-expanded|is-collapsed|w--current)$/i.test(toks[i]) && !/(-open|-active|-current|-selected|-expanded|-collapsed)$/i.test(toks[i])) { cls = toks[i]; break; }
       }
     }
     return el.tagName + '|' + cls + '|' + labelOf(el).substring(0, 40);
@@ -172,6 +208,9 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
   function unsafeReason(el) {
     var t = labelOf(el).toLowerCase();
     if (/\b(submit|delete|remove|destroy|trash|logout|log ?out|sign ?out|pay|buy|checkout|purchase)\b/.test(t)) return 'destructive';
+    // Social / auth / subscription controls: clicking can launch OAuth popups or off-site
+    // flows even when the control is a plain <div>/<button> with no href — label-gated.
+    if (/\b(share|tweet|connect|oauth|sign ?in|sign ?up|log ?in|subscribe|follow)\b/.test(t)) return 'social-auth';
     var type = (el.getAttribute('type') || '').toLowerCase();
     if (el.tagName === 'BUTTON' && type === 'submit') return 'submit';
     if (el.tagName === 'INPUT' && (type === 'submit' || type === 'reset' || type === 'file')) return 'input';
@@ -180,7 +219,16 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
       var href = el.getAttribute('href') || '';
       if (el.target === '_blank') return 'external';
       if (href && href.charAt(0) !== '#' && /^(https?:)?\/\//.test(href)) return 'external';
+    } else {
+      // Non-anchor el wrapped in an off-site/non-hash anchor (e.g. a clickable card linking
+      // out) — clicking it navigates away; the bootstrap blocks it, but skip it cleanly.
+      try {
+        var a = el.closest && el.closest('a[href]');
+        if (a) { var ah = a.getAttribute('href') || ''; if (a.target === '_blank' || (ah && ah.charAt(0) !== '#' && !/^javascript:/i.test(ah))) return 'in-anchor'; }
+      } catch (e) {}
     }
+    // Wraps a submit/external affordance (a custom control around a real form/nav action).
+    try { if (el.querySelector && el.querySelector('[type="submit"], a[target="_blank"]')) return 'wraps-nav'; } catch (e) {}
     return null;
   }
 
@@ -510,6 +558,11 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
   var spa = {};
   return addState({ stateKey: location.hash || '/', kind: 'page', label: 'initial', parentStateKey: null, contentSig: sig0, data: extractNow() }, document.documentElement).then(function() {
     spa = (views[0].data && views[0].data.structure && views[0].data.structure.spa) || {};
+    // A4 — aggressive click-to-discover fires only on SPARSE-markup pages (few semantic nav
+    // controls ⇒ a custom/handler-wired SPA like narratu). Pages with real nav (our own UI,
+    // the fixture) keep semantic-only exploration. Master flag `opts.aggressive` defaults on.
+    aggressiveOn = (opts.aggressive !== false) && ((spa.navCandidates || []).length < (opts.aggressiveNavThreshold || 3));
+    if (aggressiveOn) notes.push('aggressive discovery on (sparse nav: ' + ((spa.navCandidates || []).length) + ' candidates)');
     return runHolisticStates();
   }).then(function() {
     // Tier 1 — deterministic hash routes (always safe; no clicks; full views).
@@ -562,6 +615,9 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
   // full-view PAGE or a bounded REGION, keys it deterministically, and dedups by content.
   function clickLoop() {
     var triedKeys = {}, everSeen = {}, guard = 0;
+    // Aggressive (non-semantic) clicks are budgeted per from-state so a pointer-heavy page
+    // can't blow the whole exploration on speculative div clicks.
+    var aggCountByState = {}, AGG_BUDGET = 12;
     // The state the DOM is currently in (clickLoop starts from the initial view — Tier 1
     // reset location.hash). A control's PARENT is the state active when it first appeared
     // as a candidate, so we tag each newly-seen control with the current state key.
@@ -585,19 +641,30 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
       // attributed to the view that revealed them.
       cands.forEach(function(c) { var k = candKey(c); if (!everSeen[k]) { everSeen[k] = 1; discoveredUnder[k] = currentStateKey; } });
       controlsDiscovered = Object.keys(everSeen).length;   // distinct affordances seen → coverage denominator
-      cands.sort(function(a, b) { return candParentDepth(b) - candParentDepth(a); });
+      // Rank semantic controls ahead of aggressive (non-semantic) ones; within each, deeper
+      // (more-recently-revealed) first. Aggressive get a large negative offset → always last.
+      function rankOf(c) { return candParentDepth(c) + (isAggCand(c) ? -1000 : 0); }
+      cands.sort(function(a, b) { return rankOf(b) - rankOf(a); });
+      var nextAgg = false;
       for (var i = 0; i < cands.length; i++) {
         var key = candKey(cands[i]);
         if (triedKeys[key]) continue;
         var reason = unsafeReason(cands[i]);
         if (reason) { triedKeys[key] = 1; skipped.push({ label: labelOf(cands[i]).substring(0, 40) || cands[i].tagName.toLowerCase(), reason: reason }); continue; }
-        next = cands[i]; nextKey = key; break;
+        // Per-state aggressive sub-budget: once spent, skip remaining speculative clicks here.
+        if (isAggCand(cands[i]) && (aggCountByState[currentStateKey] || 0) >= AGG_BUDGET) {
+          triedKeys[key] = 1; skipped.push({ label: labelOf(cands[i]).substring(0, 40) || cands[i].tagName.toLowerCase(), reason: 'aggressive-budget' }); continue;
+        }
+        next = cands[i]; nextKey = key; nextAgg = isAggCand(cands[i]); break;
       }
       if (!next) return; // nothing new and safe to click
+      if (nextAgg) aggCountByState[currentStateKey] = (aggCountByState[currentStateKey] || 0) + 1;
       triedKeys[nextKey] = 1;
       var trigger = next;
       var label = labelOf(trigger).substring(0, 40) || trigger.tagName.toLowerCase();
       var descriptor = controlDescriptor(trigger);
+      var aggClick = nextAgg;                                    // provenance + click-to-revert
+      var fromNodeId = currentNodeId, fromStateKey = currentStateKey;
       return clickAndSettle(trigger).then(function(res) {
         if (!res || res.error) { skipped.push({ label: label, reason: 'click-error' }); return step(); }
         var changed = res.after !== res.before;
@@ -648,7 +715,14 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
           var rk = 'act:' + descriptor;
           var rNode = ensureNode(rsig, { kind: 'region', label: label, stateKey: rk, depth: parentDepth + 1 });
           recordEdge(currentNodeId, descriptor, label, rNode.id, 'region', false);
-          return addState({ stateKey: rk, kind: 'region', regionAnchor: regionSelector(root), activation: descriptor, label: label, trigger: 'click:' + label, parentStateKey: (discoveredUnder[nextKey] != null ? discoveredUnder[nextKey] : currentStateKey), contentSig: rsig, data: extractScoped(root) }, root).then(function() { currentStateKey = rk; currentNodeId = rNode.id; return step(); });
+          return addState({ stateKey: rk, kind: 'region', regionAnchor: regionSelector(root), activation: (aggClick ? 'aggressive:' : '') + descriptor, label: label, trigger: 'click:' + label, parentStateKey: (discoveredUnder[nextKey] != null ? discoveredUnder[nextKey] : currentStateKey), contentSig: rsig, data: extractScoped(root) }, root).then(function() {
+            currentStateKey = rk; currentNodeId = rNode.id;
+            // Aggressive region toggles are click-to-revert: re-click to close the speculative
+            // panel (keeps later signatures clean) and return to the from-state. The forward
+            // edge is already recorded, so the graph keeps it; exploration resumes at the parent.
+            if (aggClick) return clickAndSettle(trigger).then(function() { currentStateKey = fromStateKey; currentNodeId = fromNodeId; return step(); });
+            return step();
+          });
         } else {
           if (seenSigs[res.after]) {
             var dnP = nodeBySig[res.after];
@@ -659,7 +733,7 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
           var pk2 = 'act:' + descriptor;
           var pNode = ensureNode(res.after, { kind: 'page', label: label, stateKey: pk2, depth: parentDepth + 1 });
           recordEdge(currentNodeId, descriptor, label, pNode.id, 'page', false);
-          return addState({ stateKey: pk2, kind: 'page', activation: descriptor, label: label, trigger: 'click:' + label, parentStateKey: (discoveredUnder[nextKey] != null ? discoveredUnder[nextKey] : currentStateKey), contentSig: res.after, data: extractNow() }, document.documentElement).then(function() {
+          return addState({ stateKey: pk2, kind: 'page', activation: (aggClick ? 'aggressive:' : '') + descriptor, label: label, trigger: 'click:' + label, parentStateKey: (discoveredUnder[nextKey] != null ? discoveredUnder[nextKey] : currentStateKey), contentSig: res.after, data: extractNow() }, document.documentElement).then(function() {
             currentStateKey = pk2; currentNodeId = pNode.id;
             // Let lazy sub-content (tab strips, etc.) mount before re-enumerating so it
             // nests under THIS view rather than being missed.

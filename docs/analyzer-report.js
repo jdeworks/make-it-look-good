@@ -741,7 +741,10 @@ window.MilgReport = (function() {
       'in-form': 'inside a form', external: 'external link', 'click-error': 'click failed',
       'change-too-small': 'change too small', 'duplicate-content': 'duplicate content', 'empty-region': 'empty panel',
       'too-deep': 'nesting limit reached', 'nested-filter': 'filter/setting inside a sub-view',
-      'theme-toggle': 'appearance/theme toggle (re-skin, not a view)'
+      'theme-toggle': 'appearance/theme toggle (re-skin, not a view)',
+      'social-auth': 'social / auth / subscribe control', 'in-anchor': 'inside an off-site link',
+      'wraps-nav': 'wraps a submit/external action', 'aggressive-budget': 'speculative-click budget reached',
+      'covered-by-state-capture': 'already covered by all-expanded state'
     };
     var clicked = prov.clicked || [], skipped = prov.skipped || [], notes = prov.notes || [];
     var changedN = clicked.filter(function(c) { return c.changed; }).length;
