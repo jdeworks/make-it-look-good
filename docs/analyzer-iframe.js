@@ -744,12 +744,15 @@ window.MilgIframe = (function() {
       // Per-page (P5) holistic expand threshold + total pass budget — looser than the root
       // threshold so nav-gated sub-pages with a small disclosure cluster still get measured.
       perPageStateThreshold: opts.perPageStateThreshold || 3,
-      maxStatePasses: opts.maxStatePasses != null ? opts.maxStatePasses : 4,
+      maxStatePasses: opts.maxStatePasses != null ? opts.maxStatePasses : 6,
       // Aggressive non-semantic click-to-discover (A3/A4). Default ON; the explorer's own
-      // sparsity gate (navCandidates < 3) decides whether it actually fires, so dense-nav
+      // sparsity gate (navCandidates < threshold) decides whether it actually fires, so dense-nav
       // pages (our own UI, the fixture) stay semantic-only without a caller opt-out.
       aggressive: opts.aggressive !== false
     };
+    // Tuning override (debug): a JSON object in localStorage['__milgSpaTune'] shallow-merges into
+    // spaOpts, so thresholds/budgets can be A/B-tested live without a rebuild. Absent by default.
+    try { var _tune = JSON.parse(window.localStorage.getItem('__milgSpaTune') || '{}'); if (_tune && typeof _tune === 'object') Object.keys(_tune).forEach(function(k) { if (_tune[k] != null) spaOpts[k] = _tune[k]; }); } catch (e) {}
     // Inject MilgExtract (no auto-run — the explorer drives extraction itself) + the
     // explorer + (when capturing) the modern-screenshot lib + a bootstrap that runs after
     // the SPA boots, waits for the screenshot lib if needed, and batches all views back.

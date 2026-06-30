@@ -1,4 +1,4 @@
-// make-it-look-good — SPA View Explorer v3.11.118
+// make-it-look-good — SPA View Explorer v3.11.119
 // Runs INSIDE the analysis iframe (injected alongside MilgExtract). Discovers the
 // hidden "views" of a single-page app — reached by hash/History routes (Tier 1) or
 // by clicking nav controls (Tier 2, opt-in) — and re-runs MilgExtract on each so the
@@ -378,7 +378,8 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
   // parentStateKey = the revealing parent). coverage is filled at the end from bookkeeping.
   var graph = { nodes: [], edges: [], coverage: {} };
   var nodeBySig = {}, nodeSeq = 0, currentNodeId = null, rootNodeId = null;
-  var controlsDiscovered = 0;   // distinct candKeys ever enumerated (set inside clickLoop)
+  var controlsDiscovered = 0;   // distinct SEMANTIC candKeys ever enumerated (coverage denominator)
+  var aggressiveDiscovered = 0; // distinct AGGRESSIVE (non-semantic) candKeys — tracked separately
   function ensureNode(sig, meta) {
     meta = meta || {};
     var ex = nodeBySig[sig];
@@ -489,7 +490,7 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
   // Per-page threshold is LOWER than the root threshold: once you've navigated INTO a page, even
   // a small cluster of disclosures (3+) is worth an all-expanded measurement — that's how we reach
   // nav-gated content (narratu's Demo pages carry ~3 panels each). The pass-budget caps the blast.
-  var _statePasses = 0, STATE_PASS_BUDGET = (opts.maxStatePasses != null ? opts.maxStatePasses : 4), _pageStateDone = {};
+  var _statePasses = 0, STATE_PASS_BUDGET = (opts.maxStatePasses != null ? opts.maxStatePasses : 6), _pageStateDone = {};
   function maybeCapturePageState(pageData, pageStateKey, pageNodeId, descriptor, pageSig) {
     if (!opts.stateCapture || capExceeded()) return Promise.resolve();
     if (_statePasses >= STATE_PASS_BUDGET) return Promise.resolve();
@@ -623,6 +624,7 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
     skipped.forEach(function(s) { var r = s.reason || 'other'; skippedByReason[r] = (skippedByReason[r] || 0) + 1; });
     graph.coverage = {
       controlsDiscovered: controlsDiscovered,
+      aggressiveDiscovered: aggressiveDiscovered,
       controlsFired: clicked.length,
       pct: controlsDiscovered ? Math.min(1, clicked.length / controlsDiscovered) : 0,
       nodesReached: graph.nodes.length,
@@ -666,8 +668,17 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
       var cands = liveCandidates(), next = null, nextKey = null;
       // Record first-appearance parent BEFORE ranking, so freshly-revealed controls are
       // attributed to the view that revealed them.
-      cands.forEach(function(c) { var k = candKey(c); if (!everSeen[k]) { everSeen[k] = 1; discoveredUnder[k] = currentStateKey; } });
-      controlsDiscovered = Object.keys(everSeen).length;   // distinct affordances seen → coverage denominator
+      // Classify each newly-seen control as SEMANTIC (1) or AGGRESSIVE (2). Coverage's headline
+      // denominator counts only semantic controls — aggressive ones rank last and are rarely
+      // clicked, so including them would dilute coverage with affordances we never intend to fire.
+      cands.forEach(function(c) {
+        var k = candKey(c);
+        if (!everSeen[k]) {
+          var ag = isAggCand(c);
+          everSeen[k] = ag ? 2 : 1; discoveredUnder[k] = currentStateKey;
+          if (ag) aggressiveDiscovered++; else controlsDiscovered++;
+        }
+      });
       // Rank semantic controls ahead of aggressive (non-semantic) ones; within each, deeper
       // (more-recently-revealed) first. Aggressive get a large negative offset → always last.
       function rankOf(c) { return candParentDepth(c) + (isAggCand(c) ? -1000 : 0); }
@@ -848,7 +859,8 @@ window.MilgSpaMap = {
         notes: (result && result.notes) || [],
         truncated: !!(result && result.truncated),
         counts: counts,
-        graph: (result && result.graph) || null
+        graph: (result && result.graph) || null,
+        navCandidateCount: (result && result.navCandidateCount) || 0
       }
     };
   }

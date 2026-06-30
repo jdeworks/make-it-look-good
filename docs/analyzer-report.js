@@ -867,6 +867,7 @@ window.MilgReport = (function() {
     });
     h += '</div>';
     h += renderFlowGraphSvg(graph);
+    if (cov.aggressiveDiscovered) h += '<div style="color:var(--text-secondary);margin-top:8px;font-size:12px">+' + cov.aggressiveDiscovered + ' speculative non-semantic control' + (cov.aggressiveDiscovered !== 1 ? 's' : '') + ' discovered (excluded from coverage — rarely actioned).</div>';
     if (cov.truncated) h += '<div style="color:#ca8a04;margin-top:8px;font-size:12px">Coverage is a lower bound — discovery was capped, so more controls likely exist.</div>';
     h += '</div></details>';
     return h;
