@@ -367,7 +367,7 @@ window.MilgCrawlUI = (function() {
       });
       falsePassTotal += fp; falseFailTotal += ff; verifiedTotal += v;
       if (fp > 0) {
-        var path; try { path = new URL(page.url).pathname; } catch(e) { path = page.url; }
+        var path = (MilgCrawl.spaPathLabel && MilgCrawl.spaPathLabel(page)) || page.url;
         pageIssues.push({ url: page.url, path: path, falsePass: fp, results: results });
       }
     });

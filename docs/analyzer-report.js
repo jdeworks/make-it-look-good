@@ -958,7 +958,7 @@ window.MilgReport = (function() {
       html += '<div class="crawl-score-card">';
       html += '<div class="score ' + gradeClass + '">' + row.score + '</div>';
       html += '<div class="grade ' + gradeClass + '">' + row.grade + '</div>';
-      html += '<div class="page-path" title="' + escapeHtml(row.url) + '">' + escapeHtml(row.path || '/') + '</div>';
+      html += '<div class="page-path" title="' + escapeHtml((row.title ? row.title + '\n' : '') + row.url) + '">' + escapeHtml(row.pathLabel || row.path || '/') + '</div>';
       html += '</div>';
     });
     html += '</div>';
@@ -977,7 +977,7 @@ window.MilgReport = (function() {
         html += '</div>';
         html += '<div class="issue-pages">';
         issue.pages.forEach(function(p) {
-          var path; try { path = new URL(p.url).pathname; } catch(e) { path = p.url; }
+          var path = p.pathLabel; if (!path) { try { path = new URL(p.url).pathname; } catch(e) { path = p.url; } }
           html += '<div>' + escapeHtml(path) + (p.detail ? ' — ' + escapeHtml(p.detail.substring(0, 80)) : '') + '</div>';
         });
         html += '</div>';

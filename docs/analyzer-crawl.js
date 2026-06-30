@@ -754,6 +754,21 @@ window.MilgCrawl = (function() {
 
   // --- Summary builder ---
 
+  // Human-readable identifier for a page row. For SPA views the URL path is the same root for
+  // every state (the app never navigated), so distinct views look identical in lists — instead
+  // show the click-path breadcrumb (drop the leading site/app title), keeping the ▤/▣ markers
+  // MilgSpaMap already baked into the leaf. Falls back to the URL pathname for real pages.
+  function spaPathLabel(p) {
+    var path; try { path = new URL(p.url).pathname; } catch (e) { path = p.url; }
+    var m = (p && p.rawData && p.rawData.meta) || {};
+    if (m._spaView && p.title && p.title.indexOf(' › ') !== -1) {
+      var segs = p.title.split(' › '); segs.shift();           // drop the root site/app title
+      var crumb = segs.join(' › ').trim();
+      if (crumb) return crumb;
+    }
+    return path === '/' ? '/ (home)' : path;
+  }
+
   function buildSummary(session) {
     var donePages = session.pages.filter(function(p) { return p.status === 'done' && p.reportData; });
     var failedPages = session.pages.filter(function(p) { return p.status === 'error'; });
@@ -770,7 +785,7 @@ window.MilgCrawl = (function() {
     var scoreGrid = donePages.map(function(p) {
       var path;
       try { path = new URL(p.url).pathname; } catch(e) { path = p.url; }
-      return { url: p.url, path: path, title: p.title, score: p.reportData.overall, grade: p.reportData.grade };
+      return { url: p.url, path: path, pathLabel: spaPathLabel(p), title: p.title, score: p.reportData.overall, grade: p.reportData.grade };
     });
 
     var scores = donePages.map(function(p) { return p.reportData.overall; });
@@ -794,7 +809,7 @@ window.MilgCrawl = (function() {
             issueMap[key] = { title: f.title, severity: f.severity, fix: f.fix, pages: [], count: 0, _seenDetail: {} };
           }
           var e = issueMap[key];
-          e.pages.push({ url: p.url, detail: f.detail || '' });
+          e.pages.push({ url: p.url, pathLabel: spaPathLabel(p), detail: f.detail || '' });
           var dkey = f.detail || f.title; // element identity within this title group
           if (!e._seenDetail[dkey]) { e._seenDetail[dkey] = true; e.count++; }
         });
@@ -884,7 +899,7 @@ window.MilgCrawl = (function() {
     lines.push('| Page | Score | Grade |');
     lines.push('|------|-------|-------|');
     summary.scoreGrid.forEach(function(row) {
-      lines.push('| ' + row.path + ' | ' + row.score + ' | ' + row.grade + ' |');
+      lines.push('| ' + (row.pathLabel || row.path) + ' | ' + row.score + ' | ' + row.grade + ' |');
     });
     lines.push('');
 
@@ -1021,6 +1036,7 @@ window.MilgCrawl = (function() {
     startCrawl: startCrawl,
     abortCrawl: abortCrawl,
     buildSummary: buildSummary,
+    spaPathLabel: spaPathLabel,
     buildConsistencyReport: buildConsistencyReport,
     filterFindings: filterFindings,
     renderCrawlMarkdown: renderCrawlMarkdown,
