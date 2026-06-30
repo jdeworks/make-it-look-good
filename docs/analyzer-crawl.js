@@ -779,7 +779,10 @@ window.MilgCrawl = (function() {
     var worstIdx = scores.indexOf(Math.min.apply(null, scores));
     var bestIdx = scores.indexOf(Math.max.apply(null, scores));
 
-    // Cross-page issue grouping
+    // Cross-page issue grouping. `count` is the number of DISTINCT elements affected (keyed by
+    // finding detail, which embeds element text/size/selector), NOT view-repetitions — a
+    // persistent shell element re-found across N SPA views counts once, while genuinely distinct
+    // elements sharing a title stay separate. `viewsAffected` records how many views it showed in.
     var issueMap = {};
     donePages.forEach(function(p) {
       if (!p.reportData || !p.reportData.categories) return;
@@ -788,14 +791,22 @@ window.MilgCrawl = (function() {
           if (f.severity === 'info') return;
           var key = f.severity + '|' + f.title;
           if (!issueMap[key]) {
-            issueMap[key] = { title: f.title, severity: f.severity, fix: f.fix, pages: [], count: 0 };
+            issueMap[key] = { title: f.title, severity: f.severity, fix: f.fix, pages: [], count: 0, _seenDetail: {} };
           }
-          issueMap[key].pages.push({ url: p.url, detail: f.detail || '' });
-          issueMap[key].count++;
+          var e = issueMap[key];
+          e.pages.push({ url: p.url, detail: f.detail || '' });
+          var dkey = f.detail || f.title; // element identity within this title group
+          if (!e._seenDetail[dkey]) { e._seenDetail[dkey] = true; e.count++; }
         });
       });
     });
-    var crossPageIssues = Object.keys(issueMap).map(function(k) { return issueMap[k]; });
+    var crossPageIssues = Object.keys(issueMap).map(function(k) {
+      var e = issueMap[k];
+      var urls = {}; e.pages.forEach(function(pg) { urls[pg.url] = true; });
+      e.viewsAffected = Object.keys(urls).length;
+      delete e._seenDetail;
+      return e;
+    });
     crossPageIssues.sort(function(a, b) {
       // Errors first, then by count
       if (a.severity !== b.severity) return a.severity === 'error' ? -1 : 1;
@@ -888,7 +899,7 @@ window.MilgCrawl = (function() {
       lines.push('');
       filteredIssues.forEach(function(issue) {
         var icon = issue.severity === 'error' ? 'x' : '!';
-        lines.push('### [' + icon + '] ' + issue.title + ' (' + issue.count + ' page' + (issue.count > 1 ? 's' : '') + ')');
+        lines.push('### [' + icon + '] ' + issue.title + ' (' + issue.count + ' distinct on ' + (issue.viewsAffected || issue.pages.length) + ' view' + ((issue.viewsAffected || issue.pages.length) > 1 ? 's' : '') + ')');
         issue.pages.forEach(function(p) {
           var path; try { path = new URL(p.url).pathname; } catch(e) { path = p.url; }
           lines.push('- ' + path + (p.detail ? ': ' + p.detail : ''));

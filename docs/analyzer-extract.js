@@ -1042,6 +1042,31 @@ window.MilgExtract = (function() {
     var vpW = window.innerWidth;
     var _iframeDataContentTags = { table: 1, pre: 1, code: 1 };
     data.layout.offscreenElements = [];
+    // Scroll-reveal / pre-animation parking: an element deliberately positioned off-screen
+    // (or faded out) waiting for a scroll/animation trigger is NOT a layout defect. Classify
+    // it so we don't flag by-design reveal animations. 'hidden' → benign, skip entirely;
+    // 'transform' → likely scroll-reveal, demote to info downstream; null → genuine overflow.
+    var _srParkSel = '[data-aos],.wow,[data-sr],.reveal,.scroll-reveal,.animate-on-scroll,[data-scroll],[data-animate]';
+    function _animParkClass(el) {
+      try { if (el.closest(_srParkSel)) return 'hidden'; } catch (e) {}
+      if (_isHiddenAtCapture(el)) return 'hidden';
+      var node = el, hops = 0;
+      while (node && node.nodeType === 1 && node !== document.documentElement && hops < 4) {
+        var s; try { s = getComputedStyle(node); } catch (e) { break; }
+        var hasMotion = (s.transitionDuration && s.transitionDuration !== '0s') || (s.animationName && s.animationName !== 'none');
+        if (hasMotion) {
+          if (parseFloat(s.opacity) === 0) return 'hidden';
+          var tf = s.transform || '';
+          if (tf && tf !== 'none') {
+            var m = tf.match(/matrix\(([^)]+)\)/);
+            if (m) { var p = m[1].split(',').map(parseFloat); if (Math.abs(p[4] || 0) > 20 || Math.abs(p[5] || 0) > 20) return 'transform'; }
+            else if (/translate/i.test(tf)) return 'transform';
+          }
+        }
+        node = node.parentElement; hops++;
+      }
+      return null;
+    }
     var meaningfulSel = 'button,a,[role="menuitem"],[role="menu"],li,p,h1,h2,h3,h4,h5,h6,img,input,select,textarea,td,th,label,span,div';
     _qa(meaningfulSel).forEach(function(el) {
       if (!isVisible(el) || isDecorative(el)) return;
@@ -1079,6 +1104,8 @@ window.MilgExtract = (function() {
         anc = anc.parentElement;
       }
       if (inIntentionalScroll) return;
+      var _park = _animParkClass(el);
+      if (_park === 'hidden') return; // by-design scroll-reveal / pre-animation — not a layout defect
       var parentAlready = data.layout.offscreenElements.some(function(rec) {
         try { var pel = document.querySelector(rec.selector); return pel && pel.contains(el) && pel !== el; } catch(e) { return false; }
       });
@@ -1090,7 +1117,8 @@ window.MilgExtract = (function() {
         left: Math.round(r.left),
         right: Math.round(r.right),
         vpWidth: vpW,
-        reason: r.right < 0 ? 'left-overflow' : r.left >= vpW ? 'right-overflow' : 'major-clip',
+        reason: _park === 'transform' ? 'scroll-reveal' : (r.right < 0 ? 'left-overflow' : r.left >= vpW ? 'right-overflow' : 'major-clip'),
+        parked: _park === 'transform' || undefined,
         bbox: null
       };
       trackBbox(el, _oeEntry, 'bbox');

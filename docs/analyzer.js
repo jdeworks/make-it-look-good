@@ -1,8 +1,8 @@
-// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.112
+// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.113
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.112 loaded');
+console.log('[milg] analyzer.js v3.11.113 loaded');
 
 (function() {
   "use strict";
@@ -1252,14 +1252,20 @@ console.log('[milg] analyzer.js v3.11.112 loaded');
           // opt-in via the "Explore SPA views" toggle.
           var _spa = data.structure && data.structure.spa;
           var _spaToggle = document.getElementById('spaExploreCheck');
+          var _stateToggle = document.getElementById('stateCaptureCheck');
           var _wantClicks = !!(_spaToggle && _spaToggle.checked);
-          var _wantSpa = _spa && _spa.isLikelyHiddenViews && (((_spa.routes || []).length >= 1) || _wantClicks);
+          var _STATE_THRESHOLD = 6;
+          var _hpCount = (data.layout && data.layout.hiddenPanelCount) || 0;
+          // State-aware capture (collapsed/expanded) also runs the explorer — even on a
+          // disclosure-heavy NON-SPA page — gated on enough hidden panels to be worthwhile.
+          var _wantState = !!(_stateToggle && _stateToggle.checked) && _hpCount >= _STATE_THRESHOLD;
+          var _wantSpa = (_spa && _spa.isLikelyHiddenViews && (((_spa.routes || []).length >= 1) || _wantClicks)) || _wantState;
           if (_wantSpa) {
             urlStatus.style.display = 'block';
             urlStatus.textContent = 'Single-page app detected — exploring views...';
             showProgress(70, 'Exploring SPA views...');
             updateFocusModal('Exploring SPA views');
-            MilgIframe.analyzeSpaViews(html, { url: url, exploreClicks: _wantClicks, maxViews: 20, screenshots: wantShots }, function(r) {
+            MilgIframe.analyzeSpaViews(html, { url: url, exploreClicks: _wantClicks, maxViews: 20, screenshots: wantShots, stateCapture: !!(_stateToggle && _stateToggle.checked), stateThreshold: _STATE_THRESHOLD }, function(r) {
               analyzeUrlBtn.disabled = false;
               analyzeUrlBtn.innerHTML = _analyzeUrlIcon;
               hideFocusModal();
@@ -1276,7 +1282,7 @@ console.log('[milg] analyzer.js v3.11.112 loaded');
                 // _spa* meta + counts — same logic the crawl fold and console snippet use.
                 var _built = MilgSpaMap.build(r, { base: url.replace(/#.*$/, ''), rootTitle: (data.meta.title || 'App').trim() || 'App', inputMethod: 'url' });
                 var _c = _built.counts, _skipN = (r.skipped || []).length;
-                showToast(_c.pages + ' view' + (_c.pages !== 1 ? 's' : '') + (_c.subViews ? ' + ' + _c.subViews + ' sub-view' + (_c.subViews > 1 ? 's' : '') : '') + (_c.panels ? ' + ' + _c.panels + ' panel' + (_c.panels > 1 ? 's' : '') : '') + ' analyzed' + (_skipN ? ', ' + _skipN + ' skipped' : '') + (r.truncated ? ' (capped)' : ''));
+                showToast(_c.pages + ' view' + (_c.pages !== 1 ? 's' : '') + (_c.subViews ? ' + ' + _c.subViews + ' sub-view' + (_c.subViews > 1 ? 's' : '') : '') + (_c.panels ? ' + ' + _c.panels + ' panel' + (_c.panels > 1 ? 's' : '') : '') + (_c.states ? ' + ' + _c.states + ' state view' + (_c.states > 1 ? 's' : '') : '') + ' analyzed' + (_skipN ? ', ' + _skipN + ' skipped' : '') + (r.truncated ? ' (capped)' : ''));
                 MilgCrawlUI.loadCrawlResults({ startUrl: url, results: _built.results, _spaProvenance: _built.provenance }, 'SPA views');
               } else {
                 if (r && r.error) showToast('SPA explore failed (' + r.error + ') — showing single view');

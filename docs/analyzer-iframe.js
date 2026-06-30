@@ -738,7 +738,9 @@ window.MilgIframe = (function() {
       settleMaxMs: opts.settleMaxMs || 1500,
       pageEnterGraceMs: opts.pageEnterGraceMs != null ? opts.pageEnterGraceMs : 1500,
       capture: wantShots,
-      captureScale: opts.captureScale || 1
+      captureScale: opts.captureScale || 1,
+      stateCapture: !!opts.stateCapture,
+      stateThreshold: opts.stateThreshold || 6
     };
     // Inject MilgExtract (no auto-run — the explorer drives extraction itself) + the
     // explorer + (when capturing) the modern-screenshot lib + a bootstrap that runs after

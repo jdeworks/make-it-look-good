@@ -50,7 +50,10 @@ async function analyze(page, target, opts = {}) {
   // (see scripts/eval-analyzer-quality.mjs). Color scheme + viewport DON'T need
   // screenshots, so we can still cover dark mode + a mobile viewport here cheaply.
   await page.evaluate((opts) => {
-    ['screenshotCheck', 'pixelVerifyCheck'].forEach((id) => {
+    // Also hold state-capture (collapsed/expanded) OFF: like screenshots it's a multi-view
+    // feature that would divert a disclosure-heavy page (our own pages have 6+ panels) into
+    // the crawl UI. This gate guards single-page scoring; SPA(url)/SPA(crawl) cover the explorer.
+    ['screenshotCheck', 'pixelVerifyCheck', 'stateCaptureCheck'].forEach((id) => {
       const c = document.getElementById(id);
       if (c && c.checked) { c.checked = false; c.dispatchEvent(new Event('change')); }
     });

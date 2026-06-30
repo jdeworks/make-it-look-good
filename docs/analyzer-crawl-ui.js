@@ -497,8 +497,12 @@ window.MilgCrawlUI = (function() {
           var raw = pageEntry.rawData;
           var spa = raw && raw.structure && raw.structure.spa;
           var spaToggle = document.getElementById('spaExploreCheck');
+          var stateToggle = document.getElementById('stateCaptureCheck');
           var wantClicks = !!(spaToggle && spaToggle.checked);
-          var wantSpa = spa && spa.isLikelyHiddenViews && (((spa.routes || []).length >= 1) || wantClicks);
+          var STATE_THRESHOLD = 6;
+          var hpCount = (raw && raw.layout && raw.layout.hiddenPanelCount) || 0;
+          var wantState = !!(stateToggle && stateToggle.checked) && hpCount >= STATE_THRESHOLD;
+          var wantSpa = (spa && spa.isLikelyHiddenViews && (((spa.routes || []).length >= 1) || wantClicks)) || wantState;
           if (!wantSpa || !pageEntry._html) { done(); return; }
           var budget = session._spa || (session._spa = { perPageCap: 12, totalCap: 40, used: 0 });
           var room = Math.min(budget.perPageCap, budget.totalCap - budget.used);
@@ -512,7 +516,8 @@ window.MilgCrawlUI = (function() {
           _spaExpandModal(pageEntry.url);
           MilgIframe.analyzeSpaViews(pageEntry._html, {
             url: pageEntry.url, exploreClicks: wantClicks, maxViews: room,
-            screenshots: wantShots, timeBudgetMs: wantShots ? 30000 : 22000
+            screenshots: wantShots, timeBudgetMs: wantShots ? 30000 : 22000,
+            stateCapture: !!(stateToggle && stateToggle.checked), stateThreshold: STATE_THRESHOLD
           }, function(r) {
             try { _foldSpaViews(session, pageEntry, r, budget); } catch (e) {}
             renderCrawlTabs();

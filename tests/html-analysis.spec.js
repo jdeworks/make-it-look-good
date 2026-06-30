@@ -20,6 +20,10 @@ function presetUrl(name) {
 async function analyzeUrl(page, url) {
   await page.goto(ANALYZER_URL);
   await page.click('[data-tab="tabUrl"]');
+  // Hold state-capture (collapsed/expanded) OFF: it's a multi-view feature that would divert
+  // a disclosure-heavy page (e.g. analyzer.html's own 6+ <details>) into the crawl UI, so the
+  // single-page report (__milgLastReport / .report-gauge) these tests assert wouldn't exist.
+  await page.evaluate(() => { const c = document.getElementById('stateCaptureCheck'); if (c && c.checked) { c.checked = false; c.dispatchEvent(new Event('change')); } });
   await page.fill('#urlInput', url);
   await page.click('#analyzeUrlBtn');
   await page.waitForSelector('.report-container.visible', { timeout: 60000 });
@@ -578,6 +582,7 @@ test.describe('Screenshot Pipeline', () => {
     await page.evaluate(() => localStorage.setItem('milg-dark', 'true'));
     await page.reload();
     await page.click('[data-tab="tabUrl"]');
+    await page.evaluate(() => { const c = document.getElementById('stateCaptureCheck'); if (c && c.checked) { c.checked = false; c.dispatchEvent(new Event('change')); } });
     await page.fill('#urlInput', `${BASE_URL}/analyzer.html`);
     await page.click('#analyzeUrlBtn');
     await page.waitForSelector('.report-container.visible', { timeout: 90000 });
@@ -621,6 +626,7 @@ test.describe('Screenshot Pipeline', () => {
     await page.reload();
     await page.check('#pixelVerifyCheck');
     await page.click('[data-tab="tabUrl"]');
+    await page.evaluate(() => { const c = document.getElementById('stateCaptureCheck'); if (c && c.checked) { c.checked = false; c.dispatchEvent(new Event('change')); } });
     await page.fill('#urlInput', `${BASE_URL}/analyzer.html`);
     await page.click('#analyzeUrlBtn');
     await page.waitForSelector('.report-container.visible', { timeout: 120000 });

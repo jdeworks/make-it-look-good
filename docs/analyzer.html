@@ -6,7 +6,7 @@
   <title>make-it-look-good — Design Analyzer</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='2' y='2' width='12' height='12' rx='2' fill='%232563eb'/><rect x='18' y='2' width='12' height='12' rx='2' fill='%2393c5fd'/><rect x='2' y='18' width='12' height='12' rx='2' fill='%2393c5fd'/><rect x='18' y='18' width='12' height='12' rx='2' fill='%232563eb'/></svg>">
   <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="analyzer.css?v=3.11.112">
+  <link rel="stylesheet" href="analyzer.css?v=3.11.113">
 </head>
 <body class="analyzer-body">
 
@@ -42,7 +42,7 @@
       <button type="button" aria-label="Dismiss" title="Dismiss for now" onclick="window.__milgBannerDismiss&&window.__milgBannerDismiss()" style="background:none;border:none;color:var(--text-secondary);font-size:20px;line-height:1;padding:6px 10px;min-height:36px;min-width:36px;cursor:pointer">&times;</button>
     </div>
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.11.112</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.11.113</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -73,6 +73,12 @@
         Explore SPA views
         <span style="font-size:10px;color:var(--text-dim);font-weight:400">(clicks nav)</span>
       </label>
+      <label style="display:flex;align-items:center;gap:5px;cursor:pointer" title="For disclosure-heavy layouts (accordions, collapsible panels): also analyze the page with everything expanded at once (worst-case density/overflow) and everything collapsed (clean baseline). Runs automatically only when the page has 6+ collapsible panels.">
+        <input type="checkbox" id="stateCaptureCheck" checked style="width:15px;height:15px;cursor:pointer">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><path d="M3 9h18M9 3v18"/><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+        Collapsed/expanded states
+        <span style="font-size:10px;color:var(--text-dim);font-weight:400">(6+ panels)</span>
+      </label>
       <button type="button" id="settingsHelpBtn" aria-label="What do these settings do?" title="What do these settings do?" onclick="window.__milgOpenSettingsHelp&&window.__milgOpenSettingsHelp()" style="display:inline-flex;align-items:center;gap:4px;background:none;border:1px solid var(--border);border-radius:6px;color:var(--text-secondary);font-size:12px;padding:5px 10px;min-height:36px;cursor:pointer">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
         What do these do?
@@ -93,6 +99,7 @@
           <dt style="font-weight:600;color:var(--text);margin-top:10px">Screenshots</dt><dd style="margin:2px 0 0">Capture page images. Required for Pixel Verify and per-view thumbnails.</dd>
           <dt style="font-weight:600;color:var(--text);margin-top:10px">Pixel Verify</dt><dd style="margin:2px 0 0">Sample the actual rendered pixels for true contrast (catches gradients/overlays). More accurate but slower; needs Screenshots.</dd>
           <dt style="font-weight:600;color:var(--text);margin-top:10px">Explore SPA views</dt><dd style="margin:2px 0 0">For single-page apps: click nav/tabs to discover &amp; analyze hidden views — one tab can pass while another fails. Safe controls only.</dd>
+          <dt style="font-weight:600;color:var(--text);margin-top:10px">Collapsed/expanded states</dt><dd style="margin:2px 0 0">For accordion/disclosure-heavy layouts: also analyze the page with every collapsible panel open at once (worst-case density &amp; overflow) and all closed (clean baseline) — issues that only appear when several panels are open are easy to miss otherwise. Runs automatically only when the page has 6+ collapsible panels.</dd>
           <dt style="font-weight:600;color:var(--text);margin-top:10px">JavaScript (URL mode)</dt><dd style="margin:2px 0 0">Render the page with JS on — needed for React/Vue/Angular apps. Off by default for safety/speed.</dd>
         </dl>
         <details style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
@@ -550,34 +557,34 @@
   <div class="toast" id="toast" aria-live="polite" aria-atomic="true" role="status"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=3.11.112"></script>
-  <script src="scoring/contrast.js?v=3.11.112"></script>
-  <script src="scoring/typography.js?v=3.11.112"></script>
-  <script src="scoring/spacing.js?v=3.11.112"></script>
-  <script src="scoring/touch.js?v=3.11.112"></script>
-  <script src="scoring/accessibility.js?v=3.11.112"></script>
-  <script src="scoring/responsive.js?v=3.11.112"></script>
-  <script src="scoring/consistency.js?v=3.11.112"></script>
-  <script src="scoring/cognitive.js?v=3.11.112"></script>
-  <script src="scoring/layout.js?v=3.11.112"></script>
-  <script src="scoring/performance.js?v=3.11.112"></script>
-  <script src="scoring/readability.js?v=3.11.112"></script>
-  <script src="scoring/filters.js?v=3.11.112"></script>
-  <script src="scoring/balance.js?v=3.11.112"></script>
-  <script src="scoring/polish.js?v=3.11.112"></script>
+  <script src="scoring/registry.js?v=3.11.113"></script>
+  <script src="scoring/contrast.js?v=3.11.113"></script>
+  <script src="scoring/typography.js?v=3.11.113"></script>
+  <script src="scoring/spacing.js?v=3.11.113"></script>
+  <script src="scoring/touch.js?v=3.11.113"></script>
+  <script src="scoring/accessibility.js?v=3.11.113"></script>
+  <script src="scoring/responsive.js?v=3.11.113"></script>
+  <script src="scoring/consistency.js?v=3.11.113"></script>
+  <script src="scoring/cognitive.js?v=3.11.113"></script>
+  <script src="scoring/layout.js?v=3.11.113"></script>
+  <script src="scoring/performance.js?v=3.11.113"></script>
+  <script src="scoring/readability.js?v=3.11.113"></script>
+  <script src="scoring/filters.js?v=3.11.113"></script>
+  <script src="scoring/balance.js?v=3.11.113"></script>
+  <script src="scoring/polish.js?v=3.11.113"></script>
   <!-- Queue + Report rendering + UI -->
-  <script src="analyzer-queue.js?v=3.11.112"></script>
-  <script src="analyzer-report.js?v=3.11.112"></script>
-  <script src="analyzer-crawl.js?v=3.11.112"></script>
-  <script src="analyzer-extract.js?v=3.11.112"></script>
-  <script src="analyzer-spa.js?v=3.11.112"></script>
-  <script src="analyzer-region.js?v=3.11.112"></script>
-  <script src="analyzer-capture.js?v=3.11.112"></script>
-  <script src="analyzer-iframe.js?v=3.11.112"></script>
-  <script src="analyzer-proxy.js?v=3.11.112"></script>
-  <script src="analyzer-crawl-ui.js?v=3.11.112"></script>
-  <script src="analyzer-contrast-verify.js?v=3.11.112"></script>
-  <script src="analyzer-viewer.js?v=3.11.112"></script>
-  <script src="analyzer.js?v=3.11.112"></script>
+  <script src="analyzer-queue.js?v=3.11.113"></script>
+  <script src="analyzer-report.js?v=3.11.113"></script>
+  <script src="analyzer-crawl.js?v=3.11.113"></script>
+  <script src="analyzer-extract.js?v=3.11.113"></script>
+  <script src="analyzer-spa.js?v=3.11.113"></script>
+  <script src="analyzer-region.js?v=3.11.113"></script>
+  <script src="analyzer-capture.js?v=3.11.113"></script>
+  <script src="analyzer-iframe.js?v=3.11.113"></script>
+  <script src="analyzer-proxy.js?v=3.11.113"></script>
+  <script src="analyzer-crawl-ui.js?v=3.11.113"></script>
+  <script src="analyzer-contrast-verify.js?v=3.11.113"></script>
+  <script src="analyzer-viewer.js?v=3.11.113"></script>
+  <script src="analyzer.js?v=3.11.113"></script>
 </body>
 </html>

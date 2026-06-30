@@ -188,8 +188,12 @@ function scoreLayout(data) {
     }
   }
 
-  // Off-screen elements: visible elements positioned outside viewport (x-axis)
-  var offscreen = layout.offscreenElements || [];
+  // Off-screen elements: visible elements positioned outside viewport (x-axis).
+  // Split genuine overflow from scroll-reveal/pre-animation parked elements (e.parked) —
+  // the latter are deliberately off-screen waiting for a trigger, so they're advisory only.
+  var offscreenAll = layout.offscreenElements || [];
+  var offscreen = offscreenAll.filter(function(e) { return !e.parked; });
+  var parkedOff = offscreenAll.filter(function(e) { return e.parked; });
   if (offscreen.length > 0) {
     checks++;
     var offDetails = offscreen.map(function(e) {
@@ -209,6 +213,17 @@ function scoreLayout(data) {
   } else {
     checks++;
     passed++;
+  }
+  if (parkedOff.length > 0) {
+    findings.push({
+      severity: 'info',
+      title: parkedOff.length + ' off-screen element(s) appear to be scroll-reveal / pre-animation',
+      detail: parkedOff.map(function(e) { return e.element + (e.text ? ' ("' + e.text.substring(0, 25) + '")' : '') + ' at x=' + e.left + 'px'; }).join('; '),
+      fix: 'These sit off-screen with a transition/transform — typical of scroll-reveal animations that slide content into view. Verify they actually animate in; if not, they may be genuinely unreachable.',
+      presetRef: null,
+      source: 'WCAG 2.2 §1.4.10 — https://www.w3.org/TR/WCAG22/#reflow',
+      locator: { selector: parkedOff[0] ? parkedOff[0].selector : '', text: parkedOff[0] ? (parkedOff[0].text || '') : '', bboxes: parkedOff.filter(function(o) { return o.bbox; }).map(function(o) { return o.bbox; }), selectors: parkedOff.filter(function(o) { return o.selector; }).map(function(o) { return o.selector; }), texts: parkedOff.map(function(o) { return o.text || ''; }) }
+    });
   }
 
   // Horizontal scroll on containers — use refined classification

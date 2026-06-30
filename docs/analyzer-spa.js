@@ -1,4 +1,4 @@
-// make-it-look-good — SPA View Explorer v3.11.112
+// make-it-look-good — SPA View Explorer v3.11.113
 // Runs INSIDE the analysis iframe (injected alongside MilgExtract). Discovers the
 // hidden "views" of a single-page app — reached by hash/History routes (Tier 1) or
 // by clicking nav controls (Tier 2, opt-in) — and re-runs MilgExtract on each so the
@@ -352,6 +352,17 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
     var pk = (o.parentStateKey == null) ? null : o.parentStateKey;
     var depth = (pk != null && depthByKey[pk] != null) ? depthByKey[pk] + 1 : 0;
     if (depthByKey[o.stateKey] == null) depthByKey[o.stateKey] = depth;
+    // Holistic state views (all-expanded/all-collapsed) skip the async screenshot: their DOM
+    // mutation is restored synchronously right after the (synchronous) extract, so there is no
+    // expanded DOM left to capture. Scoring is geometry-based and works without the screenshot.
+    if (o.noShot) {
+      views.push({
+        stateKey: o.stateKey, kind: o.kind || 'page', regionAnchor: o.regionAnchor || null,
+        activation: o.activation || null, label: o.label, trigger: o.trigger || null,
+        parentStateKey: pk, depth: depth, contentSig: o.contentSig, hasShot: false, data: o.data
+      });
+      return Promise.resolve();
+    }
     return captureTarget(target, o.kind).then(function(shot) {
       if (shot) { o.data.screenshots = [shot.uri]; o.data.screenshotMeta = shot.meta; }
       views.push({
@@ -381,12 +392,95 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
     });
   }
 
+  // --- Holistic state passes: analyze the page with ALL disclosures open at once
+  // (worst-case density/overflow) and all closed (clean baseline). Run on the pristine
+  // baseline DOM, BEFORE clickLoop, and never seed seenSigs. Each pass mutates synchronously,
+  // forces one reflow, extracts SYNCHRONOUSLY (before framework re-collapse handlers fire),
+  // then restores the exact DOM state in a finally. Gated on hiddenPanelCount >= threshold.
+  var stateCoverageActive = false; // true once all-expanded ran → suppress redundant per-panel region views
+  var _coveredPanels = [];          // the disclosure elements the expanded pass already covered
+  function runHolisticStates() {
+    if (!opts.stateCapture) return Promise.resolve();
+    var threshold = opts.stateThreshold || 6;
+    var hpCount = (views[0] && views[0].data && views[0].data.layout && views[0].data.layout.hiddenPanelCount) || 0;
+    if (hpCount < threshold) { notes.push('state-capture skipped (hiddenPanelCount ' + hpCount + ' < ' + threshold + ')'); return Promise.resolve(); }
+    return Promise.resolve().then(runExpandedState).then(runCollapsedState);
+  }
+  function runExpandedState() {
+    if (capExceeded()) return;
+    // In-flow disclosures only: opening every menu/dialog/tooltip (aria-role) or any
+    // fixed/absolute overlay at once produces an unrealistic pile, not "all content shown".
+    var reg = (window.__milgHiddenPanels || []).filter(function(h) {
+      if (!h.el || !h.el.isConnected) return false;
+      if (h.kind === 'aria-role') return false;
+      var pos; try { pos = getComputedStyle(h.el).position; } catch (e) { return false; }
+      return pos !== 'fixed' && pos !== 'absolute';
+    });
+    if (!reg.length) { notes.push('all-expanded skipped (no in-flow disclosures)'); return; }
+    var saved = [], data;
+    try {
+      reg.forEach(function(h) {
+        var el = h.el, tr = h.triggerEl || null;
+        saved.push({ el: el, cssText: el.style.cssText, ariaHidden: el.getAttribute('aria-hidden'), hadHidden: el.hasAttribute('hidden'), detailsOpen: (el.tagName === 'DETAILS' ? el.open : null), trigger: tr, triggerAria: tr ? tr.getAttribute('aria-expanded') : null });
+        if (el.tagName === 'DETAILS') { el.open = true; }
+        else { el.style.cssText = el.style.cssText + '; display: block !important; visibility: visible !important; opacity: 1 !important; pointer-events: none !important;'; if (el.hasAttribute('hidden')) el.removeAttribute('hidden'); if (el.getAttribute('aria-hidden')) el.setAttribute('aria-hidden', 'false'); }
+        if (tr && tr.getAttribute('aria-expanded') != null) tr.setAttribute('aria-expanded', 'true');
+      });
+      void document.body.offsetHeight;
+      data = extractNow();
+    } finally {
+      saved.forEach(function(s) {
+        try {
+          if (s.detailsOpen !== null) { s.el.open = s.detailsOpen; }
+          else { s.el.style.cssText = s.cssText; if (s.hadHidden) s.el.setAttribute('hidden', ''); if (s.ariaHidden != null) s.el.setAttribute('aria-hidden', s.ariaHidden); else s.el.removeAttribute('aria-hidden'); }
+          if (s.trigger && s.triggerAria != null) s.trigger.setAttribute('aria-expanded', s.triggerAria);
+        } catch (e) {}
+      });
+      void document.body.offsetHeight;
+    }
+    stateCoverageActive = true;
+    _coveredPanels = reg.map(function(h) { return h.el; });
+    return addState({ stateKey: 'state:all-expanded', kind: 'state', activation: 'all-expanded', label: 'All expanded', parentStateKey: (views[0] && views[0].stateKey), contentSig: 'state:all-expanded', data: data, noShot: true }, null);
+  }
+  function runCollapsedState() {
+    if (capExceeded()) return;
+    var open = [];
+    try {
+      Array.prototype.forEach.call(document.querySelectorAll('details[open]'), function(d) { open.push({ el: d }); });
+      Array.prototype.forEach.call(document.querySelectorAll('[aria-expanded="true"][aria-controls]'), function(t) { var tgt = document.getElementById(t.getAttribute('aria-controls')); if (tgt) open.push({ el: tgt, trigger: t }); });
+    } catch (e) {}
+    if (!open.length) { notes.push('all-collapsed skipped (nothing open at rest)'); return; }
+    var saved = [], data;
+    try {
+      open.forEach(function(o) {
+        var el = o.el, tr = o.trigger || null;
+        saved.push({ el: el, cssText: el.style.cssText, detailsOpen: (el.tagName === 'DETAILS' ? el.open : null), trigger: tr, triggerAria: tr ? tr.getAttribute('aria-expanded') : null });
+        if (el.tagName === 'DETAILS') { el.open = false; }
+        else { el.style.cssText = el.style.cssText + '; display: none !important;'; }
+        if (tr) tr.setAttribute('aria-expanded', 'false');
+      });
+      void document.body.offsetHeight;
+      data = extractNow();
+    } finally {
+      saved.forEach(function(s) {
+        try {
+          if (s.detailsOpen !== null) { s.el.open = s.detailsOpen; } else { s.el.style.cssText = s.cssText; }
+          if (s.trigger && s.triggerAria != null) s.trigger.setAttribute('aria-expanded', s.triggerAria);
+        } catch (e) {}
+      });
+      void document.body.offsetHeight;
+    }
+    return addState({ stateKey: 'state:all-collapsed', kind: 'state', activation: 'all-collapsed', label: 'All collapsed', parentStateKey: (views[0] && views[0].stateKey), contentSig: 'state:all-collapsed', data: data, noShot: true }, null);
+  }
+
   // State 0 — the initial full view.
   var sig0 = domSignature();
   seenSigs[sig0] = true;
   var spa = {};
   return addState({ stateKey: location.hash || '/', kind: 'page', label: 'initial', parentStateKey: null, contentSig: sig0, data: extractNow() }, document.documentElement).then(function() {
     spa = (views[0].data && views[0].data.structure && views[0].data.structure.spa) || {};
+    return runHolisticStates();
+  }).then(function() {
     // Tier 1 — deterministic hash routes (always safe; no clicks; full views).
     var routes = (spa.routes || []).slice();
     return routes.reduce(function(p, route) {
@@ -474,6 +568,13 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
         var ratio = vpArea ? areaOf(root) / vpArea : 1;
         var kind = (root === document.body || ratio >= FULL_VIEW_RATIO) ? 'page' : 'region';
         if (kind === 'region') {
+          // When the all-expanded state pass already covered this disclosure, a per-panel
+          // region view would just re-measure the same panel and double-count its findings.
+          if (stateCoverageActive) {
+            var _covered = false;
+            for (var _ci = 0; _ci < _coveredPanels.length; _ci++) { var _cp = _coveredPanels[_ci]; if (_cp && (_cp === root || root.contains(_cp) || _cp.contains(root))) { _covered = true; break; } }
+            if (_covered) { skipped.push({ label: label, reason: 'covered-by-state-capture' }); return step(); }
+          }
           // Bounded panels are captured as tab-panels near the top of the tree; a small
           // region nested under a sub-tab is a filter/setting, not a view — skip it.
           if (parentDepth + 1 > REGION_MAX_DEPTH) { skipped.push({ label: label, reason: 'nested-filter' }); return step(); }
@@ -533,24 +634,28 @@ window.MilgSpaMap = {
       }
       return parts;
     }
-    var pages = 0, subViews = 0, panels = 0, results = [];
+    var pages = 0, subViews = 0, panels = 0, states_ = 0, results = [];
     for (var i = 0; i < states.length; i++) {
       if (skipInitial && i === 0) continue;          // baseline == the page we already have
       var v = states[i];
       if (!v || !v.data) continue;
-      if (skipInitial && !v.trigger) continue;        // extra guard against the baseline
+      var isState = v.kind === 'state';
+      if (skipInitial && !v.trigger && !isState) continue;   // extra guard against the baseline (state views have no trigger)
       var isRegion = v.kind === 'region';
       var depth = v.depth || 0;
-      if (isRegion) panels++; else if (depth >= 2) subViews++; else pages++;
+      if (isState) states_++; else if (isRegion) panels++; else if (depth >= 2) subViews++; else pages++;
       var sk = String(v.stateKey || '').replace(/^#/, '');
       var cr = crumbs(v);
-      if (isRegion && cr.length) cr[cr.length - 1] = '▤ ' + cr[cr.length - 1];
+      if (isState) { cr = [v.label]; }            // holistic states aren't a crumb path
+      else if (isRegion && cr.length) cr[cr.length - 1] = '▤ ' + cr[cr.length - 1];
+      if (isState && cr.length) cr[cr.length - 1] = '▣ ' + cr[cr.length - 1];
       v.data.meta = v.data.meta || {};
       v.data.meta.url = base + (sk ? '#' + sk : '');
       v.data.meta.title = [rootTitle].concat(cr).join(' › ');
       v.data.meta._inputMethod = inputMethod;
       v.data.meta._spaView = true;
       v.data.meta._spaKind = v.kind;
+      if (isState) v.data.meta._stateTag = v.activation || sk.replace('state:', '');
       v.data.meta._spaRegionAnchor = v.regionAnchor || null;
       v.data.meta._spaTrigger = v.trigger || null;
       v.data.meta._spaParentKey = (v.parentStateKey == null) ? null : v.parentStateKey;
@@ -559,7 +664,7 @@ window.MilgSpaMap = {
       if (opts.profile && !v.data.profile) v.data.profile = opts.profile;
       results.push({ url: v.data.meta.url, data: v.data });
     }
-    var counts = { pages: pages, subViews: subViews, panels: panels };
+    var counts = { pages: pages, subViews: subViews, panels: panels, states: states_ };
     return {
       results: results,
       counts: counts,

@@ -79,7 +79,7 @@ async function runCell(page, url, viewportVal, mode) {
     function findingsOf(report) {
       const out = [];
       ((report && report.categories) || []).forEach((c) => (c.findings || []).forEach((f) => {
-        if (f.severity === 'error' || f.severity === 'warning') out.push({ sev: f.severity, cat: c.label, title: (f.title || f.message || '?').slice(0, 120) });
+        if (f.severity === 'error' || f.severity === 'warning') out.push({ sev: f.severity, cat: c.label, title: (f.title || f.message || '?').slice(0, 120), detail: (f.detail || '').slice(0, 160) });
       }));
       return out;
     }
@@ -96,6 +96,27 @@ async function runCell(page, url, viewportVal, mode) {
     const r = window.__milgLastReport;
     return { kind: 'single', views: [{ title: (r && r.meta && r.meta.title) || 'page', score: r && r.overall, grade: r && r.grade, findings: findingsOf(r) }] };
   });
+}
+
+// Collapse findings re-counted across a cell's SPA views (persistent shell elements appear in
+// every view). Key = severity + number-stripped title + detail (detail embeds the element's
+// text/size/selector → element-specific & view-stable). Mirrors the analyzer's buildSummary dedup.
+function dedupeCellFindings(views) {
+  const map = new Map();
+  for (const v of (views || [])) {
+    for (const f of (v.findings || [])) {
+      const key = f.sev + '|' + (f.title || '').replace(/\d+(\.\d+)?/g, '#') + '|' + (f.detail || '');
+      let g = map.get(key);
+      if (!g) { g = { sev: f.sev, cat: f.cat, title: f.title, views: new Set() }; map.set(key, g); }
+      g.views.add(v.title);
+    }
+  }
+  const unique = [...map.values()].map((u) => ({ sev: u.sev, cat: u.cat, title: u.title, viewsCount: u.views.size }));
+  return {
+    unique,
+    err: unique.filter((u) => u.sev === 'error').length,
+    warn: unique.filter((u) => u.sev === 'warning').length,
+  };
 }
 
 // ---- run ----
@@ -116,10 +137,11 @@ for (const cell of cells) {
   try {
     const r = await runCell(page, cell.target, VIEWPORTS[cell.vp] || VIEWPORTS.desktop, cell.mode);
     analysed += r.views.length;
-    const errs = r.views.reduce((a, v) => a + v.findings.filter((f) => f.sev === 'error').length, 0);
-    const warns = r.views.reduce((a, v) => a + v.findings.filter((f) => f.sev === 'warning').length, 0);
-    console.log(`${r.views.length} view(s), ${errs} err / ${warns} warn  (budget ${analysed}/${MAX_ANALYSES})`);
-    results.push({ ...cell, ...r });
+    const rawErrs = r.views.reduce((a, v) => a + v.findings.filter((f) => f.sev === 'error').length, 0);
+    const rawWarns = r.views.reduce((a, v) => a + v.findings.filter((f) => f.sev === 'warning').length, 0);
+    const dd = dedupeCellFindings(r.views);
+    console.log(`${r.views.length} view(s), ${dd.err}/${dd.warn} unique err/warn (raw ${rawErrs}/${rawWarns})  (budget ${analysed}/${MAX_ANALYSES})`);
+    results.push({ ...cell, ...r, dedup: dd, rawErrs, rawWarns });
   } catch (e) {
     console.log('FAILED: ' + (e.message || e).slice(0, 80));
     results.push({ ...cell, error: String(e.message || e) });
@@ -141,11 +163,18 @@ md.push(`SPA explore: ${SPA} · budget: ${analysed}/${MAX_ANALYSES}${truncated ?
 for (const r of results) {
   md.push(`## ${r.target} — ${r.vp} / ${r.mode}`);
   if (r.error) { md.push(`> FAILED: ${r.error}\n`); continue; }
+  if (r.dedup) {
+    md.push(`**Unique issues (deduped across ${(r.views || []).length} views): ${r.dedup.err} err / ${r.dedup.warn} warn** — raw ${r.rawErrs}/${r.rawWarns}\n`);
+    const u = [...r.dedup.unique].sort((a, b) => (a.sev === b.sev ? b.viewsCount - a.viewsCount : a.sev === 'error' ? -1 : 1));
+    for (const f of u) md.push(`- ${f.sev === 'error' ? '❌' : '⚠️'} [${f.cat}] ${f.title}  _(×${f.viewsCount} views)_`);
+    md.push('');
+  }
+  md.push('<details><summary>Per-view breakdown</summary>\n');
   for (const v of (r.views || [])) {
     md.push(`- **${v.title}** — score ${v.score} (${v.grade}), ${v.findings.length} finding(s)`);
     for (const f of v.findings) md.push(`    - ${f.sev === 'error' ? '❌' : '⚠️'} [${f.cat}] ${f.title}`);
   }
-  md.push('');
+  md.push('</details>\n');
 }
 writeFileSync(mdPath, md.join('\n'));
 console.log(`\nReport written:\n  ${mdPath}\n  ${jsonPath}`);

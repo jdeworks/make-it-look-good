@@ -874,7 +874,8 @@ window.MilgReport = (function() {
         html += '<div class="issue-header">';
         html += '<div class="issue-title"><span class="severity-badge ' + issue.severity + '">' + issue.severity + '</span>' + escapeHtml(issue.title) + '</div>';
         var uniquePages = []; issue.pages.forEach(function(p) { if (uniquePages.indexOf(p.url) === -1) uniquePages.push(p.url); });
-        html += '<div class="issue-count">' + issue.count + '&times; on ' + uniquePages.length + ' page' + (uniquePages.length > 1 ? 's' : '') + '</div>';
+        // count = distinct elements affected (deduped); uniquePages = views/pages it appeared in
+        html += '<div class="issue-count">' + issue.count + ' distinct &middot; ' + uniquePages.length + ' view' + (uniquePages.length > 1 ? 's' : '') + '</div>';
         html += '</div>';
         html += '<div class="issue-pages">';
         issue.pages.forEach(function(p) {
