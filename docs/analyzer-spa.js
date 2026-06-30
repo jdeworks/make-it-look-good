@@ -1,4 +1,4 @@
-// make-it-look-good — SPA View Explorer v3.11.124
+// make-it-look-good — SPA View Explorer v3.11.125
 // Runs INSIDE the analysis iframe (injected alongside MilgExtract). Discovers the
 // hidden "views" of a single-page app — reached by hash/History routes (Tier 1) or
 // by clicking nav controls (Tier 2, opt-in) — and re-runs MilgExtract on each so the
@@ -679,10 +679,28 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
           if (ag) aggressiveDiscovered++; else controlsDiscovered++;
         }
       });
-      // Rank semantic controls ahead of aggressive (non-semantic) ones; within each, deeper
-      // (more-recently-revealed) first. Aggressive get a large negative offset → always last.
-      function rankOf(c) { return candParentDepth(c) + (isAggCand(c) ? -1000 : 0); }
-      cands.sort(function(a, b) { return rankOf(b) - rankOf(a); });
+      // Value-ranked exploration. When the time/view budget runs out, we want the HIGH-value
+      // controls (real view/nav that reveals a whole page) to have fired first and the low-value
+      // ones (sub-filters past the region cap, utility/pagination toggles, speculative) to be what
+      // gets dropped — on narratu the explorer otherwise burns ~49 clicks on nested filters before
+      // time runs out. Reordering is SAFE: a control's tree-parent is fixed at DISCOVERY time
+      // (discoveredUnder above), not click order, so this only changes which views survive truncation.
+      function candValue(c) {
+        if (isAggCand(c)) return -1000;                       // speculative non-semantic → always last
+        var v = 0, d = candParentDepth(c);
+        try {
+          if (c.matches && c.matches('[role="tab"],[role="menuitem"],[data-page],[data-view],[data-tab],[data-step],[data-nav],.nav-link,.tab')) v += 100; // semantic view-nav
+          if (c.getAttribute && c.getAttribute('aria-controls')) v += 40;
+        } catch (e) {}
+        // Keep the existing deeper-first NESTING up to the region cap (inner tabs nest under their
+        // page); past it a control almost always opens a filter that gets skipped → low marginal
+        // value, deprioritize rather than spend budget on it.
+        if (d <= REGION_MAX_DEPTH) v += d * 20; else v -= (d - REGION_MAX_DEPTH) * 50;
+        var lbl = labelOf(c).toLowerCase();
+        if (/\b(filter|sort|close|dismiss|reset|zoom|prev|previous|next|show all|expand all|collapse all)\b|^[\s\d.,+\-%]+$|^[▲▼◀▶←→↑↓+\-]+$/.test(lbl)) v -= 60; // utility/pagination/bulk
+        return v;
+      }
+      cands.sort(function(a, b) { return candValue(b) - candValue(a); });
       var nextAgg = false;
       for (var i = 0; i < cands.length; i++) {
         var key = candKey(cands[i]);
