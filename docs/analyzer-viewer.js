@@ -689,14 +689,17 @@ window.MilgViewer = (function() {
   }
 
   // Export the current screenshot with its finding overlays burned in as a single PNG.
+  // Draws the displayed <img> (a loaded data-URL screenshot) — NOT _stitchedCanvas, which
+  // is only a {width,height} (or {canvas,...}) descriptor, not a drawable.
   function _exportPng() {
-    if (!_stitchedCanvas) return;
-    var svg = _overlay && _overlay.querySelector('.milg-viewer-svg');
-    var w = _stitchedCanvas.width, h = _stitchedCanvas.height;
+    var baseImg = _overlay && _overlay.querySelector('.milg-viewer-img');
+    if (!baseImg || !baseImg.complete || !baseImg.naturalWidth) return;
+    var svg = _overlay.querySelector('.milg-viewer-svg');
+    var w = baseImg.naturalWidth, h = baseImg.naturalHeight;
     var out = document.createElement('canvas');
     out.width = w; out.height = h;
     var ctx = out.getContext('2d');
-    ctx.drawImage(_stitchedCanvas, 0, 0);
+    try { ctx.drawImage(baseImg, 0, 0, w, h); } catch (e) { return; }
     function finish() {
       try {
         out.toBlob(function(blob) {
@@ -716,10 +719,11 @@ window.MilgViewer = (function() {
       var clone = svg.cloneNode(true);
       clone.setAttribute('width', w);
       clone.setAttribute('height', h);
+      clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
       if (!clone.getAttribute('viewBox')) clone.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
       var xml = new XMLSerializer().serializeToString(clone);
       var img = new Image();
-      img.onload = function() { ctx.drawImage(img, 0, 0, w, h); finish(); };
+      img.onload = function() { try { ctx.drawImage(img, 0, 0, w, h); } catch (e) {} finish(); };
       img.onerror = function() { finish(); }; // overlay failed → still export the screenshot
       img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(xml);
     } else {
