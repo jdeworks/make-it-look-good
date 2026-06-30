@@ -1478,8 +1478,13 @@ window.MilgViewer = (function() {
       var bbox = vr.bbox;
       if (!bbox) { _vrNoBbox++; return; }
 
-      var x = Math.round(bbox.left * vScaleX);
-      var y = Math.round(bbox.top * vScaleY) - _calibrationOffsetY;
+      // For a region screenshot the canvas is a CROP of the page, so page-coordinate bboxes
+      // must shift by the crop origin — matching what the verify sampler subtracts (prepareContext
+      // does `bbox.left*scale - cropOffsetX`). Without this the region mask draws ~cropOffsetY px
+      // off-canvas and appears missing. cropOffset is 0 for full-page captures (no-op there).
+      var _vCropX = (_meta && _meta.cropOffsetX) || 0, _vCropY = (_meta && _meta.cropOffsetY) || 0;
+      var x = Math.round(bbox.left * vScaleX) - _vCropX;
+      var y = Math.round(bbox.top * vScaleY) - _vCropY - _calibrationOffsetY;
       var w = Math.round(bbox.width * vScaleX);
       var h = Math.round(bbox.height * vScaleY);
 

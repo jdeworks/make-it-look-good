@@ -1029,6 +1029,17 @@ window.MilgContrastVerify = (function() {
     var ratioDiff = Math.abs(p10Ratio - cssRatio);
     var crossesBoundary = cssPasses !== pixelPasses;
 
+    // Unreliable-sample guard (grid / no-mask path). A near-zero pixel ratio (<1.6:1) for text
+    // the CSS says is clearly legible (cssPasses) means we never actually sampled the glyphs —
+    // a blank/low-fidelity or misaligned capture, which is what SPA-explored views produce when
+    // domToCanvas rasterizes a live sandboxed app. That is NOT a real "hidden failure"; emitting
+    // one floods the report with false positives. Abstain: mark skipped and don't cross the
+    // pass/fail boundary. Genuine overlay/gradient hidden-failures reduce contrast only modestly
+    // and stay >=1.6, so they survive this guard; and true near-invisible text (white-on-white)
+    // already fails the CSS check, so cssPasses would be false and we'd never reach here.
+    var unreliableSample = cssPasses && p10Ratio < 1.6;
+    if (unreliableSample) { pixelPasses = cssPasses; crossesBoundary = false; }
+
     // Flag high BG variance as a signal for photo/gradient backgrounds
     var bgVariance = bestRatio - worstRatio;
     // Distinguish real BG variance from FG AA variance — sample both FG and BG spread
@@ -1069,6 +1080,11 @@ window.MilgContrastVerify = (function() {
       cssPasses: cssPasses,
       pixelPasses: pixelPasses,
       crossesBoundary: crossesBoundary,
+      skipped: unreliableSample || undefined,
+      skipReason: unreliableSample ? 'unreliable-sample' : undefined,
+      // fontSize/isLarge/bgHasImage carried through so the small-text demotion (which the edge
+      // path already gets at buildResult) also works for grid-path (SPA) results.
+      fontSize: pair.fontSize || 0, isLarge: !!pair.isLarge, bgHasImage: !!pair.bgHasImage,
       significant: (p10Ratio > 12.5 && cssRatio > 12.5) ? false : (crossesBoundary || ratioDiff > 1.5 || isVariableBg),
       pixelFg: rgbStr(fgColor),
       expectedFg: rgbStr(expectedFg),
