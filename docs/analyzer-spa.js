@@ -1,4 +1,4 @@
-// make-it-look-good — SPA View Explorer v3.11.113
+// make-it-look-good — SPA View Explorer v3.11.114
 // Runs INSIDE the analysis iframe (injected alongside MilgExtract). Discovers the
 // hidden "views" of a single-page app — reached by hash/History routes (Tier 1) or
 // by clicking nav controls (Tier 2, opt-in) — and re-runs MilgExtract on each so the
@@ -423,7 +423,7 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
         var el = h.el, tr = h.triggerEl || null;
         saved.push({ el: el, cssText: el.style.cssText, ariaHidden: el.getAttribute('aria-hidden'), hadHidden: el.hasAttribute('hidden'), detailsOpen: (el.tagName === 'DETAILS' ? el.open : null), trigger: tr, triggerAria: tr ? tr.getAttribute('aria-expanded') : null });
         if (el.tagName === 'DETAILS') { el.open = true; }
-        else { el.style.cssText = el.style.cssText + '; display: block !important; visibility: visible !important; opacity: 1 !important; pointer-events: none !important;'; if (el.hasAttribute('hidden')) el.removeAttribute('hidden'); if (el.getAttribute('aria-hidden')) el.setAttribute('aria-hidden', 'false'); }
+        else { el.style.cssText = el.style.cssText + '; display: block !important; visibility: visible !important; opacity: 1 !important; pointer-events: none !important; max-height: none !important; height: auto !important; overflow: visible !important; transform: none !important; clip-path: none !important;'; if (el.hasAttribute('hidden')) el.removeAttribute('hidden'); if (el.getAttribute('aria-hidden')) el.setAttribute('aria-hidden', 'false'); }
         if (tr && tr.getAttribute('aria-expanded') != null) tr.setAttribute('aria-expanded', 'true');
       });
       void document.body.offsetHeight;

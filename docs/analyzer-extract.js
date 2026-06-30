@@ -1601,6 +1601,78 @@ window.MilgExtract = (function() {
         } catch (e) {}
       }
     });
+    // Computed-style disclosure detection: collapsible panels that carry NO semantic markup and
+    // NO literal Tailwind hidden/max-h-0 token — e.g. a <div> toggled by a custom class-swap or an
+    // inline max-height transition. HTML is vast; markup-pattern matching alone misses these. A
+    // constrained candidate set + real-content + trigger-link guards keep false positives low
+    // (decorative off-canvas art has no opening trigger and no real content, so it's skipped).
+    try {
+      var _cssDiscSel = '[id],[class*="toggle" i],[class*="expand" i],[class*="collaps" i],[class*="accordion" i],[class*="dropdown" i],[class*="disclos" i],[class*="reveal" i],[data-target],[data-bs-target]';
+      var _hpHasRealContent = function(el) {
+        try {
+          if ((el.textContent || '').trim().length >= 8) return true;
+          return !!el.querySelector('img,svg,video,input,button,a,table,ul,ol,form,p');
+        } catch (e) { return false; }
+      };
+      var _hpFindTrigger = function(panel) {
+        try {
+          var id = panel.id;
+          if (id) {
+            var t = document.querySelector('[aria-controls="' + id + '"],[data-target="#' + id + '"],[data-bs-target="#' + id + '"],a[href="#' + id + '"]');
+            if (t) return t;
+          }
+          var prev = panel.previousElementSibling;
+          if (prev) {
+            var pc = (typeof prev.className === 'string' ? prev.className : '');
+            var clickable = false;
+            try { clickable = getComputedStyle(prev).cursor === 'pointer'; } catch (e) {}
+            if (clickable || /toggle|expand|collaps|accordion|header|trigger|title|summary/i.test(pc) || prev.hasAttribute('tabindex') || prev.tagName === 'BUTTON' || prev.tagName === 'SUMMARY') return prev;
+          }
+          return null;
+        } catch (e) { return null; }
+      };
+      // Candidate panels: (1) class/id/data-target elements, plus (2) the TARGET of any likely
+      // trigger — a panel is often a plain <div> with no distinguishing class, reached only via
+      // its opening control (onclick/data-target/toggle-class/cursor:pointer header → sibling).
+      var _cssCands = [], _seenCand = [];
+      var _pushCand = function(el) { if (el && el.nodeType === 1 && _seenCand.indexOf(el) === -1) { _seenCand.push(el); _cssCands.push(el); } };
+      Array.prototype.forEach.call(_qa(_cssDiscSel), _pushCand);
+      var _resolveTarget = function(t) {
+        var dt = t.getAttribute('data-target') || t.getAttribute('data-bs-target') || t.getAttribute('aria-controls');
+        if (dt) { var id2 = dt.charAt(0) === '#' ? dt.slice(1) : dt; var byId = document.getElementById(id2); if (byId) return byId; }
+        return t.nextElementSibling || (t.children && t.children.length === 1 ? t.children[0] : null);
+      };
+      Array.prototype.forEach.call(_qa('[onclick],[data-toggle],[data-target],[data-bs-target],[class*="toggle" i],[class*="accordion" i],[class*="expand" i],[class*="collaps" i],[class*="header" i],summary'), function(t) {
+        var tg = _resolveTarget(t); if (tg) _pushCand(tg);
+      });
+      // Bounded cursor:pointer sweep (read-only; no clicking) → header→sibling panels with no markup hint.
+      var _ptrScan = (_scopeRoot || document.body).querySelectorAll('div,span,li,a,h2,h3,h4,header');
+      for (var _pi = 0; _pi < _ptrScan.length && _pi < 600; _pi++) {
+        var _pe = _ptrScan[_pi];
+        try { if (getComputedStyle(_pe).cursor === 'pointer' && _pe.nextElementSibling) _pushCand(_pe.nextElementSibling); } catch (e) {}
+      }
+      _cssCands.forEach(function(el) {
+        if (_iframeHiddenPanels.indexOf(el) !== -1) return;
+        if (el.getAttribute('aria-hidden') === 'true') return;
+        var tag = el.tagName;
+        if (tag === 'TH' || tag === 'TD' || tag === 'SCRIPT' || tag === 'STYLE' || tag === 'HEAD' || tag === 'META' || tag === 'LINK' || tag === 'BODY' || tag === 'HTML') return;
+        var s; try { s = getComputedStyle(el); } catch (e) { return; }
+        if (s.display === 'none') return; // display:none handled elsewhere / not measurable
+        var ch = el.clientHeight, sh = el.scrollHeight, collapsed = false, needTrigger = false;
+        if (s.maxHeight === '0px' && s.overflow !== 'visible' && sh > ch) collapsed = true;
+        else if (ch === 0 && (s.overflow === 'hidden' || s.overflowY === 'hidden') && sh > 0) collapsed = true;
+        else if (parseFloat(s.opacity) === 0 && (s.overflow === 'hidden' || s.pointerEvents === 'none' || s.visibility === 'hidden')) collapsed = true;
+        else if (s.visibility === 'hidden') collapsed = true;
+        else {
+          var r; try { r = el.getBoundingClientRect(); } catch (e) { r = null; }
+          if (r && r.width > 0 && r.height > 0 && (r.right <= 0 || r.left >= window.innerWidth || r.bottom <= 0) && (s.position === 'fixed' || s.position === 'absolute')) { collapsed = true; needTrigger = true; }
+        }
+        if (!collapsed || !_hpHasRealContent(el)) return;
+        var trig = _hpFindTrigger(el);
+        if (needTrigger && !trig) return;
+        _hpAddPanel(el, 'collapsed-css', trig);
+      });
+    } catch (e) {}
     data.layout.hiddenPanelCount = _iframeHiddenPanels.length;
     // Stash element references for the region pipeline (runs later in the same iframe window)
     window.__milgHiddenPanels = _iframeHiddenPanels.map(function(el, i) {
