@@ -730,6 +730,24 @@ window.MilgCrawlUI = (function() {
       });
     }
 
+    // Flow-graph node → page-tab delegation (the SVG lives inside the Summary content).
+    // Match a node's stateKey to the page whose meta.url carries it; route to that tab.
+    if (crawlPageContent) {
+      crawlPageContent.addEventListener('click', function(e) {
+        var g = e.target.closest && e.target.closest('[data-flow-node]');
+        if (!g || !_crawlSession || !_crawlSession.pages) return;
+        var sk = g.getAttribute('data-flow-node') || '';
+        var bare = sk.replace(/^#/, '');
+        var idx = -1;
+        for (var i = 0; i < _crawlSession.pages.length; i++) {
+          var u = (_crawlSession.pages[i].rawData && _crawlSession.pages[i].rawData.meta && _crawlSession.pages[i].rawData.meta.url) || '';
+          if (bare && (u === '#' + bare || u.split('#')[1] === bare || u.indexOf('#' + bare) !== -1)) { idx = i; break; }
+        }
+        if (idx < 0 && (sk === '/' || sk === '')) idx = 0;   // initial state → first page
+        if (idx >= 0) showCrawlPageContent(String(idx));
+      });
+    }
+
     // Cancel crawl
     if (cancelCrawlBtn) {
       cancelCrawlBtn.addEventListener('click', function() {

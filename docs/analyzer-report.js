@@ -781,8 +781,69 @@ window.MilgReport = (function() {
   }
 
   // Flow graph & coverage — the explorer's state graph (nodes = distinct UI states keyed by
-  // content signature, edges = interactions, back-edges = alt-paths/cycles). P2 renders the
-  // coverage stat row only; the SVG visualization lands in P4.
+  // content signature, edges = interactions, back-edges = alt-paths/cycles). Coverage stat row
+  // (P2) + a layered inline-SVG visualization (P4): columns by depth, union states in a right
+  // lane, kind-colored nodes that route to their page tab, dashed accent edges for cycles.
+  var FLOW_KIND_COLOR = { page: '#2563eb', region: '#16a34a', state: '#9333ea' };
+  function renderFlowGraphSvg(graph) {
+    var nodes = graph.nodes, edges = graph.edges || [];
+    var MAX_N = 48, capped = nodes.length > MAX_N;
+    if (capped) nodes = nodes.slice(0, MAX_N);
+    var idSet = {}; nodes.forEach(function(n) { idSet[n.id] = true; });
+    // Columns: regular nodes by depth; union/special states in a dedicated right-most lane.
+    var maxDepth = 0;
+    nodes.forEach(function(n) { if (!n.special && (n.depth || 0) > maxDepth) maxDepth = n.depth || 0; });
+    var unionCol = maxDepth + 1;
+    var colW = 168, nodeW = 132, nodeH = 38, rowH = 54, padX = 16, padY = 40;
+    var rowByCol = {}, pos = {};
+    nodes.forEach(function(n) {
+      var col = n.special ? unionCol : Math.min(n.depth || 0, maxDepth);
+      var row = rowByCol[col] = (rowByCol[col] == null ? 0 : rowByCol[col] + 1);
+      pos[n.id] = { x: padX + col * colW, y: padY + row * rowH, col: col, row: row };
+    });
+    var maxRow = 0; Object.keys(rowByCol).forEach(function(c) { if (rowByCol[c] > maxRow) maxRow = rowByCol[c]; });
+    var W = padX + (unionCol + 1) * colW + 8, H = padY + (maxRow + 1) * rowH + 8;
+    var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" style="max-width:' + W + 'px;min-width:' + Math.min(W, 560) + 'px;height:auto;font-family:inherit" role="img" aria-label="Interaction flow graph">';
+    svg += '<defs><marker id="milgArrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--text-secondary)"/></marker>' +
+      '<marker id="milgArrowBack" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--accent,#d97706)"/></marker></defs>';
+    // Edges first (under nodes). Forward = solid grey; back = dashed accent (cycle/alt-path).
+    edges.forEach(function(e) {
+      var a = pos[e.from], b = pos[e.to];
+      if (!a || !b || !idSet[e.from] || !idSet[e.to]) return;
+      if (e.from === e.to) {           // self-loop (theme/no-op) → small arc on the node's right
+        var sx = a.x + nodeW, sy = a.y + nodeH / 2;
+        svg += '<path d="M' + sx + ',' + (sy - 7) + ' C' + (sx + 26) + ',' + (sy - 18) + ' ' + (sx + 26) + ',' + (sy + 18) + ' ' + sx + ',' + (sy + 7) + '" fill="none" stroke="var(--border)" stroke-width="1.2"/>';
+        return;
+      }
+      var x1 = a.x + nodeW, y1 = a.y + nodeH / 2, x2 = b.x, y2 = b.y + nodeH / 2;
+      if (b.col <= a.col) { x1 = a.x; x2 = b.x + nodeW; }   // backward/sideways → exit left, enter right
+      var dx = Math.max(28, Math.abs(x2 - x1) * 0.4) * (x2 >= x1 ? 1 : -1);
+      var d = 'M' + x1 + ',' + y1 + ' C' + (x1 + dx) + ',' + y1 + ' ' + (x2 - dx) + ',' + y2 + ' ' + x2 + ',' + y2;
+      if (e.back) svg += '<path d="' + d + '" fill="none" stroke="var(--accent,#d97706)" stroke-width="1.4" stroke-dasharray="5,4" marker-end="url(#milgArrowBack)" opacity="0.85"/>';
+      else svg += '<path d="' + d + '" fill="none" stroke="var(--text-secondary)" stroke-width="1.3" marker-end="url(#milgArrow)" opacity="0.55"/>';
+    });
+    // Nodes.
+    nodes.forEach(function(n) {
+      var p = pos[n.id], col = FLOW_KIND_COLOR[n.kind] || '#64748b';
+      var lbl = (n.label || n.kind || '?').replace(/\s+/g, ' ').trim();
+      if (lbl.length > 16) lbl = lbl.slice(0, 15) + '…';
+      var sk = n.stateKey || '';
+      svg += '<g style="cursor:pointer" data-flow-node="' + escapeHtml(sk) + '"><title>' + escapeHtml((n.label || n.kind || '') + (n.hits > 1 ? ' (' + n.hits + ' paths)' : '')) + '</title>';
+      svg += '<rect x="' + p.x + '" y="' + p.y + '" width="' + nodeW + '" height="' + nodeH + '" rx="8" fill="var(--surface)" stroke="' + col + '" stroke-width="' + (n.special ? '2' : '1.5') + (n.special ? '" stroke-dasharray="4,3' : '') + '"/>';
+      svg += '<rect x="' + p.x + '" y="' + p.y + '" width="4" height="' + nodeH + '" rx="2" fill="' + col + '"/>';
+      svg += '<text x="' + (p.x + 12) + '" y="' + (p.y + nodeH / 2 + 4) + '" font-size="12" fill="var(--text)">' + escapeHtml(lbl) + '</text>';
+      svg += '</g>';
+    });
+    svg += '</svg>';
+    var legend = '<div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;font-size:11px;color:var(--text-secondary)">' +
+      '<span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:' + FLOW_KIND_COLOR.page + ';vertical-align:middle"></span> page</span>' +
+      '<span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:' + FLOW_KIND_COLOR.region + ';vertical-align:middle"></span> region</span>' +
+      '<span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:' + FLOW_KIND_COLOR.state + ';vertical-align:middle"></span> all-open/closed state</span>' +
+      '<span style="border-top:2px dashed var(--accent,#d97706);width:18px;display:inline-block;vertical-align:middle"></span> alt-path / cycle</span>' +
+      '<span style="color:var(--text-secondary)">click a state → open its tab</span></div>';
+    return '<div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px;padding:8px;background:var(--bg, var(--surface))">' + svg + '</div>' + legend +
+      (capped ? '<div style="color:#ca8a04;margin-top:6px;font-size:12px">Showing first ' + MAX_N + ' of ' + graph.nodes.length + ' states.</div>' : '');
+  }
   function renderFlowGraph(graph) {
     if (!graph || !graph.nodes || !graph.nodes.length) return '';
     var cov = graph.coverage || {};
@@ -798,13 +859,14 @@ window.MilgReport = (function() {
     h += '<summary style="cursor:pointer;user-select:none;font-weight:600;padding:12px 0">Flow graph &amp; coverage';
     h += ' <span style="font-weight:400;color:var(--text-secondary);font-size:12px">— ' + graph.nodes.length + ' state' + (graph.nodes.length !== 1 ? 's' : '') + ', ' + graph.edges.length + ' interaction' + (graph.edges.length !== 1 ? 's' : '') + '</span></summary>';
     h += '<div style="padding:4px 0 14px">';
-    h += '<div style="display:flex;flex-wrap:wrap;gap:10px">';
+    h += '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px">';
     cards.forEach(function(c) {
       h += '<div style="padding:10px 16px;border-radius:10px;background:var(--bg, var(--surface));border:1px solid var(--border);text-align:center;min-width:96px">';
       h += '<div style="font-size:24px;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums">' + escapeHtml(String(c.v)) + '</div>';
       h += '<div style="font-size:11px;color:var(--text-secondary)">' + escapeHtml(c.l) + '</div></div>';
     });
     h += '</div>';
+    h += renderFlowGraphSvg(graph);
     if (cov.truncated) h += '<div style="color:#ca8a04;margin-top:8px;font-size:12px">Coverage is a lower bound — discovery was capped, so more controls likely exist.</div>';
     h += '</div></details>';
     return h;
