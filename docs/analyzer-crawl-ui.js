@@ -516,9 +516,13 @@ window.MilgCrawlUI = (function() {
           }
           var wantShots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
           _spaExpandModal(pageEntry.url);
+          var _spaTune = window.__milgReadSpaTuning ? window.__milgReadSpaTuning() : {};
           MilgIframe.analyzeSpaViews(pageEntry._html, {
             url: pageEntry.url, exploreClicks: wantClicks, maxViews: room,
             screenshots: wantShots, timeBudgetMs: wantShots ? 30000 : 22000,
+            // Keep the P5 state-capture depth consistent with the URL path; maxViews stays
+            // budget-managed (room) and the crawl's own per-page time budget is unchanged.
+            perPageStateThreshold: _spaTune.perPageStateThreshold, maxStatePasses: _spaTune.maxStatePasses,
             stateCapture: !!(stateToggle && stateToggle.checked), stateThreshold: STATE_THRESHOLD
           }, function(r) {
             try { _foldSpaViews(session, pageEntry, r, budget); } catch (e) {}

@@ -1,14 +1,68 @@
-// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.119
+// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.120
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.119 loaded');
+console.log('[milg] analyzer.js v3.11.120 loaded');
 
 (function() {
   "use strict";
 
   var MILG_EXPORT_VERSION = '1.6';
   window.MILG_EXPORT_VERSION = MILG_EXPORT_VERSION;
+
+  // --- SPA exploration limits ---------------------------------------------------------------
+  // The number inputs in the options bar are advisory (a user can edit the DOM `max`). The REAL
+  // ceilings live here and are enforced in JS, so the hosted build can't be pushed past them by
+  // tampering with the markup. Running LOCALLY (localhost / file://) unlocks the higher caps so
+  // a self-hosted user can run the deep/full exploration without editing code.
+  var MILG_IS_LOCAL = (function() {
+    try {
+      var h = location.hostname;
+      return h === 'localhost' || h === '127.0.0.1' || h === '0.0.0.0' || h === '::1' || h === '' || location.protocol === 'file:';
+    } catch (e) { return false; }
+  })();
+  window.__milgIsLocal = MILG_IS_LOCAL;
+  // def/min + hosted vs local max. The cost-bearing knobs (views/time/passes) cap on the hosted
+  // build; the panel-threshold is benign (gated by maxStatePasses) so its bound is the same.
+  var MILG_SPA_LIMITS = {
+    maxViews:         { id: 'spaMaxViews',         def: 20, min: 4,  hostMax: 40, localMax: 200 },
+    timeBudgetSec:    { id: 'spaTimeBudget',       def: 45, min: 15, hostMax: 90, localMax: 600 },
+    perPageThreshold: { id: 'spaPerPageThreshold', def: 3,  min: 1,  hostMax: 12, localMax: 12  },
+    maxStatePasses:   { id: 'spaMaxStatePasses',   def: 6,  min: 1,  hostMax: 12, localMax: 50  }
+  };
+  window.__milgSpaLimits = MILG_SPA_LIMITS;   // exposed for transparency + regression tests
+  function milgClampSpa(spec) {
+    var el = document.getElementById(spec.id);
+    var v = el ? parseInt(el.value, 10) : NaN;
+    if (!isFinite(v)) v = spec.def;
+    var max = MILG_IS_LOCAL ? spec.localMax : spec.hostMax;
+    return Math.max(spec.min, Math.min(v, max));
+  }
+  // Read + clamp the SPA tuning inputs into the opts MilgIframe.analyzeSpaViews understands.
+  window.__milgReadSpaTuning = function() {
+    return {
+      maxViews: milgClampSpa(MILG_SPA_LIMITS.maxViews),
+      timeBudgetMs: milgClampSpa(MILG_SPA_LIMITS.timeBudgetSec) * 1000,
+      perPageStateThreshold: milgClampSpa(MILG_SPA_LIMITS.perPageThreshold),
+      maxStatePasses: milgClampSpa(MILG_SPA_LIMITS.maxStatePasses)
+    };
+  };
+  // Show the limits panel only when an SPA/state pass is enabled; on local, raise the input `max`
+  // attributes to the unlocked caps and note it so the higher range is reachable via the spinner.
+  window.__milgSyncSpaOptions = function() {
+    var panel = document.getElementById('spaOptions');
+    if (!panel) return;
+    var spa = document.getElementById('spaExploreCheck'), st = document.getElementById('stateCaptureCheck');
+    panel.style.display = ((spa && spa.checked) || (st && st.checked)) ? '' : 'none';
+    if (MILG_IS_LOCAL && !panel.__milgUnlocked) {
+      panel.__milgUnlocked = true;
+      [MILG_SPA_LIMITS.maxViews, MILG_SPA_LIMITS.timeBudgetSec, MILG_SPA_LIMITS.maxStatePasses].forEach(function(s) {
+        var el = document.getElementById(s.id); if (el) el.max = String(s.localMax);
+      });
+      var note = document.getElementById('spaLimitsNote');
+      if (note) note.textContent = 'Running locally — limits unlocked.';
+    }
+  };
 
   // --- Configuration ---
   // Self-hosted CORS proxy (Cloudflare Worker).
@@ -1099,6 +1153,11 @@ console.log('[milg] analyzer.js v3.11.119 loaded');
     if (_spaExploreCheckEl) {
       _spaExploreCheckEl.addEventListener('change', reloadSnippet);
     }
+    // SPA exploration limits panel: show it when either SPA pass is enabled, and unlock local caps.
+    var _stateCaptureCheckEl = document.getElementById('stateCaptureCheck');
+    if (_spaExploreCheckEl) _spaExploreCheckEl.addEventListener('change', window.__milgSyncSpaOptions);
+    if (_stateCaptureCheckEl) _stateCaptureCheckEl.addEventListener('change', window.__milgSyncSpaOptions);
+    if (window.__milgSyncSpaOptions) window.__milgSyncSpaOptions();
 
     // Copy snippet
     function handleCopySnippet() {
@@ -1265,7 +1324,8 @@ console.log('[milg] analyzer.js v3.11.119 loaded');
             urlStatus.textContent = 'Single-page app detected — exploring views...';
             showProgress(70, 'Exploring SPA views...');
             updateFocusModal('Exploring SPA views');
-            MilgIframe.analyzeSpaViews(html, { url: url, exploreClicks: _wantClicks, maxViews: 20, screenshots: wantShots, stateCapture: !!(_stateToggle && _stateToggle.checked), stateThreshold: _STATE_THRESHOLD }, function(r) {
+            var _spaTune = window.__milgReadSpaTuning ? window.__milgReadSpaTuning() : {};
+            MilgIframe.analyzeSpaViews(html, { url: url, exploreClicks: _wantClicks, maxViews: _spaTune.maxViews || 20, timeBudgetMs: _spaTune.timeBudgetMs, perPageStateThreshold: _spaTune.perPageStateThreshold, maxStatePasses: _spaTune.maxStatePasses, screenshots: wantShots, stateCapture: !!(_stateToggle && _stateToggle.checked), stateThreshold: _STATE_THRESHOLD }, function(r) {
               analyzeUrlBtn.disabled = false;
               analyzeUrlBtn.innerHTML = _analyzeUrlIcon;
               hideFocusModal();
