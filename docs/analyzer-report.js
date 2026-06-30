@@ -777,6 +777,36 @@ window.MilgReport = (function() {
     return h;
   }
 
+  // Flow graph & coverage — the explorer's state graph (nodes = distinct UI states keyed by
+  // content signature, edges = interactions, back-edges = alt-paths/cycles). P2 renders the
+  // coverage stat row only; the SVG visualization lands in P4.
+  function renderFlowGraph(graph) {
+    if (!graph || !graph.nodes || !graph.nodes.length) return '';
+    var cov = graph.coverage || {};
+    var pct = Math.round((cov.pct || 0) * 100);
+    var cards = [
+      { v: cov.nodesReached != null ? cov.nodesReached : graph.nodes.length, l: 'States reached' },
+      { v: cov.edgeCount != null ? cov.edgeCount : graph.edges.length, l: 'Interactions' },
+      { v: cov.backEdgeCount || 0, l: 'Alt-paths / cycles' },
+      { v: (cov.controlsFired || 0) + ' / ' + (cov.controlsDiscovered || 0), l: 'Controls fired' },
+      { v: pct + '%', l: 'Coverage' + (cov.truncated ? ' (lower bound)' : '') }
+    ];
+    var h = '<details open style="margin:0 0 20px;border:1px solid var(--border);border-radius:10px;background:var(--surface);padding:0 14px">';
+    h += '<summary style="cursor:pointer;user-select:none;font-weight:600;padding:12px 0">Flow graph &amp; coverage';
+    h += ' <span style="font-weight:400;color:var(--text-secondary);font-size:12px">— ' + graph.nodes.length + ' state' + (graph.nodes.length !== 1 ? 's' : '') + ', ' + graph.edges.length + ' interaction' + (graph.edges.length !== 1 ? 's' : '') + '</span></summary>';
+    h += '<div style="padding:4px 0 14px">';
+    h += '<div style="display:flex;flex-wrap:wrap;gap:10px">';
+    cards.forEach(function(c) {
+      h += '<div style="padding:10px 16px;border-radius:10px;background:var(--bg, var(--surface));border:1px solid var(--border);text-align:center;min-width:96px">';
+      h += '<div style="font-size:24px;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums">' + escapeHtml(String(c.v)) + '</div>';
+      h += '<div style="font-size:11px;color:var(--text-secondary)">' + escapeHtml(c.l) + '</div></div>';
+    });
+    h += '</div>';
+    if (cov.truncated) h += '<div style="color:#ca8a04;margin-top:8px;font-size:12px">Coverage is a lower bound — discovery was capped, so more controls likely exist.</div>';
+    h += '</div></details>';
+    return h;
+  }
+
   function renderCrawlSummary(summary) {
     if (!summary || summary.pagesAnalyzed === 0) {
       return '<div class="crawl-summary"><p style="color:var(--text-secondary)">No pages analyzed yet.</p></div>';
@@ -802,6 +832,8 @@ window.MilgReport = (function() {
 
     // SPA exploration log — what the interaction-driven explorer clicked, skipped, and why.
     if (summary._spaProvenance) html += renderSpaExplorationLog(summary._spaProvenance);
+    // Flow graph & coverage — the explorer's state graph (nodes/edges) + how much was exercised.
+    if (summary._spaProvenance && summary._spaProvenance.graph) html += renderFlowGraph(summary._spaProvenance.graph);
 
     // Cross-page consistency — directly under Site Overview (pixel-verify summary
     // injects after this, before Page Scores).

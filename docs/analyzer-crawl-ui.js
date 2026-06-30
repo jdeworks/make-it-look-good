@@ -243,6 +243,8 @@ window.MilgCrawlUI = (function() {
       if (r.skipped) prov.skipped = prov.skipped.concat(r.skipped);
       if (r.notes) r.notes.forEach(function(n) { prov.notes.push(n); });
       if (r.truncated) prov.truncated = true;
+      // Flow graph is single-source v1 (multi-page stitch deferred) — keep the first page's graph.
+      if (r.graph && !prov.graph) prov.graph = r.graph;
     }
     // Shared mapper (analyzer-spa.js MilgSpaMap): breadcrumb titles + _spa* meta, rooted at
     // this crawled page (skipInitial drops the baseline == the page we already have).

@@ -1,4 +1,4 @@
-// make-it-look-good — SPA View Explorer v3.11.114
+// make-it-look-good — SPA View Explorer v3.11.115
 // Runs INSIDE the analysis iframe (injected alongside MilgExtract). Discovers the
 // hidden "views" of a single-page app — reached by hash/History routes (Tier 1) or
 // by clicking nav controls (Tier 2, opt-in) — and re-runs MilgExtract on each so the
@@ -321,6 +321,32 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
   // state that revealed them — the report renders pages > tabs > sub-tabs from this.
   var depthByKey = {};
 
+  // --- Flow graph (additive; the views[] parent-pointer tree above is untouched). Nodes are
+  // distinct UI states keyed by CONTENT SIGNATURE (domSignature/subtreeSig), so the same state
+  // reached two ways collapses to one node and the second arrival is a back-edge — the
+  // multi-path/cycle retention the tree discards. Edges are interactions {from,to,control,...}.
+  // ensureNode/recordEdge are SYNCHRONOUS (registered at decision time, not in addState's async
+  // screenshot path). currentNodeId = the actual DOM from-state (distinct from the tree's
+  // parentStateKey = the revealing parent). coverage is filled at the end from bookkeeping.
+  var graph = { nodes: [], edges: [], coverage: {} };
+  var nodeBySig = {}, nodeSeq = 0, currentNodeId = null, rootNodeId = null;
+  var controlsDiscovered = 0;   // distinct candKeys ever enumerated (set inside clickLoop)
+  function ensureNode(sig, meta) {
+    meta = meta || {};
+    var ex = nodeBySig[sig];
+    if (ex) { ex.hits = (ex.hits || 1) + 1; return ex; }
+    var n = {
+      id: 'n' + (nodeSeq++), sig: sig, kind: meta.kind || 'page', label: meta.label || '',
+      stateKey: meta.stateKey || null, depth: meta.depth || 0,
+      special: !!meta.special, hits: 1
+    };
+    nodeBySig[sig] = n; graph.nodes.push(n); return n;
+  }
+  function recordEdge(fromId, control, label, toId, effect, back) {
+    if (fromId == null || toId == null) return;
+    graph.edges.push({ from: fromId, to: toId, control: control || null, label: (label || '').substring(0, 40), effect: effect || null, back: !!back });
+  }
+
   // Best-effort screenshot of a target (full page = documentElement, or a region element)
   // via modern-screenshot (loaded by the bootstrap). Returns {uri, meta} or null. For a
   // region the canvas is the element's box; cropOffset = the element's PAGE position so
@@ -440,6 +466,8 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
     }
     stateCoverageActive = true;
     _coveredPanels = reg.map(function(h) { return h.el; });
+    // Union node: the all-open extreme as a distinguished summary node OUTSIDE the click graph.
+    recordEdge(rootNodeId, 'all-expanded', 'All expanded', ensureNode('state:all-expanded', { kind: 'state', label: 'All expanded', stateKey: 'state:all-expanded', special: true, depth: 1 }).id, 'union', false);
     return addState({ stateKey: 'state:all-expanded', kind: 'state', activation: 'all-expanded', label: 'All expanded', parentStateKey: (views[0] && views[0].stateKey), contentSig: 'state:all-expanded', data: data, noShot: true }, null);
   }
   function runCollapsedState() {
@@ -470,12 +498,15 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
       });
       void document.body.offsetHeight;
     }
+    recordEdge(rootNodeId, 'all-collapsed', 'All collapsed', ensureNode('state:all-collapsed', { kind: 'state', label: 'All collapsed', stateKey: 'state:all-collapsed', special: true, depth: 1 }).id, 'union', false);
     return addState({ stateKey: 'state:all-collapsed', kind: 'state', activation: 'all-collapsed', label: 'All collapsed', parentStateKey: (views[0] && views[0].stateKey), contentSig: 'state:all-collapsed', data: data, noShot: true }, null);
   }
 
   // State 0 — the initial full view.
   var sig0 = domSignature();
   seenSigs[sig0] = true;
+  rootNodeId = ensureNode(sig0, { kind: 'page', label: 'initial', stateKey: location.hash || '/', depth: 0 }).id;
+  currentNodeId = rootNodeId;
   var spa = {};
   return addState({ stateKey: location.hash || '/', kind: 'page', label: 'initial', parentStateKey: null, contentSig: sig0, data: extractNow() }, document.documentElement).then(function() {
     spa = (views[0].data && views[0].data.structure && views[0].data.structure.spa) || {};
@@ -489,20 +520,41 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
         try { location.hash = route.charAt(0) === '#' ? route : '#' + route; } catch (e) { return; }
         return settle().then(function() {
           var s = domSignature();
-          if (seenSigs[s]) return;
+          if (seenSigs[s]) {
+            var dn = nodeBySig[s];
+            if (dn) recordEdge(rootNodeId, 'route:' + route, route, dn.id, 'route', true);
+            return;
+          }
           seenSigs[s] = true;
+          recordEdge(rootNodeId, 'route:' + route, route, ensureNode(s, { kind: 'page', label: route, stateKey: location.hash || route, depth: 1 }).id, 'route', false);
           return addState({ stateKey: location.hash || route, kind: 'page', activation: 'route:' + route, label: route, trigger: 'route:' + route, parentStateKey: (views[0] && views[0].stateKey), contentSig: s, data: extractNow() }, document.documentElement);
         });
       });
     }, Promise.resolve());
   }).then(function() {
     try { if (location.hash) location.hash = ''; } catch (e) {}
+    currentNodeId = rootNodeId;   // Tier 1 reset the hash → DOM is back at the root state.
     if (!opts.exploreClicks) { notes.push('click exploration disabled (Tier 1 routes only)'); return; }
     return settle().then(clickLoop);
   }).then(function() {
+    // Coverage: derived from existing bookkeeping. controlsFired = clicks actually attempted;
+    // controlsDiscovered = distinct candKeys ever enumerated; pct is a LOWER BOUND when truncated.
+    var skippedByReason = {};
+    skipped.forEach(function(s) { var r = s.reason || 'other'; skippedByReason[r] = (skippedByReason[r] || 0) + 1; });
+    graph.coverage = {
+      controlsDiscovered: controlsDiscovered,
+      controlsFired: clicked.length,
+      pct: controlsDiscovered ? Math.min(1, clicked.length / controlsDiscovered) : 0,
+      nodesReached: graph.nodes.length,
+      edgeCount: graph.edges.length,
+      backEdgeCount: graph.edges.filter(function(e) { return e.back; }).length,
+      skippedByReason: skippedByReason,
+      truncated: truncated
+    };
     return {
       views: views, clicked: clicked, skipped: skipped, notes: notes,
-      truncated: truncated, navCandidateCount: (spa.navCandidates || []).length
+      truncated: truncated, navCandidateCount: (spa.navCandidates || []).length,
+      graph: graph
     };
   });
 
@@ -532,6 +584,7 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
       // Record first-appearance parent BEFORE ranking, so freshly-revealed controls are
       // attributed to the view that revealed them.
       cands.forEach(function(c) { var k = candKey(c); if (!everSeen[k]) { everSeen[k] = 1; discoveredUnder[k] = currentStateKey; } });
+      controlsDiscovered = Object.keys(everSeen).length;   // distinct affordances seen → coverage denominator
       cands.sort(function(a, b) { return candParentDepth(b) - candParentDepth(a); });
       for (var i = 0; i < cands.length; i++) {
         var key = candKey(cands[i]);
@@ -549,7 +602,7 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
         if (!res || res.error) { skipped.push({ label: label, reason: 'click-error' }); return step(); }
         var changed = res.after !== res.before;
         clicked.push({ label: label, changed: changed });
-        if (!changed) return step();
+        if (!changed) { recordEdge(currentNodeId, descriptor, label, currentNodeId, 'no-op', false); return step(); }
         // Appearance/theme toggle (dark↔light, etc.) — a re-skin, not a view. Skip it when
         // the visible text is unchanged AND/OR a root theme attribute flipped (two signals,
         // a label/icon hint corroborates). Then click it again to RESTORE the default
@@ -559,6 +612,7 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
         var hinted = themeHint(trigger);
         if ((themeFlip && textSame) || (hinted && (themeFlip || textSame))) {
           skipped.push({ label: label, reason: 'theme-toggle' });
+          recordEdge(currentNodeId, descriptor, label, currentNodeId, 'theme', false);
           return clickAndSettle(trigger).then(function() { return step(); });
         }
         // Depth of the state this control was revealed under → the new state sits one below.
@@ -583,16 +637,30 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
           if (rr.width < 40 || rr.height < 20 || ratio < NOTICEABLE_MIN) { skipped.push({ label: label, reason: 'change-too-small' }); return step(); }
           if (!hasRealContent(root)) { skipped.push({ label: label, reason: 'empty-region' }); return step(); }
           var rsig = subtreeSig(root);
-          if (seenSigs[rsig]) { skipped.push({ label: label, reason: 'duplicate-content' }); return step(); }
+          if (seenSigs[rsig]) {
+            // Already-known state reached by another path → record a back-edge (cycle/alt-path
+            // retention the tree discards) but do NOT recurse or move currentNodeId.
+            var dnR = nodeBySig[rsig];
+            if (dnR) recordEdge(currentNodeId, descriptor, label, dnR.id, 'region', true);
+            skipped.push({ label: label, reason: 'duplicate-content' }); return step();
+          }
           seenSigs[rsig] = true;
           var rk = 'act:' + descriptor;
-          return addState({ stateKey: rk, kind: 'region', regionAnchor: regionSelector(root), activation: descriptor, label: label, trigger: 'click:' + label, parentStateKey: (discoveredUnder[nextKey] != null ? discoveredUnder[nextKey] : currentStateKey), contentSig: rsig, data: extractScoped(root) }, root).then(function() { currentStateKey = rk; return step(); });
+          var rNode = ensureNode(rsig, { kind: 'region', label: label, stateKey: rk, depth: parentDepth + 1 });
+          recordEdge(currentNodeId, descriptor, label, rNode.id, 'region', false);
+          return addState({ stateKey: rk, kind: 'region', regionAnchor: regionSelector(root), activation: descriptor, label: label, trigger: 'click:' + label, parentStateKey: (discoveredUnder[nextKey] != null ? discoveredUnder[nextKey] : currentStateKey), contentSig: rsig, data: extractScoped(root) }, root).then(function() { currentStateKey = rk; currentNodeId = rNode.id; return step(); });
         } else {
-          if (seenSigs[res.after]) { skipped.push({ label: label, reason: 'duplicate-content' }); return step(); }
+          if (seenSigs[res.after]) {
+            var dnP = nodeBySig[res.after];
+            if (dnP) recordEdge(currentNodeId, descriptor, label, dnP.id, 'page', true);
+            skipped.push({ label: label, reason: 'duplicate-content' }); return step();
+          }
           seenSigs[res.after] = true;
           var pk2 = 'act:' + descriptor;
+          var pNode = ensureNode(res.after, { kind: 'page', label: label, stateKey: pk2, depth: parentDepth + 1 });
+          recordEdge(currentNodeId, descriptor, label, pNode.id, 'page', false);
           return addState({ stateKey: pk2, kind: 'page', activation: descriptor, label: label, trigger: 'click:' + label, parentStateKey: (discoveredUnder[nextKey] != null ? discoveredUnder[nextKey] : currentStateKey), contentSig: res.after, data: extractNow() }, document.documentElement).then(function() {
-            currentStateKey = pk2;
+            currentStateKey = pk2; currentNodeId = pNode.id;
             // Let lazy sub-content (tab strips, etc.) mount before re-enumerating so it
             // nests under THIS view rather than being missed.
             return awaitNewCandidates(liveCandidates().length).then(step);
@@ -673,7 +741,8 @@ window.MilgSpaMap = {
         skipped: (result && result.skipped) || [],
         notes: (result && result.notes) || [],
         truncated: !!(result && result.truncated),
-        counts: counts
+        counts: counts,
+        graph: (result && result.graph) || null
       }
     };
   }
