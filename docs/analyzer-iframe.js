@@ -17,6 +17,11 @@ window.MilgIframe = (function() {
   // No DOM modifications needed — the library handles it.
   var SCREENSHOT_SCALE = 1.5;
   var SCREENSHOT_QUALITY = 0.8;
+  // SPA-view capture scale (the per-state screenshots the SPA explorer rasterizes). Higher =
+  // sharper glyph masks + more accurate pixel-verify, at ~scale^2 pixels/time/memory per view.
+  // Under evaluation (small=1 vs big=2). Flip here, or live via localStorage.__milgSpaTune =
+  // '{"captureScale":1}' (shallow-merges into spaOpts before the iframe run — no rebuild).
+  var SPA_CAPTURE_SCALE = 2;
 
   function init(opts) {
     if (opts.screenshotCDN) _screenshotCDN = opts.screenshotCDN;
@@ -738,7 +743,7 @@ window.MilgIframe = (function() {
       settleMaxMs: opts.settleMaxMs || 1500,
       pageEnterGraceMs: opts.pageEnterGraceMs != null ? opts.pageEnterGraceMs : 1500,
       capture: wantShots,
-      captureScale: opts.captureScale || 1,
+      captureScale: opts.captureScale || SPA_CAPTURE_SCALE,
       stateCapture: !!opts.stateCapture,
       stateThreshold: opts.stateThreshold || 6,
       // Per-page (P5) holistic expand threshold + total pass budget — looser than the root

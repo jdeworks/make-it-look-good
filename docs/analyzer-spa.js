@@ -1,4 +1,4 @@
-// make-it-look-good — SPA View Explorer v3.11.128
+// make-it-look-good — SPA View Explorer v3.11.129
 // Runs INSIDE the analysis iframe (injected alongside MilgExtract). Discovers the
 // hidden "views" of a single-page app — reached by hash/History routes (Tier 1) or
 // by clicking nav controls (Tier 2, opt-in) — and re-runs MilgExtract on each so the
@@ -412,8 +412,12 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
       var isRegion = kind === 'region';
       return { uri: uri, meta: {
         scale: scale, viewportHeight: window.innerHeight, canvasWidth: canvas.width, canvasHeight: canvas.height,
-        cropOffsetX: isRegion ? Math.round((rect.left || 0) + (window.scrollX || 0)) : 0,
-        cropOffsetY: isRegion ? Math.round((rect.top || 0) + (window.scrollY || 0)) : 0,
+        // cropOffset is subtracted by consumers AFTER they scale the bbox (`bbox*scale - cropOffset`),
+        // so it must be in the SAME scaled canvas-pixel units — multiply the element's page position
+        // by scale (matches analyzer-region.js). Was unscaled CSS px: a no-op at scale=1 but a
+        // scale-proportional misalignment for region views at any capture scale > 1.
+        cropOffsetX: isRegion ? Math.round(((rect.left || 0) + (window.scrollX || 0)) * scale) : 0,
+        cropOffsetY: isRegion ? Math.round(((rect.top || 0) + (window.scrollY || 0)) * scale) : 0,
         isRegion: isRegion
       } };
     }).catch(function() { return null; });
