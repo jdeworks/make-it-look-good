@@ -326,21 +326,49 @@ window.MilgRegion = (function() {
           return (b.el.textContent || '').trim().length - (a.el.textContent || '').trim().length;
         });
       }
-      var _slotsLeft = 8 - _clipContainerList.length;
-      if (_panelList.length > _slotsLeft) {
-        console.log('[milg-region] Dropping ' + (_panelList.length - _slotsLeft) + ' hidden panels (cap 8 total)');
-        _panelList = _panelList.slice(0, _slotsLeft);
+
+      // Append scrollable-pane entries from window.__milgScrollRegions. Captured like hidden panels
+      // — the region clone force-reveals overflow, so the pane's FULL height renders — giving
+      // below-the-fold scroll content its own screenshot. Dedupe vs clips + panels + each other.
+      var _scrollList = [];
+      if (window.__milgScrollRegions) {
+        window.__milgScrollRegions.forEach(function(sr) {
+          if (!sr || !sr.el) return;
+          var srEl = sr.el;
+          if ((srEl.textContent || '').trim().length < 20) return;
+          var dup = false, _chk = _clipContainerList.concat(_panelList, _scrollList);
+          for (var _si = 0; _si < _chk.length; _si++) {
+            var ex = _chk[_si].el;
+            if (ex === srEl) { dup = true; break; }
+            try { if (ex.contains(srEl) || srEl.contains(ex)) { dup = true; break; } } catch (_se) {}
+          }
+          if (dup) return;
+          _scrollList.push({ el: srEl, id: 'sr-' + (_rgnCounter + _panelList.length + _scrollList.length + 1), pairIndices: [], kind: 'scroll', label: sr.label || 'Scrollable region', _domOrder: 0 });
+        });
       }
-      _panelList.sort(function(a, b) {
+
+      // Total cap of 8. Priority: hidden panels → scroll regions → clip containers, so below-the-
+      // fold panel/scroll content isn't the first thing dropped. Clips fill only leftover slots.
+      var _priority = _panelList.concat(_scrollList);
+      if (_priority.length > 8) {
+        console.log('[milg-region] Dropping ' + (_priority.length - 8) + ' panel/scroll regions (cap 8 total)');
+        _priority = _priority.slice(0, 8);
+      }
+      var _clipSlots = Math.max(0, 8 - _priority.length);
+      if (_clipContainerList.length > _clipSlots) {
+        console.log('[milg-region] Dropping ' + (_clipContainerList.length - _clipSlots) + ' clip regions (cap 8 total)');
+        _clipContainerList = _clipContainerList.slice(0, _clipSlots);
+      }
+      _priority.sort(function(a, b) {
         if (!a.el || !b.el || a.el === b.el) return 0;
         var pos = a.el.compareDocumentPosition(b.el);
         if (pos & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
         if (pos & Node.DOCUMENT_POSITION_PRECEDING) return 1;
         return 0;
       });
-      _panelList.forEach(function(p, i) { p._domOrder = i; });
-      console.log('[milg-region] Adding ' + _panelList.length + ' hidden-panel regions');
-      var _allRegions = _clipContainerList.concat(_panelList);
+      _priority.forEach(function(p, i) { p._domOrder = i; });
+      console.log('[milg-region] Adding ' + _panelList.length + ' hidden-panel + ' + _scrollList.length + ' scroll regions');
+      var _allRegions = _clipContainerList.concat(_priority);
       if (_allRegions.length === 0) { rgnCb([]); return; }
 
       var _rgnResults = [], _rgnDone = 0, _rgnTotal = _allRegions.length;

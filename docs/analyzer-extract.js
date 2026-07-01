@@ -1674,6 +1674,38 @@ window.MilgExtract = (function() {
       });
     } catch (e) {}
     data.layout.hiddenPanelCount = _iframeHiddenPanels.length;
+    // Vertically-scrollable inner panes: content below the fold inside an overflow:auto/scroll
+    // container is invisible to the single full-page shot (the pre-hook scrolls only the main
+    // window). Flag meaningfully-scrollable panes so the region pipeline captures each one's FULL
+    // height as its own screenshot — the same base-shot + own-region pattern as hidden panels.
+    try {
+      var _scrollRegions = [], _srSeen = [];
+      var _srScan = (_scopeRoot || document.body).querySelectorAll('div,section,main,aside,article,ul,ol,nav,table,pre,form');
+      for (var _sri = 0; _sri < _srScan.length && _sri < 2500 && _srSeen.length < 12; _sri++) {
+        var _sre = _srScan[_sri];
+        if (_sre === document.body || _sre === document.documentElement) continue;
+        var _srs; try { _srs = getComputedStyle(_sre); } catch (e) { continue; }
+        var _oy = _srs.overflowY;
+        if (_oy !== 'auto' && _oy !== 'scroll') continue;
+        var _srch = _sre.clientHeight, _srsh = _sre.scrollHeight, _srcw = _sre.clientWidth;
+        // Meaningfully scrollable (>32px hidden below the fold) and a real box.
+        if (!(_srsh > _srch + 32) || _srch < 80 || _srcw < 100) continue;
+        // Skip a pane nested inside an already-selected outer scroll pane (keep the outer).
+        var _srNested = false;
+        for (var _srj = 0; _srj < _srSeen.length; _srj++) { try { if (_srSeen[_srj].contains(_sre)) { _srNested = true; break; } } catch (e) {} }
+        if (_srNested) continue;
+        var _srLabel = '';
+        try {
+          _srLabel = _sre.getAttribute('aria-label') || '';
+          if (!_srLabel) { var _srh = _sre.querySelector('h1,h2,h3,h4,[role="heading"]'); if (_srh) _srLabel = (_srh.textContent || '').trim().slice(0, 60); }
+          if (!_srLabel) _srLabel = (_sre.textContent || '').trim().slice(0, 40);
+        } catch (e) {}
+        _srSeen.push(_sre);
+        _scrollRegions.push({ el: _sre, kind: 'scroll', label: _srLabel || 'Scrollable region', scrollHeight: _srsh, clientHeight: _srch });
+      }
+      window.__milgScrollRegions = _scrollRegions;
+      data.layout.scrollRegionCount = _scrollRegions.length;
+    } catch (e) { window.__milgScrollRegions = []; }
     // Stash element references for the region pipeline (runs later in the same iframe window)
     window.__milgHiddenPanels = _iframeHiddenPanels.map(function(el, i) {
       var m = _iframeHiddenPanelMeta[i] || { kind: 'unknown', label: '', triggerEl: null };

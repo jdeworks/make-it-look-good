@@ -1,8 +1,8 @@
-// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.133
+// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.134
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.133 loaded');
+console.log('[milg] analyzer.js v3.11.134 loaded');
 
 (function() {
   "use strict";
@@ -28,53 +28,51 @@ console.log('[milg] analyzer.js v3.11.133 loaded');
   // 8 state passes) and substantially cover the large one (narratu, 42+ views). Hosted caps give
   // enough headroom to fully crawl even narratu, while staying bounded so a giant component
   // gallery can't explode the tab UI. Local clones are effectively uncapped (localMax).
-  var MILG_SPA_LIMITS = {
-    maxViews:         { id: 'spaMaxViews',         def: 30, min: 4,  hostMax: 60,  localMax: 250 },
-    timeBudgetSec:    { id: 'spaTimeBudget',       def: 90, min: 15, hostMax: 180, localMax: 600 },
-    perPageThreshold: { id: 'spaPerPageThreshold', def: 3,  min: 1,  hostMax: 12,  localMax: 12  },
-    maxStatePasses:   { id: 'spaMaxStatePasses',   def: 8,  min: 1,  hostMax: 20,  localMax: 60  }
+  // SPA exploration budget presets. A single #spaBudget dropdown picks a level. SPA exploration
+  // runs entirely on the client's CPU/RAM (no proxy — that's crawl-only), so "unlimited" truly
+  // uncaps even on the hosted build; a UI warning flags the browser-tax risk.
+  var MILG_SPA_BUDGETS = {
+    low:       { maxViews: 10,  timeSec: 45,  perPageThreshold: 3, maxStatePasses: 4  },
+    medium:    { maxViews: 30,  timeSec: 90,  perPageThreshold: 3, maxStatePasses: 8  },
+    high:      { maxViews: 60,  timeSec: 180, perPageThreshold: 2, maxStatePasses: 12 },
+    unlimited: { maxViews: 250, timeSec: 600, perPageThreshold: 1, maxStatePasses: 60 }
   };
-  window.__milgSpaLimits = MILG_SPA_LIMITS;   // exposed for transparency + regression tests
-  function milgClampSpa(spec) {
-    var el = document.getElementById(spec.id);
-    var v = el ? parseInt(el.value, 10) : NaN;
-    if (!isFinite(v)) v = spec.def;
-    var max = MILG_IS_LOCAL ? spec.localMax : spec.hostMax;
-    return Math.max(spec.min, Math.min(v, max));
+  window.__milgSpaBudgets = MILG_SPA_BUDGETS;   // exposed for transparency + regression tests
+  // Resolve the selected budget preset (defaults to medium). SHARED by the URL/webpage reader
+  // AND the console-snippet builder so both routes emit identical numbers.
+  function milgSpaBudget() {
+    var el = document.getElementById('spaBudget');
+    var lvl = (el && el.value) || 'medium';
+    return MILG_SPA_BUDGETS[lvl] || MILG_SPA_BUDGETS.medium;
   }
-  // Read + clamp the SPA tuning inputs into the opts MilgIframe.analyzeSpaViews understands.
+  window.__milgSpaBudget = milgSpaBudget;
+  // Read the SPA tuning into the opts MilgIframe.analyzeSpaViews understands.
   window.__milgReadSpaTuning = function() {
+    var b = milgSpaBudget();
     return {
-      maxViews: milgClampSpa(MILG_SPA_LIMITS.maxViews),
-      timeBudgetMs: milgClampSpa(MILG_SPA_LIMITS.timeBudgetSec) * 1000,
-      perPageStateThreshold: milgClampSpa(MILG_SPA_LIMITS.perPageThreshold),
-      maxStatePasses: milgClampSpa(MILG_SPA_LIMITS.maxStatePasses),
+      maxViews: b.maxViews,
+      timeBudgetMs: b.timeSec * 1000,
+      perPageStateThreshold: b.perPageThreshold,
+      maxStatePasses: b.maxStatePasses,
       // SPA-view screenshot resolution for pixel-verify. Default 1× (fast/light, cleaner on AA
       // small text); users can pick 2× (sharper glyph masks) from the #spaCaptureScale dropdown.
       captureScale: (function() { var el = document.getElementById('spaCaptureScale'); var v = el ? parseInt(el.value, 10) : 1; return v === 2 ? 2 : 1; })()
     };
   };
-  // Show the limits panel only when an SPA/state pass is enabled; on local, raise the input `max`
-  // attributes to the unlocked caps and note it so the higher range is reachable via the spinner.
+  // Show the limits panel only when an SPA/state pass is enabled; refresh the note + the
+  // Unlimited warning to match the selected budget level.
   window.__milgSyncSpaOptions = function() {
     var panel = document.getElementById('spaOptions');
     if (!panel) return;
     var spa = document.getElementById('spaExploreCheck'), st = document.getElementById('stateCaptureCheck');
     panel.style.display = ((spa && spa.checked) || (st && st.checked)) ? '' : 'none';
-    if (!panel.__milgNoteSet) {
-      panel.__milgNoteSet = true;
-      var note = document.getElementById('spaLimitsNote');
-      if (MILG_IS_LOCAL) {
-        // Local clone: lift the input ceilings to the unlocked caps and say so.
-        [MILG_SPA_LIMITS.maxViews, MILG_SPA_LIMITS.timeBudgetSec, MILG_SPA_LIMITS.maxStatePasses].forEach(function(s) {
-          var el = document.getElementById(s.id); if (el) el.max = String(s.localMax);
-        });
-        if (note) note.textContent = 'Running locally — limits unlocked (caps not enforced on a local clone).';
-      } else if (note) {
-        // Hosted build: make it explicit the caps are a hosted-only guardrail.
-        note.innerHTML = 'Caps apply to the hosted site only — <a href="https://github.com/jdeworks/make-it-look-good" target="_blank" rel="noopener" style="color:var(--primary-strong);text-decoration:underline">clone &amp; run locally</a> to remove them.';
-      }
-    }
+    var sel = document.getElementById('spaBudget');
+    var lvl = (sel && sel.value) || 'medium';
+    var b = MILG_SPA_BUDGETS[lvl] || MILG_SPA_BUDGETS.medium;
+    var note = document.getElementById('spaLimitsNote');
+    if (note) note.textContent = 'Up to ' + b.maxViews + ' views · ' + b.timeSec + 's budget · ' + b.maxStatePasses + ' expand passes.';
+    var warn = document.getElementById('spaBudgetWarn');
+    if (warn) warn.style.display = (lvl === 'unlimited') ? '' : 'none';
   };
 
   // --- Configuration ---
@@ -1090,7 +1088,18 @@ console.log('[milg] analyzer.js v3.11.133 loaded');
           // app (clicks nav/tabs in place) and emits a multi-view crawl payload.
           var spaOn = document.getElementById('spaExploreCheck') && document.getElementById('spaExploreCheck').checked;
           if (spaOn) {
-            prefix += 'window.__milgSpaExplore=true;\n';
+            // Bake the selected budget preset into live globals so the console-snippet route honors
+            // the #spaBudget dropdown (the URL route reads it via __milgReadSpaTuning). Same preset
+            // source (__milgSpaBudget) → both routes agree.
+            var _sb = window.__milgSpaBudget ? window.__milgSpaBudget() : { maxViews: 30, timeSec: 90, perPageThreshold: 3, maxStatePasses: 8 };
+            var _cs = document.getElementById('spaCaptureScale');
+            var _csv = (_cs && parseInt(_cs.value, 10) === 2) ? 2 : 1;
+            prefix += 'window.__milgSpaExplore=true;' +
+              ' window.__milgSpaMaxViews=' + _sb.maxViews + ';' +
+              ' window.__milgSpaTimeBudgetMs=' + (_sb.timeSec * 1000) + ';' +
+              ' window.__milgSpaPerPageThreshold=' + _sb.perPageThreshold + ';' +
+              ' window.__milgSpaMaxStatePasses=' + _sb.maxStatePasses + ';' +
+              ' window.__milgSpaCaptureScale=' + _csv + ';\n';
           } else if (crawlOn) {
             var maxP = (snippetCrawlMaxPages && parseInt(snippetCrawlMaxPages.value)) || 5;
             prefix += 'window.__milgCrawlSite=true; window.__milgCrawlMaxPages=' + maxP + ';\n';
@@ -1166,10 +1175,16 @@ console.log('[milg] analyzer.js v3.11.133 loaded');
     if (_spaExploreCheckEl) {
       _spaExploreCheckEl.addEventListener('change', reloadSnippet);
     }
-    // SPA exploration limits panel: show it when either SPA pass is enabled, and unlock local caps.
+    // SPA exploration limits panel: show it when either SPA pass is enabled; refresh the note +
+    // Unlimited warning on budget change, and re-bake the snippet so its budget globals track it.
     var _stateCaptureCheckEl = document.getElementById('stateCaptureCheck');
     if (_spaExploreCheckEl) _spaExploreCheckEl.addEventListener('change', window.__milgSyncSpaOptions);
     if (_stateCaptureCheckEl) _stateCaptureCheckEl.addEventListener('change', window.__milgSyncSpaOptions);
+    var _spaBudgetEl = document.getElementById('spaBudget');
+    if (_spaBudgetEl) {
+      _spaBudgetEl.addEventListener('change', window.__milgSyncSpaOptions);
+      _spaBudgetEl.addEventListener('change', reloadSnippet);
+    }
     if (window.__milgSyncSpaOptions) window.__milgSyncSpaOptions();
 
     // Copy snippet

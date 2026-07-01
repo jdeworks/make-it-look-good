@@ -1,4 +1,4 @@
-// make-it-look-good — SPA View Explorer v3.11.133
+// make-it-look-good — SPA View Explorer v3.11.134
 // Runs INSIDE the analysis iframe (injected alongside MilgExtract). Discovers the
 // hidden "views" of a single-page app — reached by hash/History routes (Tier 1) or
 // by clicking nav controls (Tier 2, opt-in) — and re-runs MilgExtract on each so the
@@ -431,14 +431,16 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
     var pk = (o.parentStateKey == null) ? null : o.parentStateKey;
     var depth = (pk != null && depthByKey[pk] != null) ? depthByKey[pk] + 1 : 0;
     if (depthByKey[o.stateKey] == null) depthByKey[o.stateKey] = depth;
-    // Holistic state views (all-expanded/all-collapsed) skip the async screenshot: their DOM
-    // mutation is restored synchronously right after the (synchronous) extract, so there is no
-    // expanded DOM left to capture. Scoring is geometry-based and works without the screenshot.
-    if (o.noShot) {
+    // Pre-captured / no-shot state views. The all-expanded pass rasterizes the LIVE revealed DOM
+    // itself (before restoring) and passes the result as o.shot; all-collapsed passes o.noShot
+    // (collapsed ≈ the base view, not worth a second full-page shot). Either way there is no
+    // element to (re-)capture here, so attach the shot if present and push synchronously.
+    if (o.shot || o.noShot) {
+      if (o.shot) { o.data.screenshots = [o.shot.uri]; o.data.screenshotMeta = o.shot.meta; }
       views.push({
         stateKey: o.stateKey, kind: o.kind || 'page', regionAnchor: o.regionAnchor || null,
         activation: o.activation || null, label: o.label, trigger: o.trigger || null,
-        parentStateKey: pk, depth: depth, contentSig: o.contentSig, hasShot: false, data: o.data
+        parentStateKey: pk, depth: depth, contentSig: o.contentSig, hasShot: !!o.shot, data: o.data
       });
       return Promise.resolve();
     }
@@ -521,6 +523,20 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
     });
     if (!reg.length) { if (!ctx.keySuffix) notes.push('all-expanded skipped (no in-flow disclosures)'); return; }
     var saved = [], data;
+    function restore() {
+      saved.forEach(function(s) {
+        try {
+          if (s.detailsOpen !== null) { s.el.open = s.detailsOpen; }
+          else { s.el.style.cssText = s.cssText; if (s.hadHidden) s.el.setAttribute('hidden', ''); if (s.ariaHidden != null) s.el.setAttribute('aria-hidden', s.ariaHidden); else s.el.removeAttribute('aria-hidden'); }
+          if (s.trigger && s.triggerAria != null) s.trigger.setAttribute('aria-expanded', s.triggerAria);
+        } catch (e) {}
+      });
+      void document.body.offsetHeight;
+    }
+    // Reveal every in-flow disclosure and extract synchronously (before framework re-collapse
+    // handlers fire). Unlike the old flow — which restored immediately in a finally and shipped a
+    // screenshot-less view — we keep the revealed DOM LIVE across an async rasterize so the state
+    // view carries a real "all open" screenshot, then restore once the capture settles.
     try {
       reg.forEach(function(h) {
         var el = h.el, tr = h.triggerEl || null;
@@ -531,16 +547,8 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
       });
       void document.body.offsetHeight;
       data = extractNow();
-    } finally {
-      saved.forEach(function(s) {
-        try {
-          if (s.detailsOpen !== null) { s.el.open = s.detailsOpen; }
-          else { s.el.style.cssText = s.cssText; if (s.hadHidden) s.el.setAttribute('hidden', ''); if (s.ariaHidden != null) s.el.setAttribute('aria-hidden', s.ariaHidden); else s.el.removeAttribute('aria-hidden'); }
-          if (s.trigger && s.triggerAria != null) s.trigger.setAttribute('aria-expanded', s.triggerAria);
-        } catch (e) {}
-      });
-      void document.body.offsetHeight;
-    }
+    } catch (e) { restore(); return; }
+
     stateCoverageActive = true;
     reg.forEach(function(h) { _coveredPanels.push(h.el); });   // suppress per-panel region double-count
     var sk = 'state:all-expanded' + (ctx.keySuffix ? ':' + ctx.keySuffix : '');
@@ -548,7 +556,18 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
     var parentNodeId = ctx.parentNodeId != null ? ctx.parentNodeId : rootNodeId;
     // Union node: the all-open extreme as a distinguished summary node OUTSIDE the click graph.
     recordEdge(parentNodeId, 'all-expanded', lbl, ensureNode(sk, { kind: 'state', label: lbl, stateKey: sk, special: true, depth: (ctx.keySuffix ? 2 : 1) }).id, 'union', false);
-    return addState({ stateKey: sk, kind: 'state', activation: 'all-expanded', label: lbl, parentStateKey: (ctx.parentStateKey != null ? ctx.parentStateKey : (views[0] && views[0].stateKey)), contentSig: sk, data: data, noShot: true }, null);
+    var stateObj = { stateKey: sk, kind: 'state', activation: 'all-expanded', label: lbl, parentStateKey: (ctx.parentStateKey != null ? ctx.parentStateKey : (views[0] && views[0].stateKey)), contentSig: sk, data: data };
+    // Full-page shot of the live revealed DOM. kind 'state' (not 'region') → isRegion false, so
+    // cropOffset stays 0, matching the base screenshot's coordinate space. Restore after it settles.
+    return captureTarget(document.documentElement, 'state').then(function(s) {
+      restore();
+      if (s) stateObj.shot = s; else stateObj.noShot = true;
+      return addState(stateObj, null);
+    }, function() {
+      restore();
+      stateObj.noShot = true;
+      return addState(stateObj, null);
+    });
   }
   function runCollapsedState() {
     if (capExceeded()) return;

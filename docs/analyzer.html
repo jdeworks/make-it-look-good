@@ -6,7 +6,7 @@
   <title>make-it-look-good — Design Analyzer</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='2' y='2' width='12' height='12' rx='2' fill='%232563eb'/><rect x='18' y='2' width='12' height='12' rx='2' fill='%2393c5fd'/><rect x='2' y='18' width='12' height='12' rx='2' fill='%2393c5fd'/><rect x='18' y='18' width='12' height='12' rx='2' fill='%232563eb'/></svg>">
   <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="analyzer.css?v=3.11.133">
+  <link rel="stylesheet" href="analyzer.css?v=3.11.134">
 </head>
 <body class="analyzer-body">
 
@@ -42,7 +42,7 @@
       <button type="button" aria-label="Dismiss" title="Dismiss for now" onclick="window.__milgBannerDismiss&&window.__milgBannerDismiss()" style="background:none;border:none;color:var(--text-secondary);font-size:20px;line-height:1;padding:6px 10px;min-height:36px;min-width:36px;cursor:pointer">&times;</button>
     </div>
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.11.133</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.11.134</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -85,27 +85,19 @@
       </button>
     </div>
 
-    <!-- SPA exploration limits — visible when "Explore SPA views" or "Collapsed/expanded states" is on.
-         Inputs are advisory; the real ceilings are enforced in JS (analyzer.js __milgClampSpa) so editing
-         the DOM max can't raise them on the hosted build. Running locally unlocks the higher local caps. -->
+    <!-- SPA exploration budget — visible when "Explore SPA views" or "Collapsed/expanded states" is on.
+         One dropdown picks a depth preset (analyzer.js MILG_SPA_BUDGETS). SPA runs entirely on the
+         client's CPU/RAM (no proxy), so "Unlimited" truly uncaps even on the hosted build. -->
     <div id="spaOptions" style="display:none;margin:8px 0 0;padding:10px 14px;background:var(--bg-alt);border:1px solid var(--border);border-radius:var(--radius);max-width:760px">
-      <div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px">SPA exploration limits — higher = deeper but slower. <span id="spaLimitsNote"></span></div>
-      <div style="display:flex;flex-wrap:wrap;gap:10px 18px">
+      <div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px 18px">
         <div>
-          <label for="spaMaxViews" style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:var(--text-secondary)" title="Maximum number of distinct views/states to discover and analyze.">Max views</label>
-          <input type="number" id="spaMaxViews" min="4" max="60" value="30" style="width:72px;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-family:var(--mono);color:var(--text);background:var(--bg);outline:none;text-align:center">
-        </div>
-        <div>
-          <label for="spaTimeBudget" style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:var(--text-secondary)" title="How long the explorer may keep clicking to discover views, in seconds. Higher = more coverage, slower analysis.">Time budget (s)</label>
-          <input type="number" id="spaTimeBudget" min="15" max="180" value="90" style="width:72px;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-family:var(--mono);color:var(--text);background:var(--bg);outline:none;text-align:center">
-        </div>
-        <div>
-          <label for="spaPerPageThreshold" style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:var(--text-secondary)" title="Minimum collapsible panels on a discovered page before its all-expanded state is captured. Lower = more state captures.">Expand threshold</label>
-          <input type="number" id="spaPerPageThreshold" min="1" max="12" value="3" style="width:72px;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-family:var(--mono);color:var(--text);background:var(--bg);outline:none;text-align:center">
-        </div>
-        <div>
-          <label for="spaMaxStatePasses" style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:var(--text-secondary)" title="Maximum number of per-page all-expanded captures across the whole exploration.">Max expand passes</label>
-          <input type="number" id="spaMaxStatePasses" min="1" max="20" value="8" style="width:72px;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-family:var(--mono);color:var(--text);background:var(--bg);outline:none;text-align:center">
+          <label for="spaBudget" style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:var(--text-secondary)" title="How deep SPA exploration goes: higher = more views/states discovered but slower. Runs entirely on your device.">Exploration budget</label>
+          <select id="spaBudget" style="width:150px;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-family:var(--mono);color:var(--text);background:var(--bg);outline:none">
+            <option value="low">Low (fast)</option>
+            <option value="medium" selected>Medium</option>
+            <option value="high">High (deep)</option>
+            <option value="unlimited">Unlimited</option>
+          </select>
         </div>
         <div>
           <label for="spaCaptureScale" style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:var(--text-secondary)" title="Resolution of each SPA-view screenshot used for pixel-verify. 2× = sharper glyph masks + more accurate contrast sampling, but ~4× the pixels/time/memory per view. 1× is faster and lighter, and can read cleaner on anti-aliased small text.">Screenshot detail</label>
@@ -115,6 +107,8 @@
           </select>
         </div>
       </div>
+      <div style="font-size:11px;color:var(--text-secondary);margin-top:8px"><span id="spaLimitsNote"></span></div>
+      <div id="spaBudgetWarn" style="display:none;font-size:11px;color:var(--warning,#b45309);margin-top:6px">⚠ Unlimited removes all caps — a large or deep app may heavily tax this browser tab (SPA exploration runs entirely on your device).</div>
     </div>
 
     <!-- Settings help modal (opened from the options bar) -->
@@ -132,7 +126,7 @@
           <dt style="font-weight:600;color:var(--text);margin-top:10px">Pixel Verify</dt><dd style="margin:2px 0 0">Sample the actual rendered pixels for true contrast (catches gradients/overlays). More accurate but slower; needs Screenshots.</dd>
           <dt style="font-weight:600;color:var(--text);margin-top:10px">Explore SPA views</dt><dd style="margin:2px 0 0">For single-page apps: click nav/tabs to discover &amp; analyze hidden views — one tab can pass while another fails. Safe controls only.</dd>
           <dt style="font-weight:600;color:var(--text);margin-top:10px">Collapsed/expanded states</dt><dd style="margin:2px 0 0">For accordion/disclosure-heavy layouts: also analyze the page with every collapsible panel open at once (worst-case density &amp; overflow) and all closed (clean baseline) — issues that only appear when several panels are open are easy to miss otherwise. Runs automatically only when the page has 6+ collapsible panels.</dd>
-          <dt style="font-weight:600;color:var(--text);margin-top:10px">SPA exploration limits</dt><dd style="margin:2px 0 0">When SPA explore or state capture is on, a panel exposes the depth caps: <strong style="color:var(--text)">max views</strong>, the explorer <strong style="color:var(--text)">time budget</strong>, the panel-count <strong style="color:var(--text)">expand threshold</strong>, and <strong style="color:var(--text)">max expand passes</strong>. Higher = deeper but slower. The hosted build caps these; running locally unlocks the full range.</dd>
+          <dt style="font-weight:600;color:var(--text);margin-top:10px">Exploration budget</dt><dd style="margin:2px 0 0">When SPA explore or state capture is on, a single <strong style="color:var(--text)">Low / Medium / High / Unlimited</strong> dropdown sets how deep exploration goes (view count, time budget, expand passes). Higher = deeper but slower. SPA exploration runs entirely on your device, so <strong style="color:var(--text)">Unlimited</strong> removes all caps (with a warning) — handy for large apps, but it can tax the browser tab.</dd>
           <dt style="font-weight:600;color:var(--text);margin-top:10px">JavaScript (URL mode)</dt><dd style="margin:2px 0 0">Render the page with JS on — needed for React/Vue/Angular apps. Off by default for safety/speed.</dd>
         </dl>
         <details style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
@@ -590,34 +584,34 @@
   <div class="toast" id="toast" aria-live="polite" aria-atomic="true" role="status"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=3.11.133"></script>
-  <script src="scoring/contrast.js?v=3.11.133"></script>
-  <script src="scoring/typography.js?v=3.11.133"></script>
-  <script src="scoring/spacing.js?v=3.11.133"></script>
-  <script src="scoring/touch.js?v=3.11.133"></script>
-  <script src="scoring/accessibility.js?v=3.11.133"></script>
-  <script src="scoring/responsive.js?v=3.11.133"></script>
-  <script src="scoring/consistency.js?v=3.11.133"></script>
-  <script src="scoring/cognitive.js?v=3.11.133"></script>
-  <script src="scoring/layout.js?v=3.11.133"></script>
-  <script src="scoring/performance.js?v=3.11.133"></script>
-  <script src="scoring/readability.js?v=3.11.133"></script>
-  <script src="scoring/filters.js?v=3.11.133"></script>
-  <script src="scoring/balance.js?v=3.11.133"></script>
-  <script src="scoring/polish.js?v=3.11.133"></script>
+  <script src="scoring/registry.js?v=3.11.134"></script>
+  <script src="scoring/contrast.js?v=3.11.134"></script>
+  <script src="scoring/typography.js?v=3.11.134"></script>
+  <script src="scoring/spacing.js?v=3.11.134"></script>
+  <script src="scoring/touch.js?v=3.11.134"></script>
+  <script src="scoring/accessibility.js?v=3.11.134"></script>
+  <script src="scoring/responsive.js?v=3.11.134"></script>
+  <script src="scoring/consistency.js?v=3.11.134"></script>
+  <script src="scoring/cognitive.js?v=3.11.134"></script>
+  <script src="scoring/layout.js?v=3.11.134"></script>
+  <script src="scoring/performance.js?v=3.11.134"></script>
+  <script src="scoring/readability.js?v=3.11.134"></script>
+  <script src="scoring/filters.js?v=3.11.134"></script>
+  <script src="scoring/balance.js?v=3.11.134"></script>
+  <script src="scoring/polish.js?v=3.11.134"></script>
   <!-- Queue + Report rendering + UI -->
-  <script src="analyzer-queue.js?v=3.11.133"></script>
-  <script src="analyzer-report.js?v=3.11.133"></script>
-  <script src="analyzer-crawl.js?v=3.11.133"></script>
-  <script src="analyzer-extract.js?v=3.11.133"></script>
-  <script src="analyzer-spa.js?v=3.11.133"></script>
-  <script src="analyzer-region.js?v=3.11.133"></script>
-  <script src="analyzer-capture.js?v=3.11.133"></script>
-  <script src="analyzer-iframe.js?v=3.11.133"></script>
-  <script src="analyzer-proxy.js?v=3.11.133"></script>
-  <script src="analyzer-crawl-ui.js?v=3.11.133"></script>
-  <script src="analyzer-contrast-verify.js?v=3.11.133"></script>
-  <script src="analyzer-viewer.js?v=3.11.133"></script>
-  <script src="analyzer.js?v=3.11.133"></script>
+  <script src="analyzer-queue.js?v=3.11.134"></script>
+  <script src="analyzer-report.js?v=3.11.134"></script>
+  <script src="analyzer-crawl.js?v=3.11.134"></script>
+  <script src="analyzer-extract.js?v=3.11.134"></script>
+  <script src="analyzer-spa.js?v=3.11.134"></script>
+  <script src="analyzer-region.js?v=3.11.134"></script>
+  <script src="analyzer-capture.js?v=3.11.134"></script>
+  <script src="analyzer-iframe.js?v=3.11.134"></script>
+  <script src="analyzer-proxy.js?v=3.11.134"></script>
+  <script src="analyzer-crawl-ui.js?v=3.11.134"></script>
+  <script src="analyzer-contrast-verify.js?v=3.11.134"></script>
+  <script src="analyzer-viewer.js?v=3.11.134"></script>
+  <script src="analyzer.js?v=3.11.134"></script>
 </body>
 </html>

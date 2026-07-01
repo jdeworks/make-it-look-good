@@ -336,7 +336,8 @@ window.MilgViewer = (function() {
             ind.setAttribute('data-permanent', '1');
             svg.appendChild(ind);
             var pCount = (rgn.pairIndices || []).length;
-            var _rgnLbl = rgn.label ? 'Hidden section: "' + rgn.label + '"' : 'Hidden content';
+            var _rgnNoun = rgn.kind === 'scroll' ? 'Scrollable section' : 'Hidden section';
+            var _rgnLbl = rgn.label ? _rgnNoun + ': "' + rgn.label + '"' : (rgn.kind === 'scroll' ? 'Scrollable content' : 'Hidden content');
             var lblText = _rgnLbl + (pCount ? ' — ' + pCount + ' contrast pairs' : '') + ' ↓';
             var lx = cx + Math.round(4 * _s);
             var ly = cy + Math.round(4 * _s);
@@ -431,7 +432,8 @@ window.MilgViewer = (function() {
         rgnHeader.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:rgba(59,130,246,0.15);border-bottom:1px solid rgba(59,130,246,0.3);';
         var rgnTitle = document.createElement('span');
         rgnTitle.style.cssText = 'font-size:12px;font-weight:600;color:#93c5fd;';
-        var _sectionLbl = rgn.label ? 'Hidden section: "' + rgn.label + '"' : 'Hidden content region ' + (rIdx + 1);
+        var _sectionNoun = rgn.kind === 'scroll' ? 'Scrollable section' : 'Hidden section';
+        var _sectionLbl = rgn.label ? _sectionNoun + ': "' + rgn.label + '"' : (rgn.kind === 'scroll' ? 'Scrollable content region ' : 'Hidden content region ') + (rIdx + 1);
         rgnTitle.textContent = _sectionLbl;
         var findingCount = rgnFindings.length;
         if (findingCount > 0) {

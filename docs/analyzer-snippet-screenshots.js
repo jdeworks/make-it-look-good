@@ -68,9 +68,12 @@
     function _go() {
       window.MilgSpaExplore({
         exploreClicks: true,
-        maxViews: (window.__milgSpaMaxViews || 20),
+        maxViews: (window.__milgSpaMaxViews || 30),
+        perPageStateThreshold: (window.__milgSpaPerPageThreshold || 3),
+        maxStatePasses: (window.__milgSpaMaxStatePasses != null ? window.__milgSpaMaxStatePasses : 8),
         capture: _libReady(),
-        captureScale: 1, timeBudgetMs: 45000, pageEnterGraceMs: 1500
+        captureScale: (window.__milgSpaCaptureScale || 1),
+        timeBudgetMs: (window.__milgSpaTimeBudgetMs || 90000), pageEnterGraceMs: 1500
       }).then(function(r) {
         var built = window.MilgSpaMap.build(r, {
           base: location.href.replace(/#.*$/, ''),
