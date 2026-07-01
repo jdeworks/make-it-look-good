@@ -1,4 +1,4 @@
-// make-it-look-good — SPA View Explorer v3.11.134
+// make-it-look-good — SPA View Explorer v3.11.135
 // Runs INSIDE the analysis iframe (injected alongside MilgExtract). Discovers the
 // hidden "views" of a single-page app — reached by hash/History routes (Tier 1) or
 // by clicking nav controls (Tier 2, opt-in) — and re-runs MilgExtract on each so the
@@ -423,6 +423,45 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
     }).catch(function() { return null; });
   }
 
+  // Per-view scroll-pane screenshots. SPA views don't run the region pipeline (MilgRegion isn't
+  // injected into this iframe), so a vertically-scrollable inner pane would only ever show its
+  // ~visible slice in the flat view shot. For each pane detected by THIS view's extract
+  // (window.__milgScrollRegions) temporarily force full height + overflow:visible, rasterize the
+  // pane, then restore — giving its FULL content its own region screenshot (kind:'scroll') attached
+  // to the view in the same shape the single-page region pipeline emits. Skipped for 'region'
+  // sub-views (their shot is already a zoomed element, so a page-coordinate anchor wouldn't map).
+  function captureScrollRegions(mainKind) {
+    var ms = window.modernScreenshot;
+    if (!opts.capture || !ms || !ms.domToCanvas || mainKind === 'region') return Promise.resolve([]);
+    var panes = (window.__milgScrollRegions || []).filter(function(p) { return p && p.el && p.el.isConnected; }).slice(0, 3);
+    if (!panes.length) return Promise.resolve([]);
+    var scale = opts.captureScale || 1;
+    var out = [];
+    function filter(n) { try { return !(n && n.getAttribute && (n.getAttribute('data-milg-overlay') || n.hasAttribute('data-milg-iframe-ph'))); } catch (e) { return true; } }
+    return panes.reduce(function(chain, p) {
+      return chain.then(function() {
+        var el = p.el, savedCss = el.style.cssText, rect;
+        try { rect = el.getBoundingClientRect(); } catch (e) { rect = { left: 0, top: 0, width: 0, height: 0 }; }
+        try { el.style.cssText = savedCss + '; height: auto !important; max-height: none !important; overflow: visible !important;'; void el.offsetHeight; } catch (e) {}
+        return ms.domToCanvas(el, { scale: scale, timeout: 15000, filter: filter }).then(function(canvas) {
+          try { el.style.cssText = savedCss; void el.offsetHeight; } catch (e) {}
+          if (!canvas || !canvas.width || !canvas.height) return;
+          var uri; try { uri = canvas.toDataURL('image/webp', 0.85); } catch (e) { try { uri = canvas.toDataURL('image/png'); } catch (e2) { return; } }
+          out.push({
+            screenshot: uri,
+            screenshotMeta: {
+              scale: scale, canvasWidth: canvas.width, canvasHeight: canvas.height,
+              // cropOffset in SCALED canvas px (consumers do bbox*scale - cropOffset), per analyzer-region.js.
+              cropOffsetX: Math.round(((rect.left || 0) + (window.scrollX || 0)) * scale),
+              cropOffsetY: Math.round(((rect.top || 0) + (window.scrollY || 0)) * scale), isRegion: true
+            },
+            containerRect: { left: Math.round(rect.left), top: Math.round(rect.top), width: Math.round(rect.width), height: Math.round(rect.height) },
+            kind: 'scroll', noAnchor: false, label: p.label || 'Scrollable region', pairIndices: [], _domOrder: out.length
+          });
+        }, function() { try { el.style.cssText = savedCss; } catch (e) {} });
+      });
+    }, Promise.resolve()).then(function() { return out; });
+  }
   // Build a state, capture its screenshot (best-effort, attached to data.screenshots /
   // screenshotMeta in the shape pixel-verify consumes), then store it. Async.
   // stateKey is the DETERMINISTIC activation key — the parent prefixes the page URL.
@@ -446,11 +485,14 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
     }
     return captureTarget(target, o.kind).then(function(shot) {
       if (shot) { o.data.screenshots = [shot.uri]; o.data.screenshotMeta = shot.meta; }
-      views.push({
-        stateKey: o.stateKey, kind: o.kind || 'page', regionAnchor: o.regionAnchor || null,
-        activation: o.activation || null, label: o.label, trigger: o.trigger || null,
-        parentStateKey: pk, depth: depth,
-        contentSig: o.contentSig, hasShot: !!shot, data: o.data
+      return captureScrollRegions(o.kind).then(function(regions) {
+        if (regions && regions.length) o.data.regionScreenshots = (o.data.regionScreenshots || []).concat(regions);
+        views.push({
+          stateKey: o.stateKey, kind: o.kind || 'page', regionAnchor: o.regionAnchor || null,
+          activation: o.activation || null, label: o.label, trigger: o.trigger || null,
+          parentStateKey: pk, depth: depth,
+          contentSig: o.contentSig, hasShot: !!shot, data: o.data
+        });
       });
     });
   }

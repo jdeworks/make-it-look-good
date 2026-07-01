@@ -169,3 +169,45 @@ test('All-expanded state view rasterizes the revealed DOM (hasShot + screenshots
   // The key regression guard: the all-expanded view is no longer screenshot-less.
   expect(found.anyShot).toBe(true);
 });
+
+// ── 4. SPA-path views also capture scroll panes ──────────────────────────────
+// The SPA explorer doesn't run the region pipeline (MilgRegion isn't injected into its iframe),
+// so scroll panes inside SPA-discovered views used to be uncaptured (detected but regions=0).
+// captureScrollRegions now attaches them per view. Guard: run SPA explore on the fixture and
+// assert some view carries a kind:'scroll' region screenshot taller than the visible pane.
+test('SPA views attach scroll-pane region screenshots (captureScrollRegions)', async ({ page }) => {
+  test.setTimeout(90000);
+  await page.goto(ANALYZER_URL);
+  await page.click('[data-tab="tabUrl"]');
+  await page.evaluate(() => {
+    function set(id, on) { var c = document.getElementById(id); if (c && !!c.checked !== on) { c.checked = on; c.dispatchEvent(new Event('change')); } }
+    set('screenshotCheck', true);
+    set('pixelVerifyCheck', false);
+    set('spaExploreCheck', true);      // SPA explorer path (not the single-page region pipeline)
+    set('stateCaptureCheck', true);
+    set('crawlSiteCheck', false);
+  });
+  await page.fill('#urlInput', FIXTURE_URL);
+  await page.click('#analyzeUrlBtn');
+  await page.waitForFunction(() => {
+    var s = window.MilgCrawlUI && MilgCrawlUI.getCrawlSession && MilgCrawlUI.getCrawlSession();
+    return !!(s && s.status === 'complete');
+  }, { timeout: 80000 });
+
+  const info = await page.evaluate(() => {
+    var s = MilgCrawlUI.getCrawlSession();
+    var scrolls = [];
+    (s.pages || []).forEach((p) => {
+      var regions = (p.rawData && p.rawData.regionScreenshots) || [];
+      regions.filter((r) => r && r.kind === 'scroll').forEach((r) => scrolls.push({
+        canvasHeight: r.screenshotMeta && r.screenshotMeta.canvasHeight, hasShot: !!r.screenshot
+      }));
+    });
+    return { scrollRegions: scrolls.length, sample: scrolls[0] || null };
+  });
+
+  expect(info.scrollRegions).toBeGreaterThanOrEqual(1);
+  expect(info.sample && info.sample.hasShot).toBe(true);
+  // Full content, not the 200px visible slice.
+  expect(info.sample.canvasHeight).toBeGreaterThan(200);
+});
