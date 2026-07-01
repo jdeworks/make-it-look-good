@@ -1080,18 +1080,28 @@ window.MilgContrastVerify = (function() {
     var isFgAaVariance = bgVariance > 3.0 && !isVariableBg && fgColorSpread > 10;
 
     // Debug mask for the viewer's right-click none→mask→zones cycle. Grid/SPA pairs have no
-    // render-based glyph mask, so derive a per-pixel text mask from the colour-classified grid
-    // (isTextGrid, subsampled hSteps×vSteps) upsampled to the bbox's bw×bh. showDebugLayer
-    // derives the zones/boundary from this mask directly (MCV._findBoundary), so no separate
-    // zone array is needed. Size-guarded to bound memory across many SPA views.
+    // render-based glyph mask, so build one PER-PIXEL from the SAME screenshot imgData the sampler
+    // read — NOT the coarse step-2 sample grid. Classifying every pixel (same text rule as pass 1)
+    // makes the mask overlay the rendered glyphs exactly, matching the single-page render-mask path;
+    // the upsampled-grid version only "almost" overlapped. showDebugLayer derives zones from this
+    // mask directly (MCV._findBoundary), so no separate zone array is needed. Size-guarded to bound
+    // memory across many SPA views.
     var _gridDebug = null;
     if (!unreliableSample && bw > 0 && bh > 0 && bw * bh <= 400000) {
       var _dmask = new Uint8Array(bw * bh);
-      for (var _dy = 0; _dy < bh; _dy++) {
-        var _gvy = (vSteps <= 1) ? 0 : Math.min(vSteps - 1, Math.round((vSteps - 1) * _dy / (bh - 1 || 1)));
-        for (var _dx = 0; _dx < bw; _dx++) {
-          var _ghx = (hSteps <= 1) ? 0 : Math.min(hSteps - 1, Math.round((hSteps - 1) * _dx / (bw - 1 || 1)));
-          if (isTextGrid[_gvy * hSteps + _ghx] === 1) _dmask[_dy * bw + _dx] = 1;
+      for (var _py = 0; _py < bh; _py++) {
+        for (var _px = 0; _px < bw; _px++) {
+          var _pi = (_py * bw + _px) * 4;
+          var _mr = imgData[_pi], _mg = imgData[_pi + 1], _mb = imgData[_pi + 2];
+          var _dF = (_mr - expectedFg.r) * (_mr - expectedFg.r) + (_mg - expectedFg.g) * (_mg - expectedFg.g) + (_mb - expectedFg.b) * (_mb - expectedFg.b);
+          var _isT;
+          if (cssBg) {
+            var _dB = (_mr - cssBg.r) * (_mr - cssBg.r) + (_mg - cssBg.g) * (_mg - cssBg.g) + (_mb - cssBg.b) * (_mb - cssBg.b);
+            _isT = (_dF < _dB) && (!_noMask || _dF < FG_OUTER_SQ);
+          } else {
+            _isT = _dF < FG_INNER_SQ;
+          }
+          if (_isT) _dmask[_py * bw + _px] = 1;
         }
       }
       _gridDebug = { bx: bx, by: by, bw: bw, bh: bh, mask: Array.from(_dmask), method: 'grid' };
