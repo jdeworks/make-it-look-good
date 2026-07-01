@@ -37,6 +37,22 @@ window.MilgProxy = (function() {
   function fetchWithProxy(url) {
     var proxies = buildProxyList();
 
+    // Same-origin (incl. the local dev server) never needs a CORS proxy. Fetch it DIRECTLY and
+    // skip the external proxy chain entirely — those public proxies can stall for tens of seconds
+    // when they're slow/down, which would otherwise time out a crawl of a purely local/same-origin
+    // site (and made the dogfood gate's SPA-crawl check flaky). Fall back to the chain only if the
+    // direct same-origin fetch unexpectedly fails.
+    var sameOrigin = false;
+    try { sameOrigin = new URL(url, location.href).origin === location.origin; } catch (e) {}
+    if (sameOrigin) {
+      // A same-origin response is authoritative — even a 404 (e.g. a missing robots.txt/sitemap.xml
+      // during crawl discovery) is a definitive answer. Do NOT fall back to the external proxy chain:
+      // those proxies can't reach localhost anyway and would just stall for tens of seconds. Reject
+      // and let the caller handle it (discovery fetches are best-effort and swallow rejections).
+      return fetch(url, { redirect: 'follow' })
+        .then(function(r) { if (!r.ok) throw new Error(r.status); return r.text(); });
+    }
+
     // If we already know which proxy works, try it first
     if (_lastWorkingProxy >= 0 && _lastWorkingProxy < proxies.length) {
       return fetch(proxies[_lastWorkingProxy] + encodeURIComponent(url))
