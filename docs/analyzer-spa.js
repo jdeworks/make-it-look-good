@@ -1,4 +1,4 @@
-// make-it-look-good — SPA View Explorer v3.11.136
+// make-it-look-good — SPA View Explorer v3.11.137
 // Runs INSIDE the analysis iframe (injected alongside MilgExtract). Discovers the
 // hidden "views" of a single-page app — reached by hash/History routes (Tier 1) or
 // by clicking nav controls (Tier 2, opt-in) — and re-runs MilgExtract on each so the
@@ -490,7 +490,12 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
             kind: 'scroll', noAnchor: false, label: p.label || 'Scrollable region', pairIndices: [], _domOrder: out.length,
             // extractedData (pairs clipped to the pane) present → verifyRegions() pixel-verifies the
             // region on the maskless grid path, incl. below-the-fold text the flat view shot clips.
-            extractedData: rgnPairs.length ? { colors: { contrastPairs: rgnPairs } } : null
+            extractedData: rgnPairs.length ? { colors: { contrastPairs: rgnPairs } } : null,
+            // This region's screenshot is captured in PAGE coordinates (unlike single-page regions,
+            // which clone into a mini-page). So its finding overlays ("normal validation boxes") come
+            // from the page's already-scored findings clipped to the pane (analyzer.js region loop),
+            // NOT from runScoring on the pairs-only extractedData above.
+            _regionFromMain: true
           });
         }, function() { try { el.style.cssText = savedCss; } catch (e) {} });
       });

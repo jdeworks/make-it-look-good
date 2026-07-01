@@ -1,8 +1,8 @@
-// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.136
+// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.137
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.136 loaded');
+console.log('[milg] analyzer.js v3.11.137 loaded');
 
 (function() {
   "use strict";
@@ -682,6 +682,33 @@ console.log('[milg] analyzer.js v3.11.136 loaded');
     // Score region sub-pages independently
     var _regionScreenshots = reportData.raw && reportData.raw.regionScreenshots || [];
     _regionScreenshots.forEach(function(rgn, ri) {
+      // SPA scroll panes are captured in PAGE coordinates (not a mini-page), and their extractedData
+      // holds only contrast pairs (for pixel-verify). Scoring that would yield contrast-only boxes.
+      // Instead synthesize the region's finding overlays ("normal validation boxes") by reusing the
+      // page's already-scored findings clipped to the pane rect — same page-coord → region-canvas
+      // mapping the overlay renderer uses (bbox*scale - cropOffset).
+      if (rgn._regionFromMain && rgn.screenshotMeta) {
+        try {
+          var _m = rgn.screenshotMeta, _sc = _m.scale || 1;
+          var _rx = (_m.cropOffsetX || 0) / _sc, _ry = (_m.cropOffsetY || 0) / _sc;
+          var _rw = (_m.canvasWidth || 0) / _sc, _rh = (_m.canvasHeight || 0) / _sc;
+          var _inRgn = function(b) {
+            if (!b) return false;
+            var cx = b.left + (b.width || 0) / 2, cy = b.top + (b.height || 0) / 2;
+            return cx >= _rx - 2 && cx <= _rx + _rw + 2 && cy >= _ry - 2 && cy <= _ry + _rh + 2;
+          };
+          var _cats = (reportData.categories || []).map(function(cat) {
+            var _fs = (cat.findings || []).map(function(f) {
+              var _bx = (f.locator && f.locator.bboxes || []).filter(_inRgn);
+              if (!_bx.length) return null;
+              return { severity: f.severity, title: f.title, detail: f.detail, category: cat.label, icon: cat.icon, locator: { bboxes: _bx } };
+            }).filter(Boolean);
+            return _fs.length ? { label: cat.label, icon: cat.icon, findings: _fs } : null;
+          }).filter(Boolean);
+          rgn.regionReport = { overall: reportData.overall, grade: reportData.grade, categories: _cats };
+        } catch (e) { console.log('[D] region ' + ri + ' from-main failed: ' + e.message); }
+        return;
+      }
       if (!rgn.extractedData) return;
       try {
         // Sanitize: force-reveal artifacts are not real layout issues

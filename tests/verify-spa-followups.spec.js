@@ -36,6 +36,9 @@ function buildFixture() {
   <section aria-label="Activity log" style="overflow:auto;height:200px;width:540px;border:1px solid #cbd5e1;border-radius:10px;padding:14px;margin:18px 0">
     <h2 style="font-size:22px;font-weight:700;margin:0 0 8px">Activity log</h2>
     ${rows}
+    <!-- deliberately-flagged elements BELOW the fold so a "normal" finding is guaranteed inside the pane -->
+    <p style="font-size:9px;color:#374151;margin:10px 0">Tiny footnote text well under the 12px minimum, placed below the scroll fold so it only exists in the full-height capture.</p>
+    <button style="font-size:11px;padding:2px 6px;margin-top:6px">x</button>
   </section>
   <h2 style="font-size:22px;font-weight:700;margin:20px 0 8px">Frequently asked</h2>
   ${details}
@@ -200,19 +203,49 @@ test('SPA views attach scroll-pane region screenshots (captureScrollRegions)', a
       .some((r) => r && r.kind === 'scroll' && r.regionVerifyResults));
   }, { timeout: 60000 }).catch(() => {});
 
+  // regionReport (the "normal validation boxes") is synthesized when a page report is RENDERED
+  // (analyzer.js region loop, via _runAnalysis) — the default view is the Summary tab, so open the
+  // first page that has a scroll region to trigger its render, then assert.
+  const idx = await page.evaluate(() => {
+    var s = MilgCrawlUI.getCrawlSession();
+    var i = (s.pages || []).findIndex((p) => ((p.rawData && p.rawData.regionScreenshots) || []).some((r) => r && r.kind === 'scroll'));
+    if (i >= 0) MilgCrawlUI.showCrawlPageContent(String(i));
+    return i;
+  });
+  expect(idx).toBeGreaterThanOrEqual(0);
+  await page.waitForFunction((pi) => {
+    var s = MilgCrawlUI.getCrawlSession();
+    var p = s.pages[pi];
+    return ((p.rawData && p.rawData.regionScreenshots) || []).some((r) => r && r.kind === 'scroll' && r.regionReport);
+  }, idx, { timeout: 30000 }).catch(() => {});
+
   const info = await page.evaluate(() => {
     var s = MilgCrawlUI.getCrawlSession();
     var scrolls = [];
     (s.pages || []).forEach((p) => {
       var regions = (p.rawData && p.rawData.regionScreenshots) || [];
-      regions.filter((r) => r && r.kind === 'scroll').forEach((r) => scrolls.push({
-        canvasHeight: r.screenshotMeta && r.screenshotMeta.canvasHeight,
-        hasShot: !!r.screenshot,
-        pairs: (r.extractedData && r.extractedData.colors && r.extractedData.colors.contrastPairs || []).length,
-        verified: (r.regionVerifyResults || []).length
-      }));
+      regions.filter((r) => r && r.kind === 'scroll').forEach((r) => {
+        var rr = r.regionReport;
+        var findingBoxes = 0;
+        ((rr && rr.categories) || []).forEach((c) => (c.findings || []).forEach((f) => {
+          if (f.locator && f.locator.bboxes && f.locator.bboxes.length) findingBoxes += f.locator.bboxes.length;
+        }));
+        scrolls.push({
+          canvasHeight: r.screenshotMeta && r.screenshotMeta.canvasHeight,
+          hasShot: !!r.screenshot,
+          pairs: (r.extractedData && r.extractedData.colors && r.extractedData.colors.contrastPairs || []).length,
+          verified: (r.regionVerifyResults || []).length,
+          hasReport: !!(rr && rr.categories),
+          findingBoxes: findingBoxes
+        });
+      });
     });
-    return { scrollRegions: scrolls.length, sample: scrolls[0] || null, anyVerified: scrolls.some((x) => x.verified > 0) };
+    return {
+      scrollRegions: scrolls.length, sample: scrolls[0] || null,
+      anyVerified: scrolls.some((x) => x.verified > 0),
+      anyReport: scrolls.some((x) => x.hasReport),
+      anyFindingBoxes: scrolls.some((x) => x.findingBoxes > 0)
+    };
   });
 
   expect(info.scrollRegions).toBeGreaterThanOrEqual(1);
@@ -223,4 +256,9 @@ test('SPA views attach scroll-pane region screenshots (captureScrollRegions)', a
   expect(info.sample.pairs).toBeGreaterThan(0);
   // …and pixel-verify actually ran on the scroll section.
   expect(info.anyVerified).toBe(true);
+  // "Normal validation boxes": the scroll region gets a regionReport synthesized from the page's
+  // findings clipped to the pane, and the fixture's below-fold sub-12px text + tiny button guarantee
+  // at least one finding overlay in the pane.
+  expect(info.anyReport).toBe(true);
+  expect(info.anyFindingBoxes).toBe(true);
 });
