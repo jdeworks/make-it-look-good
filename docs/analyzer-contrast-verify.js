@@ -953,8 +953,12 @@ window.MilgContrastVerify = (function() {
     // background-coloured (closer to the CSS bg than to the text) — never an adjacent element's
     // text/icon. The nearest-BG pairing below then uses these only where they are actually closest.
     if (bw >= 4 && bh >= 4) {
-      var EXCL_PX = EXCL_RADIUS * step;            // AA/shadow keep-out radius, in canvas px
-      var PAD = EXCL_PX + 16;                       // usable BG band beyond the dead zone
+      // Exterior keep-out is ONLY the thin AA fringe just outside a glyph (~1-2 device px), NOT the
+      // wide interior EXCL_RADIUS — using the full radius here excludes the close outside background
+      // (the whole point) and lets a far inside pixel win. Scale-aware: the fringe grows with capture
+      // resolution. (The colour filter above independently rejects any fg-leaning AA pixel.)
+      var EXT_DEAD = Math.max(2, Math.round(2 * scale));  // exterior AA keep-out, canvas px
+      var PAD = EXT_DEAD + 16;                             // sample a CLOSE ring just outside the bbox
       var padL = Math.min(PAD, bx), padT = Math.min(PAD, by);
       var padR = Math.min(PAD, sec.width - (bx + bw)), padB = Math.min(PAD, sec.height - (by + bh));
       var ex = bx - padL, ey = by - padT, ew = bw + padL + padR, eh = bh + padT + padB;
@@ -974,7 +978,7 @@ window.MilgContrastVerify = (function() {
               if (pdB >= pdF) continue; // fg-side pixel — not background
             }
             // Dead-zone guard: project to the grid, scan the local window, skip if any text pixel
-            // is within EXCL_PX (real pixel distance).
+            // is within EXT_DEAD (real pixel distance) — just the AA fringe, so close bg survives.
             var pghx = Math.max(0, Math.min(hSteps - 1, Math.round((pax - bx) * (hSteps - 1) / (bw || 1))));
             var pgvy = Math.max(0, Math.min(vSteps - 1, Math.round((pay - by) * (vSteps - 1) / (bh || 1))));
             var inDead = false;
@@ -986,7 +990,7 @@ window.MilgContrastVerify = (function() {
                 var tix = Math.min(Math.round(bw * whx / (hSteps - 1 || 1)), bw - 1);
                 var tiy = Math.min(Math.round(bh * wvy / (vSteps - 1 || 1)), bh - 1);
                 var tdx = (bx + tix) - pax, tdy = (by + tiy) - pay;
-                if (tdx * tdx + tdy * tdy <= EXCL_PX * EXCL_PX) inDead = true;
+                if (tdx * tdx + tdy * tdy <= EXT_DEAD * EXT_DEAD) inDead = true;
               }
             }
             if (inDead) continue;

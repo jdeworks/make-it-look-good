@@ -109,6 +109,17 @@ test('SPA grid path: BG compare pixels may come from OUTSIDE a text-filled bbox'
   expect(Array.isArray(bg) && bg.length > 0, 'bg sample points exist').toBe(true);
   const anyOutside = bg.some((p) => p.x < b.left || p.x >= b.left + b.width || p.y < b.top || p.y >= b.top + b.height);
   expect(anyOutside, 'at least one bg compare pixel lies outside the text-filled bbox').toBe(true);
+  // ...and the CLOSEST outside bg must sit in the near band just past the edge — an over-wide
+  // exterior dead zone (the earlier bug) pushed the nearest outside sample ~10px+ out, so close
+  // background could never win the pairing. Distance from a point to the bbox rectangle:
+  const edgeDist = (p) => {
+    const dx = Math.max(b.left - p.x, 0, p.x - (b.left + b.width - 1));
+    const dy = Math.max(b.top - p.y, 0, p.y - (b.top + b.height - 1));
+    return Math.hypot(dx, dy);
+  };
+  const outsideDists = bg.map(edgeDist).filter((d) => d > 0);
+  expect(Math.min(...outsideDists), 'closest outside bg is in the near band, not pushed far out')
+    .toBeLessThanOrEqual(8);
   // Black ink on white → high measured contrast (sanity that the outside pixels are the real bg).
   expect(out.r.pixelRatio).toBeGreaterThan(10);
 });
