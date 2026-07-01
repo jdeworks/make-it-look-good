@@ -983,6 +983,10 @@ window.MilgContrastVerify = (function() {
     var allPairRatios = [];
     var pairedFg = [], pairedFgColors = [];
     var pairedBg = [], pairedBgColors = [];
+    // Per-FG nearest-BG link (parallel to pairedFg) so each FG sample dot draws its compare
+    // line to ITS OWN paired BG pixel. pairedBg alone is deduped/reordered, so it can't be
+    // index-matched back to the FG points.
+    var fgBgPt = [], fgBgColor = [], fgPairRatio = [];
     var usedBgSet = {};
 
     fgPoints.forEach(function(fp, fi) {
@@ -995,12 +999,15 @@ window.MilgContrastVerify = (function() {
       if (nearIdx < 0) return;
       pairedFg.push(fp);
       pairedFgColors.push(clusteredFgColors[fi]);
+      fgBgPt.push(bgPoints[nearIdx]);
+      fgBgColor.push(bgColors[nearIdx]);
       if (!usedBgSet[nearIdx]) {
         usedBgSet[nearIdx] = true;
         pairedBg.push(bgPoints[nearIdx]);
         pairedBgColors.push(bgColors[nearIdx]);
       }
       var ratio = contrastRatio(clusteredFgColors[fi], bgColors[nearIdx]);
+      fgPairRatio.push(ratio);
       allPairRatios.push(ratio);
       if (ratio < worstRatio) { worstRatio = ratio; worstBg = bgColors[nearIdx]; worstBgPt = bgPoints[nearIdx]; }
       if (ratio > bestRatio) bestRatio = ratio;
@@ -1072,7 +1079,26 @@ window.MilgContrastVerify = (function() {
     var isVariableBg = bgVariance > 3.0 && bgColorSpread > 35 && bgColorSpread >= Math.max(18, fgColorSpread * 0.6);
     var isFgAaVariance = bgVariance > 3.0 && !isVariableBg && fgColorSpread > 10;
 
+    // Debug mask for the viewer's right-click none→mask→zones cycle. Grid/SPA pairs have no
+    // render-based glyph mask, so derive a per-pixel text mask from the colour-classified grid
+    // (isTextGrid, subsampled hSteps×vSteps) upsampled to the bbox's bw×bh. showDebugLayer
+    // derives the zones/boundary from this mask directly (MCV._findBoundary), so no separate
+    // zone array is needed. Size-guarded to bound memory across many SPA views.
+    var _gridDebug = null;
+    if (!unreliableSample && bw > 0 && bh > 0 && bw * bh <= 400000) {
+      var _dmask = new Uint8Array(bw * bh);
+      for (var _dy = 0; _dy < bh; _dy++) {
+        var _gvy = (vSteps <= 1) ? 0 : Math.min(vSteps - 1, Math.round((vSteps - 1) * _dy / (bh - 1 || 1)));
+        for (var _dx = 0; _dx < bw; _dx++) {
+          var _ghx = (hSteps <= 1) ? 0 : Math.min(hSteps - 1, Math.round((hSteps - 1) * _dx / (bw - 1 || 1)));
+          if (isTextGrid[_gvy * hSteps + _ghx] === 1) _dmask[_dy * bw + _dx] = 1;
+        }
+      }
+      _gridDebug = { bx: bx, by: by, bw: bw, bh: bh, mask: Array.from(_dmask), method: 'grid' };
+    }
+
     return {
+      _debug: _gridDebug,
       cssRatio: cssRatio,
       neededRatio: cssNeeded,
       pixelRatio: pixelRatio,         // P10 (10th percentile — robust against AA fringe)
@@ -1109,7 +1135,16 @@ window.MilgContrastVerify = (function() {
       sectionIdx: sectionIdx,
       sampleCount: { fg: fgPoints.length, bg: pairedBg.length },
       samplePoints: {
-        fg: fgPoints.map(function(p, i) { return { x: p.x, y: p.y, r: fgColors[i].r, g: fgColors[i].g, b: fgColors[i].b }; }),
+        fg: fgPoints.map(function(p, i) {
+          var bp = fgBgPt[i], bc = fgBgColor[i];
+          var o = { x: p.x, y: p.y, r: fgColors[i].r, g: fgColors[i].g, b: fgColors[i].b };
+          if (bp) {
+            o.bgX = bp.x; o.bgY = bp.y;
+            o.bgR = bc.r; o.bgG = bc.g; o.bgB = bc.b;
+            o.ratio = Math.round(fgPairRatio[i] * 100) / 100;
+          }
+          return o;
+        }),
         bg: pairedBg.map(function(p, i) {
           var ratio = contrastRatio(fgColor, pairedBgColors[i]);
           return { x: p.x, y: p.y, r: pairedBgColors[i].r, g: pairedBgColors[i].g, b: pairedBgColors[i].b, ratio: Math.round(ratio * 100) / 100 };
