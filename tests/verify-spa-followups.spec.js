@@ -182,7 +182,7 @@ test('SPA views attach scroll-pane region screenshots (captureScrollRegions)', a
   await page.evaluate(() => {
     function set(id, on) { var c = document.getElementById(id); if (c && !!c.checked !== on) { c.checked = on; c.dispatchEvent(new Event('change')); } }
     set('screenshotCheck', true);
-    set('pixelVerifyCheck', false);
+    set('pixelVerifyCheck', true);     // also verify the scroll section (previous ask)
     set('spaExploreCheck', true);      // SPA explorer path (not the single-page region pipeline)
     set('stateCaptureCheck', true);
     set('crawlSiteCheck', false);
@@ -193,6 +193,12 @@ test('SPA views attach scroll-pane region screenshots (captureScrollRegions)', a
     var s = window.MilgCrawlUI && MilgCrawlUI.getCrawlSession && MilgCrawlUI.getCrawlSession();
     return !!(s && s.status === 'complete');
   }, { timeout: 80000 });
+  // Wait for the queued pixel-verify to reach a scroll region.
+  await page.waitForFunction(() => {
+    var s = MilgCrawlUI.getCrawlSession();
+    return (s.pages || []).some((p) => ((p.rawData && p.rawData.regionScreenshots) || [])
+      .some((r) => r && r.kind === 'scroll' && r.regionVerifyResults));
+  }, { timeout: 60000 }).catch(() => {});
 
   const info = await page.evaluate(() => {
     var s = MilgCrawlUI.getCrawlSession();
@@ -200,14 +206,21 @@ test('SPA views attach scroll-pane region screenshots (captureScrollRegions)', a
     (s.pages || []).forEach((p) => {
       var regions = (p.rawData && p.rawData.regionScreenshots) || [];
       regions.filter((r) => r && r.kind === 'scroll').forEach((r) => scrolls.push({
-        canvasHeight: r.screenshotMeta && r.screenshotMeta.canvasHeight, hasShot: !!r.screenshot
+        canvasHeight: r.screenshotMeta && r.screenshotMeta.canvasHeight,
+        hasShot: !!r.screenshot,
+        pairs: (r.extractedData && r.extractedData.colors && r.extractedData.colors.contrastPairs || []).length,
+        verified: (r.regionVerifyResults || []).length
       }));
     });
-    return { scrollRegions: scrolls.length, sample: scrolls[0] || null };
+    return { scrollRegions: scrolls.length, sample: scrolls[0] || null, anyVerified: scrolls.some((x) => x.verified > 0) };
   });
 
   expect(info.scrollRegions).toBeGreaterThanOrEqual(1);
   expect(info.sample && info.sample.hasShot).toBe(true);
   // Full content, not the 200px visible slice.
   expect(info.sample.canvasHeight).toBeGreaterThan(200);
+  // The pane's content carries contrast pairs (reused from the view extract, clipped to the pane)…
+  expect(info.sample.pairs).toBeGreaterThan(0);
+  // …and pixel-verify actually ran on the scroll section.
+  expect(info.anyVerified).toBe(true);
 });

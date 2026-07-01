@@ -1,4 +1,4 @@
-// make-it-look-good — SPA View Explorer v3.11.135
+// make-it-look-good — SPA View Explorer v3.11.136
 // Runs INSIDE the analysis iframe (injected alongside MilgExtract). Discovers the
 // hidden "views" of a single-page app — reached by hash/History routes (Tier 1) or
 // by clicking nav controls (Tier 2, opt-in) — and re-runs MilgExtract on each so the
@@ -430,19 +430,51 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
   // pane, then restore — giving its FULL content its own region screenshot (kind:'scroll') attached
   // to the view in the same shape the single-page region pipeline emits. Skipped for 'region'
   // sub-views (their shot is already a zoomed element, so a page-coordinate anchor wouldn't map).
-  function captureScrollRegions(mainKind) {
+  function captureScrollRegions(mainKind, viewData) {
     var ms = window.modernScreenshot;
     if (!opts.capture || !ms || !ms.domToCanvas || mainKind === 'region') return Promise.resolve([]);
     var panes = (window.__milgScrollRegions || []).filter(function(p) { return p && p.el && p.el.isConnected; }).slice(0, 3);
     if (!panes.length) return Promise.resolve([]);
     var scale = opts.captureScale || 1;
+    // The view's own extract already produced contrast pairs for the pane's content at natural
+    // (scrollTop 0) layout — the same layout the full-height capture shows — so we reuse them,
+    // geometrically clipped to the pane, instead of a costly per-pane re-extract (which also
+    // timed the exploration out). Pairs carry page-coordinate bboxes; the region cropOffset maps
+    // them into the pane-relative canvas so verifyRegions() can pixel-verify below-the-fold text.
+    var allPairs = (viewData && viewData.colors && viewData.colors.contrastPairs) || [];
     var out = [];
     function filter(n) { try { return !(n && n.getAttribute && (n.getAttribute('data-milg-overlay') || n.hasAttribute('data-milg-iframe-ph'))); } catch (e) { return true; } }
     return panes.reduce(function(chain, p) {
       return chain.then(function() {
-        var el = p.el, savedCss = el.style.cssText, rect;
-        try { rect = el.getBoundingClientRect(); } catch (e) { rect = { left: 0, top: 0, width: 0, height: 0 }; }
-        try { el.style.cssText = savedCss + '; height: auto !important; max-height: none !important; overflow: visible !important;'; void el.offsetHeight; } catch (e) {}
+        var el = p.el, savedCss = el.style.cssText, rectPre;
+        // VISIBLE box + full page-coordinate content bounds, measured BEFORE the reveal (the pane's
+        // top-left is where its scrollTop-0 content — and thus the view's pairs — are anchored).
+        try { rectPre = el.getBoundingClientRect(); } catch (e) { rectPre = { left: 0, top: 0, width: 0, height: 0 }; }
+        var w = Math.round(rectPre.width || 0);
+        var padLeft = (rectPre.left || 0) + (window.scrollX || 0);
+        var padTop = (rectPre.top || 0) + (window.scrollY || 0);
+        var fullH = Math.max(el.scrollHeight || 0, Math.round(rectPre.height || 0));
+        // Clip the view's pairs to the pane's full content rect (a pair belongs to the pane if its
+        // bbox centre falls inside). Below-the-fold pairs sit past the visible bottom but within scrollHeight.
+        var rgnPairs = allPairs.filter(function(pr) {
+          var b = pr && pr.bbox; if (!b) return false;
+          var cx = b.left + (b.width || 0) / 2, cy = b.top + (b.height || 0) / 2;
+          return cx >= padLeft - 2 && cx <= padLeft + w + 2 && cy >= padTop - 2 && cy <= padTop + fullH + 2;
+        });
+        // cropOffset = pane top-left (scrollTop-0 anchor) in SCALED canvas px; the canvas origin is
+        // the pane's own box, so bbox*scale - cropOffset lands each pair in canvas space.
+        var cropOX = Math.round(padLeft * scale), cropOY = Math.round(padTop * scale);
+        // Reveal the pane's FULL content. height:auto/overflow:visible alone does NOT grow a
+        // flex-item scroller (flex-basis re-stretches it) or an absolutely-pinned shell — the pane
+        // stays at its clipped height. Neutralize the sizing constraints too: flex:none + min-height:0
+        // (defeat flex stretch) and position:static + inset/top/bottom:auto (release absolute pins),
+        // pinning width to the visible width so it doesn't shrink to content. In a column app-shell
+        // (the common case) this grows the pane DOWNWARD, leaving its top-left — and the pair anchor
+        // — stable. (The single-page region pipeline sidesteps this by cloning into a mini-page.)
+        try {
+          el.style.cssText = savedCss + '; width: ' + w + 'px !important; height: auto !important; max-height: none !important; min-height: 0 !important; overflow: visible !important; position: static !important; flex: none !important; inset: auto !important; top: auto !important; bottom: auto !important; transform: none !important;';
+          void el.offsetHeight;
+        } catch (e) {}
         return ms.domToCanvas(el, { scale: scale, timeout: 15000, filter: filter }).then(function(canvas) {
           try { el.style.cssText = savedCss; void el.offsetHeight; } catch (e) {}
           if (!canvas || !canvas.width || !canvas.height) return;
@@ -452,11 +484,13 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
             screenshotMeta: {
               scale: scale, canvasWidth: canvas.width, canvasHeight: canvas.height,
               // cropOffset in SCALED canvas px (consumers do bbox*scale - cropOffset), per analyzer-region.js.
-              cropOffsetX: Math.round(((rect.left || 0) + (window.scrollX || 0)) * scale),
-              cropOffsetY: Math.round(((rect.top || 0) + (window.scrollY || 0)) * scale), isRegion: true
+              cropOffsetX: cropOX, cropOffsetY: cropOY, isRegion: true
             },
-            containerRect: { left: Math.round(rect.left), top: Math.round(rect.top), width: Math.round(rect.width), height: Math.round(rect.height) },
-            kind: 'scroll', noAnchor: false, label: p.label || 'Scrollable region', pairIndices: [], _domOrder: out.length
+            containerRect: { left: Math.round(rectPre.left), top: Math.round(rectPre.top), width: Math.round(rectPre.width), height: Math.round(rectPre.height) },
+            kind: 'scroll', noAnchor: false, label: p.label || 'Scrollable region', pairIndices: [], _domOrder: out.length,
+            // extractedData (pairs clipped to the pane) present → verifyRegions() pixel-verifies the
+            // region on the maskless grid path, incl. below-the-fold text the flat view shot clips.
+            extractedData: rgnPairs.length ? { colors: { contrastPairs: rgnPairs } } : null
           });
         }, function() { try { el.style.cssText = savedCss; } catch (e) {} });
       });
@@ -485,7 +519,7 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
     }
     return captureTarget(target, o.kind).then(function(shot) {
       if (shot) { o.data.screenshots = [shot.uri]; o.data.screenshotMeta = shot.meta; }
-      return captureScrollRegions(o.kind).then(function(regions) {
+      return captureScrollRegions(o.kind, o.data).then(function(regions) {
         if (regions && regions.length) o.data.regionScreenshots = (o.data.regionScreenshots || []).concat(regions);
         views.push({
           stateKey: o.stateKey, kind: o.kind || 'page', regionAnchor: o.regionAnchor || null,
