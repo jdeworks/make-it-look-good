@@ -801,7 +801,11 @@ window.MilgContrastVerify = (function() {
     var step = 2;
     var hSteps = Math.max(3, Math.min(500, Math.floor(bw / step)));
     var vSteps = Math.max(3, Math.min(500, Math.floor(bh / step)));
-    var EXCL_RADIUS = 5; // pixels within this radius of text are excluded (AA/shadow zone)
+    var EXCL_RADIUS = 2; // grid cells (×step px) of AA keep-out around text before a pixel counts as
+                         // background. Was 5 (~10px) — that pushed the nearest bg comparison pixel far
+                         // from the glyphs (median ~16px) vs the edge path's tight ~2-4px ring, so grid/
+                         // SPA pairs looked nothing like the single-page ones. 2 (~4px) clears the AA
+                         // fringe while sampling bg close to the text, like the edge path.
     var FG_INNER_SQ = 10000; // 100^2 — catches AA text edges (purple at 73 dist from CSS FG)
     var FG_OUTER_SQ = 22500; // 150^2 — generous match for mask+color dual check
     // Whether this pair has ANY render-based glyph mask. SPA-explored views have none — for those
