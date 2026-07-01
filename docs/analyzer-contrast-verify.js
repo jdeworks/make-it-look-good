@@ -804,6 +804,10 @@ window.MilgContrastVerify = (function() {
     var EXCL_RADIUS = 5; // pixels within this radius of text are excluded (AA/shadow zone)
     var FG_INNER_SQ = 10000; // 100^2 — catches AA text edges (purple at 73 dist from CSS FG)
     var FG_OUTER_SQ = 22500; // 150^2 — generous match for mask+color dual check
+    // Whether this pair has ANY render-based glyph mask. SPA-explored views have none — for those
+    // we derive the glyph mask straight from the (high-fidelity) screenshot by COLOUR over the whole
+    // bbox, instead of the old center-of-bbox position guess that missed sparse/large text.
+    var _noMask = !((pair._maskBmp && pair._maskDark > 0) || pair._maskPts || maskData);
 
     // Pass 1: classify each grid point using mask or CSS distance
     // Store classification in a 2D array for efficient radius lookup
@@ -858,11 +862,11 @@ window.MilgContrastVerify = (function() {
           var mr = maskData[idx], mg = maskData[idx + 1], mb = maskData[idx + 2];
           inTextArea = (mr + mg + mb) / 3 < 220; // any non-white pixel in mask = text/AA
         } else {
-          // No mask — use position heuristic + CSS distance. Center region is more
-          // likely text, edges are more likely background. This ensures both FG and
-          // BG samples when no mask is available (fallback).
-          var relX = hx / (hSteps - 1 || 1), relY = vy / (vSteps - 1 || 1);
-          inTextArea = (relX > 0.15 && relX < 0.85 && relY > 0.15 && relY < 0.85);
+          // No render-based mask (SPA capture): classify the WHOLE bbox by colour below — the
+          // screenshot is high-fidelity, so we can find glyphs wherever they sit rather than
+          // guessing the center. (A center-only gate sampled the whitespace inside large sparse
+          // text like "28+" and read the background → a bogus ~1:1 ratio.)
+          inTextArea = true;
         }
         // Per-element mask: trust it completely (it only has THIS element's text)
         // Full-page mask or no mask: use CSS distance as classifier
@@ -877,9 +881,12 @@ window.MilgContrastVerify = (function() {
             if (cssBg) {
               var drB = r - cssBg.r, dgB = g - cssBg.g, dbB = b - cssBg.b;
               var distBg = drB * drB + dgB * dgB + dbB * dbB;
-              isText = distFg < distBg;
+              // Screenshot-derived mask (no render mask) also requires the pixel to be near enough
+              // the expected fg colour, so mid-tone/AA background pixels across the full bbox aren't
+              // mistaken for glyphs. With a render mask the spatial gate already did that job.
+              isText = (distFg < distBg) && (!_noMask || distFg < FG_OUTER_SQ);
             } else {
-              isText = true;
+              isText = !_noMask;   // no bg colour + no mask → can't safely locate glyphs; abstain
             }
           }
         } else if (inTextArea) {
