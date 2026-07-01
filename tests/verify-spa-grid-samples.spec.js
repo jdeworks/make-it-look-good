@@ -76,3 +76,39 @@ test('SPA grid path: fg samples carry their own bg pair + a debug mask', async (
       .toBeLessThanOrEqual(diag);
   }
 });
+
+test('SPA grid path: BG compare pixels may come from OUTSIDE a text-filled bbox', async ({ page }) => {
+  // When text/ink fills its whole bbox there is no background INSIDE it, so the grid sampler must
+  // reach a few px outside (dead-zone-excluded) for the compare pixel — else it finds no bg and
+  // abstains entirely. Guard: a solid black bar on white, bbox == the bar. Pre-fix the grid found
+  // zero in-bbox bg and returned null; now it samples the surrounding white and reports ~21:1 with
+  // at least one bg point beyond the bbox edge.
+  test.setTimeout(30000);
+  await page.goto(ANALYZER_URL);
+  await page.waitForFunction(() => !!(window.MilgContrastVerify && window.MilgContrastVerify.verify), { timeout: 10000 });
+
+  const out = await page.evaluate(() => new Promise((resolve) => {
+    var c = document.createElement('canvas');
+    c.width = 240; c.height = 120;
+    var ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+    ctx.fillStyle = '#000'; ctx.fillRect(60, 40, 120, 40); // solid ink fills the whole bbox
+    var uri = c.toDataURL('image/png');
+    var bbox = { left: 60, top: 40, width: 120, height: 40 };
+    var report = { raw: {
+      screenshots: [uri],
+      screenshotMeta: { scale: 1, viewportHeight: 120, cropOffsetX: 0, cropOffsetY: 0 },
+      colors: { contrastPairs: [{ bbox: bbox, fg: 'rgb(0,0,0)', bg: 'rgb(255,255,255)', ratio: 21, needed: 4.5, selector: '#bar', text: 'BAR', fontSize: 40 }] }
+    } };
+    window.MilgContrastVerify.verify(report, function(results) { resolve({ r: (results || [])[0] || null, bbox: bbox }); });
+  }));
+
+  expect(out.r, 'grid path found background outside the bbox and produced a result').not.toBeNull();
+  const b = out.bbox;
+  const bg = out.r.samplePoints && out.r.samplePoints.bg;
+  expect(Array.isArray(bg) && bg.length > 0, 'bg sample points exist').toBe(true);
+  const anyOutside = bg.some((p) => p.x < b.left || p.x >= b.left + b.width || p.y < b.top || p.y >= b.top + b.height);
+  expect(anyOutside, 'at least one bg compare pixel lies outside the text-filled bbox').toBe(true);
+  // Black ink on white → high measured contrast (sanity that the outside pixels are the real bg).
+  expect(out.r.pixelRatio).toBeGreaterThan(10);
+});

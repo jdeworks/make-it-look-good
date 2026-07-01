@@ -1,8 +1,8 @@
-// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.130
+// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.131
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.130 loaded');
+console.log('[milg] analyzer.js v3.11.131 loaded');
 
 (function() {
   "use strict";
@@ -48,7 +48,10 @@ console.log('[milg] analyzer.js v3.11.130 loaded');
       maxViews: milgClampSpa(MILG_SPA_LIMITS.maxViews),
       timeBudgetMs: milgClampSpa(MILG_SPA_LIMITS.timeBudgetSec) * 1000,
       perPageStateThreshold: milgClampSpa(MILG_SPA_LIMITS.perPageThreshold),
-      maxStatePasses: milgClampSpa(MILG_SPA_LIMITS.maxStatePasses)
+      maxStatePasses: milgClampSpa(MILG_SPA_LIMITS.maxStatePasses),
+      // SPA-view screenshot resolution for pixel-verify. Default 1× (fast/light, cleaner on AA
+      // small text); users can pick 2× (sharper glyph masks) from the #spaCaptureScale dropdown.
+      captureScale: (function() { var el = document.getElementById('spaCaptureScale'); var v = el ? parseInt(el.value, 10) : 1; return v === 2 ? 2 : 1; })()
     };
   };
   // Show the limits panel only when an SPA/state pass is enabled; on local, raise the input `max`
@@ -1335,7 +1338,7 @@ console.log('[milg] analyzer.js v3.11.130 loaded');
             showProgress(70, 'Exploring SPA views...');
             updateFocusModal('Exploring SPA views');
             var _spaTune = window.__milgReadSpaTuning ? window.__milgReadSpaTuning() : {};
-            MilgIframe.analyzeSpaViews(html, { url: url, exploreClicks: _wantClicks, maxViews: _spaTune.maxViews || 20, timeBudgetMs: _spaTune.timeBudgetMs, perPageStateThreshold: _spaTune.perPageStateThreshold, maxStatePasses: _spaTune.maxStatePasses, screenshots: wantShots, stateCapture: !!(_stateToggle && _stateToggle.checked), stateThreshold: _STATE_THRESHOLD }, function(r) {
+            MilgIframe.analyzeSpaViews(html, { url: url, exploreClicks: _wantClicks, maxViews: _spaTune.maxViews || 20, timeBudgetMs: _spaTune.timeBudgetMs, perPageStateThreshold: _spaTune.perPageStateThreshold, maxStatePasses: _spaTune.maxStatePasses, captureScale: _spaTune.captureScale, screenshots: wantShots, stateCapture: !!(_stateToggle && _stateToggle.checked), stateThreshold: _STATE_THRESHOLD }, function(r) {
               analyzeUrlBtn.disabled = false;
               analyzeUrlBtn.innerHTML = _analyzeUrlIcon;
               hideFocusModal();

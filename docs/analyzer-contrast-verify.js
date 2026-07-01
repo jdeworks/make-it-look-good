@@ -946,6 +946,58 @@ window.MilgContrastVerify = (function() {
       bgPoints.push({ x: p.absX, y: p.absY });
     }
 
+    // Pass 2b: also allow BG comparison pixels from just OUTSIDE the bbox. Text frequently reaches
+    // the edge of its own box, so the truest local background sits a few px beyond it (this is what
+    // the edge path already does — it samples a ring outside the glyph). Sample a padding ring and
+    // keep pixels that are (a) clear of the AA/shadow dead zone around any text pixel and (b)
+    // background-coloured (closer to the CSS bg than to the text) — never an adjacent element's
+    // text/icon. The nearest-BG pairing below then uses these only where they are actually closest.
+    if (bw >= 4 && bh >= 4) {
+      var EXCL_PX = EXCL_RADIUS * step;            // AA/shadow keep-out radius, in canvas px
+      var PAD = EXCL_PX + 16;                       // usable BG band beyond the dead zone
+      var padL = Math.min(PAD, bx), padT = Math.min(PAD, by);
+      var padR = Math.min(PAD, sec.width - (bx + bw)), padB = Math.min(PAD, sec.height - (by + bh));
+      var ex = bx - padL, ey = by - padT, ew = bw + padL + padR, eh = bh + padT + padB;
+      var expData = null;
+      if (ew > bw || eh > bh) { try { expData = sec.ctx.getImageData(ex, ey, ew, eh).data; } catch (e) { expData = null; } }
+      if (expData) {
+        var padStep = Math.max(step, 3), padAdded = 0, PAD_CAP = 600;
+        for (var epy = 0; epy < eh && padAdded < PAD_CAP; epy += padStep) {
+          for (var epx = 0; epx < ew && padAdded < PAD_CAP; epx += padStep) {
+            var pax = ex + epx, pay = ey + epy;
+            if (pax >= bx && pax < bx + bw && pay >= by && pay < by + bh) continue; // inside → pass 2 handled it
+            var epi = (epy * ew + epx) * 4;
+            var per = expData[epi], peg = expData[epi + 1], peb = expData[epi + 2];
+            if (cssBg) {
+              var pdF = (per - expectedFg.r) * (per - expectedFg.r) + (peg - expectedFg.g) * (peg - expectedFg.g) + (peb - expectedFg.b) * (peb - expectedFg.b);
+              var pdB = (per - cssBg.r) * (per - cssBg.r) + (peg - cssBg.g) * (peg - cssBg.g) + (peb - cssBg.b) * (peb - cssBg.b);
+              if (pdB >= pdF) continue; // fg-side pixel — not background
+            }
+            // Dead-zone guard: project to the grid, scan the local window, skip if any text pixel
+            // is within EXCL_PX (real pixel distance).
+            var pghx = Math.max(0, Math.min(hSteps - 1, Math.round((pax - bx) * (hSteps - 1) / (bw || 1))));
+            var pgvy = Math.max(0, Math.min(vSteps - 1, Math.round((pay - by) * (vSteps - 1) / (bh || 1))));
+            var inDead = false;
+            for (var wy = -EXCL_RADIUS; wy <= EXCL_RADIUS && !inDead; wy++) {
+              var wvy = pgvy + wy; if (wvy < 0 || wvy >= vSteps) continue;
+              for (var wx = -EXCL_RADIUS; wx <= EXCL_RADIUS && !inDead; wx++) {
+                var whx = pghx + wx; if (whx < 0 || whx >= hSteps) continue;
+                if (isTextGrid[wvy * hSteps + whx] !== 1) continue;
+                var tix = Math.min(Math.round(bw * whx / (hSteps - 1 || 1)), bw - 1);
+                var tiy = Math.min(Math.round(bh * wvy / (vSteps - 1 || 1)), bh - 1);
+                var tdx = (bx + tix) - pax, tdy = (by + tiy) - pay;
+                if (tdx * tdx + tdy * tdy <= EXCL_PX * EXCL_PX) inDead = true;
+              }
+            }
+            if (inDead) continue;
+            bgColors.push({ r: per, g: peg, b: peb });
+            bgPoints.push({ x: pax, y: pay });
+            padAdded++;
+          }
+        }
+      }
+    }
+
     if (fgColors.length === 0 || bgColors.length === 0) {
       return null;
     }
