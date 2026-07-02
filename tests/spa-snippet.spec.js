@@ -12,13 +12,7 @@
 const { test, expect } = require('@playwright/test');
 const BASE = 'http://localhost:8384';
 
-test('console snippet explores SPA views and emits a crawl payload', async ({ page, context }) => {
-  test.setTimeout(90000);
-  // Avoid the clipboard-failure → file-download fallback in headless.
-  try { await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: BASE }); } catch (e) {}
-
-  // 1) Assemble the PLAIN snippet (screenshots off → no lib wait, fast + deterministic) with
-  //    "Explore SPA views" on, so the copy-time prefix sets window.__milgSpaExplore.
+async function buildPlainSpaSnippet(page) {
   await page.goto(`${BASE}/analyzer.html`);
   await page.click('[data-tab="tabSnippet"]');
   await page.evaluate(() => {
@@ -30,7 +24,16 @@ test('console snippet explores SPA views and emits a crawl payload', async ({ pa
     const c = document.getElementById('snippetCode'); const t = (c && c.textContent) || '';
     return t.indexOf('window.__milgSpaExplore=true') >= 0 && t.indexOf('_milgRunSpaExplore') >= 0 && t.indexOf('window.MilgSpaMap') >= 0;
   }, { timeout: 20000 });
-  const snippet = await page.evaluate(() => (document.getElementById('snippetCode') || {}).textContent);
+  return page.evaluate(() => (document.getElementById('snippetCode') || {}).textContent);
+}
+
+test('console snippet explores SPA views and emits a crawl payload', async ({ page, context }) => {
+  test.setTimeout(90000);
+  try { await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: BASE }); } catch (e) {}
+
+  // 1) Assemble the PLAIN snippet (screenshots off → no lib wait, fast + deterministic) with
+  //    "Explore SPA views" on, so the copy-time prefix sets window.__milgSpaExplore.
+  const snippet = await buildPlainSpaSnippet(page);
 
   // 2) Run the snippet in the live fixture SPA (page.evaluate runs in an isolated world,
   //    bypassing page CSP — exactly like pasting into the console).
@@ -58,6 +61,25 @@ test('console snippet explores SPA views and emits a crawl payload', async ({ pa
     expect(typeof r.data.meta.title).toBe('string');
     expect(r.data.meta.title.length).toBeGreaterThan(0);
   }
+});
+
+test('SPA exploration reports target page script errors without failing the crawl', async ({ page, context }) => {
+  test.setTimeout(90000);
+  try { await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: BASE }); } catch (e) {}
+
+  const snippet = await buildPlainSpaSnippet(page);
+  await page.goto(`${BASE}/tests/fixtures/spa-page-errors.html`);
+  await page.evaluate((code) => { (0, eval)(code); }, snippet);
+
+  await page.waitForFunction(() => !!window.__milgCrawlJson, { timeout: 60000 });
+  const payload = await page.evaluate(() => JSON.parse(window.__milgCrawlJson));
+  const provenance = payload._spaProvenance;
+
+  expect(payload._milgCrawl).toBe(true);
+  expect(payload.results.length).toBeGreaterThanOrEqual(2);
+  expect(provenance.notes.some((n) => /Target page script error after clicking/.test(n) && /header is not defined/.test(n))).toBe(true);
+  expect(provenance.clicked.some((c) => Array.isArray(c.pageErrors) && c.pageErrors.some((e) => /header is not defined/.test(e)))).toBe(true);
+  expect(provenance.skipped.some((s) => s.reason === 'locale-control' && /language/i.test(s.label))).toBe(true);
 });
 
 // Settings parity: every analyzer option that has a snippet counterpart must actually be

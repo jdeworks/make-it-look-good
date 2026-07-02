@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SPA Page Script Errors</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, sans-serif; color: #172033; background: #f7fafc; }
+  header { display: flex; align-items: center; gap: 10px; padding: 16px 20px; background: #ffffff; border-bottom: 1px solid #d9e2ec; }
+  h1 { margin: 0 18px 0 0; font-size: 18px; }
+  button { min-height: 40px; padding: 8px 14px; border: 1px solid #bcccdc; border-radius: 8px; background: #ffffff; color: #172033; font: inherit; cursor: pointer; }
+  button.active { background: #2563eb; border-color: #2563eb; color: #ffffff; }
+  main { padding: 26px 20px; min-height: 70vh; }
+  .view { display: none; max-width: 720px; }
+  .view.active { display: block; }
+  .panel { margin-top: 18px; padding: 18px; border: 1px solid #d9e2ec; border-radius: 10px; background: #ffffff; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Broken Shell</h1>
+  <nav id="nav" aria-label="Primary">
+    <button data-view="home" class="active">Home</button>
+    <button data-view="details">Details</button>
+    <button data-view="contact">Contact</button>
+  </nav>
+  <button class="language-toggle" data-lang="de" aria-label="Select language">Language</button>
+</header>
+<main>
+  <section class="view active" id="view-home">
+    <h2>Home view</h2>
+    <p>The root state has stable content. The explorer should find the other views by clicking the nav.</p>
+    <div class="panel">Initial dashboard summary with useful page content.</div>
+  </section>
+  <section class="view" id="view-details">
+    <h2>Details view</h2>
+    <p>This view changes the visible DOM before the page-level click listener throws an exception.</p>
+    <div class="panel">Detailed operational metrics and review notes.</div>
+  </section>
+  <section class="view" id="view-contact">
+    <h2>Contact view</h2>
+    <p>This second view proves the explorer continues after target-page script errors.</p>
+    <div class="panel">Contact the team at hello@example.test.</div>
+  </section>
+</main>
+<script>
+  (function () {
+    var nav = document.getElementById('nav');
+    var views = { home: 'view-home', details: 'view-details', contact: 'view-contact' };
+    nav.addEventListener('click', function (e) {
+      var btn = e.target.closest('button[data-view]');
+      if (!btn) return;
+      Object.keys(views).forEach(function (k) { document.getElementById(views[k]).classList.remove('active'); });
+      nav.querySelectorAll('button').forEach(function (b) { b.classList.remove('active'); });
+      document.getElementById(views[btn.getAttribute('data-view')]).classList.add('active');
+      btn.classList.add('active');
+    });
+
+    document.addEventListener('click', function (e) {
+      if (!header.contains(e.target)) {
+        document.body.classList.remove('menu-open');
+      }
+    });
+  })();
+</script>
+</body>
+</html>

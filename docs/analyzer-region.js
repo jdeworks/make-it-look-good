@@ -572,6 +572,9 @@ window.MilgRegion = (function() {
       }
       function _materialStyleDiff(prop, src, mini, srcSnap, miniRect) {
         if (src === mini) return false;
+        // Region screenshots intentionally force transforms off so hidden carousel/slider
+        // content can be revealed. Re-applying the live transform here re-clips tracks.
+        if (prop === 'transform' || prop === 'transformOrigin') return false;
         if ((prop === 'display' && src === 'none') || (prop === 'visibility' && src === 'hidden') || (prop === 'opacity' && parseFloat(src) < 0.1)) return false;
         if ((prop === 'width' || prop === 'height') && srcSnap && srcSnap.rect) {
           var srcDim = prop === 'width' ? srcSnap.rect.width : srcSnap.rect.height;

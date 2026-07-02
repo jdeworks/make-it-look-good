@@ -375,13 +375,14 @@ test.describe('Screenshot Pipeline', () => {
   // and an <a href="#n"> to exercise URL filtering. Analyzed via real URL mode
   // (faithful rendering + real fetch/preload path) instead of paste-HTML srcdoc.
   const CAROUSEL_URL = `${BASE_URL}/tests/fixtures/carousel.html`;
+  const MOVING_CAROUSEL_URL = `${BASE_URL}/tests/fixtures/carousel-moving.html`;
 
-  async function analyzeWithScreenshots(page) {
+  async function analyzeWithScreenshots(page, url = CAROUSEL_URL) {
     await page.goto(ANALYZER_URL);
     // Enable screenshot checkbox (checked by default, but be explicit)
     await page.check('#screenshotCheck');
     await page.click('[data-tab="tabUrl"]');
-    await page.fill('#urlInput', CAROUSEL_URL);
+    await page.fill('#urlInput', url);
     await page.click('#analyzeUrlBtn');
     await page.waitForSelector('.report-container.visible', { timeout: 90000 });
   }
@@ -411,6 +412,38 @@ test.describe('Screenshot Pipeline', () => {
     // Verify no %23 (encoded #) fetch errors
     const hashError = consoleLogs.find(l => l.includes('%23') && (l.includes('ERR_FAILED') || l.includes('404')));
     expect(hashError).toBeFalsy();
+  });
+
+  test('moving carousel region capture freezes transforms and reveals all slides', async ({ page }) => {
+    test.setTimeout(120000);
+    await analyzeWithScreenshots(page, MOVING_CAROUSEL_URL);
+
+    const regionInfo = await page.evaluate(() => {
+      const raw = window.__milgLastReport && window.__milgLastReport.raw;
+      const regions = raw && raw.regionScreenshots ? raw.regionScreenshots : [];
+      return regions.map((r) => {
+        const text = r.extractedData && r.extractedData.colors
+          ? (r.extractedData.colors.contrastPairs || []).map((p) => p.text || '').join(' ')
+          : '';
+        return {
+          kind: r.kind,
+          hasScreenshot: !!r.screenshot,
+          w: r.screenshotMeta && r.screenshotMeta.canvasWidth,
+          h: r.screenshotMeta && r.screenshotMeta.canvasHeight,
+          text,
+        };
+      });
+    });
+
+    const carouselRegion = regionInfo.find((r) =>
+      r.hasScreenshot &&
+      /Slide One Heading/.test(r.text) &&
+      /Slide Two Heading/.test(r.text) &&
+      /Slide Three Heading/.test(r.text)
+    );
+    expect(carouselRegion).toBeTruthy();
+    expect(carouselRegion.w).toBeGreaterThan(900);
+    expect(carouselRegion.h).toBeGreaterThan(150);
   });
 
   test('viewer shows region sections below main screenshot for carousel content', async ({ page }) => {

@@ -210,7 +210,15 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
     if (/\b(submit|delete|remove|destroy|trash|logout|log ?out|sign ?out|pay|buy|checkout|purchase)\b/.test(t)) return 'destructive';
     // Social / auth / subscription controls: clicking can launch OAuth popups or off-site
     // flows even when the control is a plain <div>/<button> with no href — label-gated.
-    if (/\b(share|tweet|connect|oauth|sign ?in|sign ?up|log ?in|subscribe|follow)\b/.test(t)) return 'social-auth';
+    if (/\b(share|tweet|connect|oauth|sign ?in|sign ?up|log ?in|subscribe|follow|account|profile)\b/.test(t)) return 'social-auth';
+    // Global page/app state controls are not "views" for the design crawl. Skip them before
+    // clicking so locale/theme/app-launch controls do not create noisy states or trigger app code.
+    var attrs = '';
+    try { attrs = [el.id || '', el.getAttribute('class') || '', el.getAttribute('aria-label') || '', el.getAttribute('title') || '', el.getAttribute('data-lang') || '', el.getAttribute('lang') || ''].join(' ').toLowerCase(); } catch (e) {}
+    if (themeHint(el)) return 'theme-toggle';
+    if (/\b(language|locale|select language|change language|preferred language)\b/.test(t + ' ' + attrs)) return 'locale-control';
+    if (/^(en|de|fr|es|it|pt|nl|pl|sv|no|da|fi|cs|ja|ko|zh|ar|tr|uk|ro)$/i.test((el.getAttribute('data-lang') || '').trim())) return 'locale-control';
+    if (/\b(open app|launch app|go to app)\b/.test(t)) return 'app-launch';
     var type = (el.getAttribute('type') || '').toLowerCase();
     if (el.tagName === 'BUTTON' && type === 'submit') return 'submit';
     if (el.tagName === 'INPUT' && (type === 'submit' || type === 'reset' || type === 'file')) return 'input';
@@ -333,17 +341,36 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
   function clickAndSettle(el) {
     return new Promise(function(resolve) {
       var mutated = [], last = nowMs(), start = last, done = false, obs = null;
+      var pageErrors = [];
       var quietMs = opts.settleMs || 250, maxMs = opts.settleMaxMs || 1500;
+      function summarizePageError(e) {
+        try {
+          if (!e) return 'unknown error';
+          var msg = e.message || (e.reason && (e.reason.message || String(e.reason))) || String(e.error || e);
+          var src = e.filename ? (' @ ' + e.filename.replace(location.origin, '') + (e.lineno ? ':' + e.lineno : '')) : '';
+          return String(msg || 'unknown error').substring(0, 220) + src;
+        } catch (_e) { return 'unknown error'; }
+      }
+      function onError(e) { pageErrors.push(summarizePageError(e)); }
+      function onRejection(e) { pageErrors.push(summarizePageError(e)); }
+      try {
+        window.addEventListener('error', onError, true);
+        window.addEventListener('unhandledrejection', onRejection, true);
+      } catch (e) {}
+      function cleanup() {
+        try { window.removeEventListener('error', onError, true); } catch (e) {}
+        try { window.removeEventListener('unhandledrejection', onRejection, true); } catch (e) {}
+      }
       try {
         obs = new MutationObserver(function(muts) { last = nowMs(); for (var i = 0; i < muts.length; i++) { var t = muts[i].target; if (t) mutated.push(t.nodeType === 1 ? t : t.parentNode); } });
         obs.observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true });
       } catch (e) {}
       var before = domSignature(), beforeText = textSig(), beforeTheme = themeKey();
-      try { el.click(); } catch (e) { if (obs) obs.disconnect(); resolve({ error: true }); return; }
+      try { el.click(); } catch (e) { pageErrors.push(summarizePageError(e)); if (obs) obs.disconnect(); cleanup(); resolve({ error: true, pageErrors: pageErrors }); return; }
       (function tick() {
         if (done) return;
         var t = nowMs();
-        if (t - last >= quietMs || t - start >= maxMs) { done = true; if (obs) obs.disconnect(); resolve({ before: before, after: domSignature(), mutated: mutated, beforeText: beforeText, afterText: textSig(), beforeTheme: beforeTheme, afterTheme: themeKey() }); return; }
+        if (t - last >= quietMs || t - start >= maxMs) { done = true; if (obs) obs.disconnect(); cleanup(); resolve({ before: before, after: domSignature(), mutated: mutated, beforeText: beforeText, afterText: textSig(), beforeTheme: beforeTheme, afterTheme: themeKey(), pageErrors: pageErrors }); return; }
         setTimeout(tick, 50);
       })();
     });
@@ -785,6 +812,7 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
   // full-view PAGE or a bounded REGION, keys it deterministically, and dedups by content.
   function clickLoop() {
     var triedKeys = {}, everSeen = {}, guard = 0;
+    var pageErrorNotes = {};
     // Aggressive (non-semantic) clicks are budgeted per from-state so a pointer-heavy page
     // can't blow the whole exploration on speculative div clicks.
     var aggCountByState = {}, AGG_BUDGET = 12;
@@ -803,6 +831,17 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
     function candParentDepth(c) {
       var du = discoveredUnder[candKey(c)];
       return (du != null && depthByKey[du] != null) ? depthByKey[du] : -1;
+    }
+    function recordPageErrors(label, res) {
+      if (!res || !res.pageErrors || !res.pageErrors.length) return;
+      for (var i = 0; i < res.pageErrors.length; i++) {
+        var msg = res.pageErrors[i] || 'unknown error';
+        var key = label + '|' + msg;
+        if (!pageErrorNotes[key]) {
+          pageErrorNotes[key] = 1;
+          notes.push('Target page script error after clicking "' + label + '": ' + msg);
+        }
+      }
     }
     function step() {
       if (capExceeded() || guard++ > 200) { if (guard > 200) notes.push('exploration guard limit'); return; }
@@ -863,10 +902,14 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
       var aggClick = nextAgg;                                    // provenance + click-to-revert
       var fromNodeId = currentNodeId, fromStateKey = currentStateKey;
       return clickAndSettle(trigger).then(function(res) {
-        if (!res || res.error) { skipped.push({ label: label, reason: 'click-error' }); return step(); }
+        recordPageErrors(label, res);
+        if (!res || res.error) { skipped.push({ label: label, reason: (res && res.pageErrors && res.pageErrors.length) ? 'page-script-error' : 'click-error', pageErrors: (res && res.pageErrors) || [] }); return step(); }
         var changed = res.after !== res.before;
-        clicked.push({ label: label, changed: changed });
-        if (!changed) { recordEdge(currentNodeId, descriptor, label, currentNodeId, 'no-op', false); return step(); }
+        clicked.push({ label: label, changed: changed, pageErrors: res.pageErrors || [] });
+        if (!changed) {
+          if (res.pageErrors && res.pageErrors.length) skipped.push({ label: label, reason: 'page-script-error', pageErrors: res.pageErrors });
+          recordEdge(currentNodeId, descriptor, label, currentNodeId, 'no-op', false); return step();
+        }
         // Appearance/theme toggle (dark↔light, etc.) — a re-skin, not a view. Skip it when
         // the visible text is unchanged AND/OR a root theme attribute flipped (two signals,
         // a label/icon hint corroborates). Then click it again to RESTORE the default

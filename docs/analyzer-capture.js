@@ -277,6 +277,37 @@ window.MilgCapture = (function() {
       // the user for the WHOLE capture without being baked into screenshots/masks.
       function _msFilter(n) { return !(n && n.getAttribute && n.getAttribute("data-milg-overlay")); }
 
+      function _ensureMotionFreezeStyle() {
+        var id = "milg-motion-freeze-style";
+        if (document.getElementById(id)) return;
+        var st = document.createElement("style");
+        st.id = id;
+        st.textContent =
+          "[data-milg-freeze-transform]{transform:var(--milg-frozen-transform, none) !important;transition:none !important;animation:none !important;}" +
+          "[data-milg-transform-none]{transform:none !important;transition:none !important;animation:none !important;}";
+        document.head.appendChild(st);
+      }
+
+      // Carousels/sliders often move via setInterval while domToCanvas is cloning the DOM.
+      // Freeze the current transform for the clean screenshot; expanded capture can then
+      // explicitly force selected tracks to transform:none without a timer racing it.
+      function _freezeCurrentTransforms() {
+        try {
+          _ensureMotionFreezeStyle();
+          var n = 0;
+          document.querySelectorAll("*").forEach(function(el) {
+            var cs = getComputedStyle(el);
+            var tr = cs.transform || "";
+            var moving = (tr && tr !== "none") || (cs.transitionProperty && cs.transitionProperty.indexOf("transform") !== -1) || (cs.animationName && cs.animationName !== "none");
+            if (!moving) return;
+            el.style.setProperty("--milg-frozen-transform", tr && tr !== "none" ? tr : "none");
+            el.setAttribute("data-milg-freeze-transform", "1");
+            n++;
+          });
+          if (n) console.log("[iframe-ss] Frozen " + n + " transform/animated element(s) for capture");
+        } catch (e) {}
+      }
+
       function _escapeCssString(s) {
         return String(s || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, " ");
       }
@@ -540,6 +571,8 @@ window.MilgCapture = (function() {
               if (_ifrPh) console.log("[iframe-ss] " + _ifrPh + " inaccessible iframe(s) → placeholder overlay in screenshot");
             } catch (e) {}
             _injectPlaceholderCaptureStyles(document);
+            _freezeCurrentTransforms();
+            void document.body.offsetHeight;
             // Phase A: Clean screenshot (page as-rendered, before overflow expansion)
             _prog("Rendering screenshot (0s)…");
             console.log("[iframe-ss] Capturing clean screenshot at " + _sc + "x...");
@@ -599,7 +632,13 @@ window.MilgCapture = (function() {
                     });
                     if (transEls.length === 0) return;
                     container.style.cssText += ";overflow:visible !important;";
-                    transEls.forEach(function(el) { el.style.cssText += ";transform:none !important;"; });
+                    transEls.forEach(function(el) {
+                      el.setAttribute("data-milg-transform-none", "1");
+                      el.removeAttribute("data-milg-freeze-transform");
+                      el.style.setProperty("transform", "none", "important");
+                      el.style.setProperty("transition", "none", "important");
+                      el.style.setProperty("animation", "none", "important");
+                    });
                     _expanded++;
                   });
                   if (_expanded > 0) console.log("[iframe-ss] Expanded " + _expanded + " overflow:hidden containers with transformed descendants");
