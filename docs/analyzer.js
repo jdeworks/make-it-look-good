@@ -1,8 +1,8 @@
-// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.150
+// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.151
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.150 loaded');
+console.log('[milg] analyzer.js v3.11.151 loaded');
 
 (function() {
   "use strict";
@@ -1087,7 +1087,7 @@ console.log('[milg] analyzer.js v3.11.150 loaded');
     var _embeddedLibCache = null;
     function _getEmbeddedLib(cb) {
       if (_embeddedLibCache) { cb(_embeddedLibCache); return; }
-      fetch(EMBED_LIB_URL + '?v=3.11.150')
+      fetch(EMBED_LIB_URL + '?v=3.11.151')
         .then(function(r) { return r.ok ? r.text() : ''; })
         .then(function(t) {
           if (t && t.indexOf('modernScreenshot') !== -1) { _embeddedLibCache = t; cb(t); }
@@ -1675,12 +1675,25 @@ console.log('[milg] analyzer.js v3.11.150 loaded');
       el.style.display = el.style.display === 'none' ? 'block' : 'none';
     });
 
-    // Help modal
+    // Help modal — Esc to close + focus management, matching the settings help modal.
+    function closeHelpModal() {
+      var m = document.getElementById('helpModal');
+      m.style.display = 'none';
+      var b = document.getElementById('helpBtn');
+      if (b) b.focus();
+    }
+    window.__milgCloseHelpModal = closeHelpModal;
     document.getElementById('helpBtn').addEventListener('click', function() {
-      document.getElementById('helpModal').style.display = '';
+      var m = document.getElementById('helpModal');
+      m.style.display = '';
+      var c = m.querySelector('button[aria-label="Close"]');
+      if (c) c.focus();
     });
     document.getElementById('helpModal').addEventListener('click', function(e) {
-      if (e.target === this) this.style.display = 'none';
+      if (e.target === this) closeHelpModal();
+    });
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') { var m = document.getElementById('helpModal'); if (m && m.style.display !== 'none') closeHelpModal(); }
     });
 
     // New analysis

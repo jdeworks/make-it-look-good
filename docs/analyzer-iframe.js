@@ -24,6 +24,18 @@ window.MilgIframe = (function() {
   // '{"captureScale":2}' (shallow-merges into spaOpts before the iframe run — no rebuild).
   var SPA_CAPTURE_SCALE = 1;
 
+  // The sandboxed capture iframe below has `allow-same-origin`, so its injected sandbox
+  // script (buildSandboxScript) can reach `window.parent` and overwrites OUR OWN
+  // window.postMessage with a filtering wrapper (only forwards {type:"milg-*"} messages —
+  // see buildSandboxScript). That mutation lands on this real top-level Window object and
+  // outlives the iframe's removal, permanently breaking anything else that self-targets
+  // window.postMessage afterward (e.g. JSZip's setImmediate polyfill, which hangs forever
+  // waiting for a plain-string message that the filter now silently drops — this is what
+  // made the LLM pack export hang after any URL/screenshot analysis). Snapshot the native
+  // postMessage once and restore it whenever a capture iframe finishes.
+  var _nativePostMessage = window.postMessage.bind(window);
+  function _restoreNativePostMessage() { window.postMessage = _nativePostMessage; }
+
   function init(opts) {
     if (opts.screenshotCDN) _screenshotCDN = opts.screenshotCDN;
     if (opts.proxyUrl) _proxyUrl = opts.proxyUrl;
@@ -560,6 +572,7 @@ window.MilgIframe = (function() {
       handled = true;
       window.removeEventListener('message', onMsg);
       if (iframe.parentNode) document.body.removeChild(iframe);
+      _restoreNativePostMessage();
       callback(data);
     }
 
@@ -742,6 +755,7 @@ window.MilgIframe = (function() {
       handled = true;
       window.removeEventListener('message', onMsg);
       if (iframe.parentNode) document.body.removeChild(iframe);
+      _restoreNativePostMessage();
       callback(result);
     }
     function onMsg(e) {
