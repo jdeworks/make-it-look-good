@@ -353,8 +353,14 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
           return String(msg || 'unknown error').substring(0, 220) + src;
         } catch (_e) { return 'unknown error'; }
       }
-      function onError(e) { pageErrors.push(summarizePageError(e)); }
-      function onRejection(e) { pageErrors.push(summarizePageError(e)); }
+      function onError(e) {
+        pageErrors.push(summarizePageError(e));
+        try { if (e && e.preventDefault) e.preventDefault(); } catch (_e) {}
+      }
+      function onRejection(e) {
+        pageErrors.push(summarizePageError(e));
+        try { if (e && e.preventDefault) e.preventDefault(); } catch (_e) {}
+      }
       try {
         window.addEventListener('error', onError, true);
         window.addEventListener('unhandledrejection', onRejection, true);

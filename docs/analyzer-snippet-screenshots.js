@@ -547,12 +547,21 @@
     var _fullKB = data.screenshotFull ? Math.round(data.screenshotFull.length / 1024) : 0;
     var _cleanKB = data.screenshotClean ? Math.round(data.screenshotClean.length / 1024) : 0;
     var _regN = (data.regionScreenshots || []).length;
-    console.log('%c[milg] Copied payload — screenshots:' + _ssN
-      + ', full:' + (_fullKB ? _fullKB + 'KB' : 'MISSING')
-      + ', clean:' + (_cleanKB ? _cleanKB + 'KB' : 'MISSING')
-      + ', regions:' + _regN
-      + ', total:' + jsonKB + 'KB. Access via window.__milgData_json',
-      data.screenshotFull ? 'color:#16a34a;font-weight:bold' : 'color:#b45309;font-weight:bold');
+    if (window.__milgCrawlSite) {
+      console.log('%c[milg] Baseline page captured for crawl — screenshots:' + _ssN
+        + ', full:' + (_fullKB ? _fullKB + 'KB' : 'MISSING')
+        + ', clean:' + (_cleanKB ? _cleanKB + 'KB' : 'MISSING')
+        + ', regions:' + _regN
+        + '. Waiting for final crawl payload...',
+        data.screenshotFull ? 'color:#16a34a;font-weight:bold' : 'color:#b45309;font-weight:bold');
+    } else {
+      console.log('%c[milg] Copied payload — screenshots:' + _ssN
+        + ', full:' + (_fullKB ? _fullKB + 'KB' : 'MISSING')
+        + ', clean:' + (_cleanKB ? _cleanKB + 'KB' : 'MISSING')
+        + ', regions:' + _regN
+        + ', total:' + jsonKB + 'KB. Access via window.__milgData_json',
+        data.screenshotFull ? 'color:#16a34a;font-weight:bold' : 'color:#b45309;font-weight:bold');
+    }
     if (!data.screenshotFull) {
       var _se = data.screenshotError || (data.screenshotMeta && data.screenshotMeta.screenshotError) || null;
       if (_se) {
@@ -570,7 +579,8 @@
       if (_synErr) console.log('[milg] screenshot fallback detail:', _synErr);
     }
     window.__milgData = data;
-    window.__milgData_json = json;
+    if (window.__milgCrawlSite) window.__milgData_json = null;
+    else window.__milgData_json = json;
 
     // In crawl mode, skip the copy overlay — crawl has its own UI
     if (window.__milgCrawlSite) {
