@@ -1,8 +1,8 @@
-// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.145
+// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.148
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.145 loaded');
+console.log('[milg] analyzer.js v3.11.148 loaded');
 
 (function() {
   "use strict";
@@ -1087,7 +1087,7 @@ console.log('[milg] analyzer.js v3.11.145 loaded');
     var _embeddedLibCache = null;
     function _getEmbeddedLib(cb) {
       if (_embeddedLibCache) { cb(_embeddedLibCache); return; }
-      fetch(EMBED_LIB_URL + '?v=3.11.145')
+      fetch(EMBED_LIB_URL + '?v=3.11.148')
         .then(function(r) { return r.ok ? r.text() : ''; })
         .then(function(t) {
           if (t && t.indexOf('modernScreenshot') !== -1) { _embeddedLibCache = t; cb(t); }
@@ -1793,25 +1793,51 @@ console.log('[milg] analyzer.js v3.11.145 loaded');
     });
 
     // LLM pack (.zip) — structured agent bundle: per-category finding docs + agent
-    // prompt + guidelines + clean screenshot. JSZip is loaded from CDN on first use
-    // (with a fetch+eval fallback for CSP). See README "Third-party libraries".
+    // prompt + guidelines + clean screenshot. JSZip loads same-origin from the
+    // committed docs/lib/ copy first (like modern-screenshot — see EMBED_LIB_URL
+    // above), falling back to the CDN only if that 404s. Every attempt is
+    // timeout-guarded: a script tag that's silently dropped by a firewall/DNS
+    // blackhole fires neither onload nor onerror, which used to leave the button
+    // stuck on "Building…" forever. See README "Third-party libraries".
     var _jszipPromise = null;
-    function _loadJSZip() {
-      if (window.JSZip) return Promise.resolve(window.JSZip);
-      if (_jszipPromise) return _jszipPromise;
-      var SRC = 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js';
-      _jszipPromise = new Promise(function(resolve, reject) {
+    function _loadScriptWithTimeout(src, timeoutMs) {
+      return new Promise(function(resolve, reject) {
+        var settled = false;
         var s = document.createElement('script');
-        s.src = SRC;
-        s.onload = function() { window.JSZip ? resolve(window.JSZip) : reject(new Error('JSZip loaded but missing')); };
+        var timer = setTimeout(function() {
+          if (settled) return;
+          settled = true;
+          s.parentNode && s.parentNode.removeChild(s);
+          reject(new Error('timed out loading ' + src));
+        }, timeoutMs);
+        s.src = src;
+        s.onload = function() {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          resolve();
+        };
         s.onerror = function() {
-          fetch(SRC).then(function(r) { return r.text(); }).then(function(code) {
-            (new Function(code))();
-            window.JSZip ? resolve(window.JSZip) : reject(new Error('JSZip eval failed'));
-          }).catch(reject);
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          reject(new Error('failed to load ' + src));
         };
         document.head.appendChild(s);
       });
+    }
+    function _loadJSZip() {
+      if (window.JSZip) return Promise.resolve(window.JSZip);
+      if (_jszipPromise) return _jszipPromise;
+      var LOCAL = 'lib/jszip.min.js?v=3.10.1'; // cache-bust tied to JSZip's own version, not the app's
+      var CDN = 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js';
+      _jszipPromise = _loadScriptWithTimeout(LOCAL, 8000)
+        .catch(function() { return _loadScriptWithTimeout(CDN, 12000); })
+        .then(function() {
+          if (!window.JSZip) throw new Error('JSZip loaded but missing');
+          return window.JSZip;
+        })
+        .catch(function(err) { _jszipPromise = null; throw err; }); // let the next click retry
       return _jszipPromise;
     }
     function _llmPageLabel(p) {
@@ -1839,6 +1865,16 @@ console.log('[milg] analyzer.js v3.11.145 loaded');
       return reportData ? MilgReport.buildLlmPack(reportData, { severityFilter: severity }) : null;
     }
     var _llmPackBtn = document.getElementById('llmPackBtn');
+    var _llmPackFill = document.getElementById('llmPackProgress');
+    // Safety net: nothing downstream (script load, zip build, compression) should ever take
+    // this long. Without it a genuine hang leaves the button on "Building…" forever with no
+    // feedback — this guarantees an error surfaces instead of silence.
+    function _withTimeout(promise, ms, label) {
+      return new Promise(function(resolve, reject) {
+        var t = setTimeout(function() { reject(new Error(label + ' timed out')); }, ms);
+        promise.then(function(v) { clearTimeout(t); resolve(v); }, function(e) { clearTimeout(t); reject(e); });
+      });
+    }
     if (_llmPackBtn) _llmPackBtn.addEventListener('click', function() {
       var _session = MilgCrawlUI.getCrawlSession && MilgCrawlUI.getCrawlSession();
       if (!reportData && !_session) return;
@@ -1846,25 +1882,31 @@ console.log('[milg] analyzer.js v3.11.145 loaded');
       var severity = filter ? filter.value : 'all';
       var lbl = _llmPackBtn.querySelector('.btn-label');
       _llmPackBtn.disabled = true; if (lbl) lbl.textContent = 'Building…';
-      _loadJSZip().then(function(JSZip) {
+      if (_llmPackFill) _llmPackFill.style.width = '0%';
+      var _work = _loadJSZip().then(function(JSZip) {
         var pack = _buildLlmPackForCurrent(severity);
         if (!pack) throw new Error('no analysis to export');
         var zip = new JSZip();
         var root = zip.folder(pack.folder);
         pack.files.forEach(function(f) { root.file(f.path, f.text); });
         pack.assets.forEach(function(a) { root.file(a.path, a.b64, { base64: true }); });
-        return zip.generateAsync({ type: 'blob', compression: 'DEFLATE' }).then(function(blob) {
+        return zip.generateAsync({ type: 'blob', compression: 'DEFLATE' }, function(meta) {
+          if (_llmPackFill) _llmPackFill.style.width = Math.round(meta.percent) + '%';
+          if (lbl) lbl.textContent = 'Building… ' + Math.round(meta.percent) + '%';
+        }).then(function(blob) {
           var url = URL.createObjectURL(blob);
           var a = document.createElement('a');
           a.href = url; a.download = pack.folder + '.zip'; a.click();
           URL.revokeObjectURL(url);
           showToast('LLM pack downloaded (' + pack.files.length + ' docs, ' + severity + ')');
         });
-      }).catch(function(err) {
+      });
+      _withTimeout(_work, 45000, 'LLM pack build').catch(function(err) {
         console.error('[milg] LLM pack failed', err);
         showToast('LLM pack failed: ' + (err && err.message ? err.message : 'JSZip unavailable'));
       }).then(function() {
         _llmPackBtn.disabled = false; if (lbl) lbl.textContent = 'LLM pack (.zip)';
+        if (_llmPackFill) _llmPackFill.style.width = '0%';
       });
     });
 

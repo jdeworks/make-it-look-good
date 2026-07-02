@@ -130,8 +130,12 @@ window.MilgViewer = (function() {
     var verifyPill = '';
     var vResults = reportData._contrastVerifyResults || [];
     var regionVerifyCount = countRegionVerifyResults(reportData);
-    var regionPixelAvailable = countRegionPixelAvailable(reportData);
-    if (vResults.length > 0 || regionVerifyCount > 0 || regionPixelAvailable > 0) {
+    // Only surface the "Pixel Verified" pill when there is a real, non-zero verified
+    // count. When pixel verify wasn't selected, region screenshots can still leave
+    // pixel data/masks around (regionPixelAvailable), but showing a "Pixel Verified 0"
+    // button is misleading and its filter matches nothing — so don't render it.
+    var verifyTotal = vResults.length + regionVerifyCount;
+    if (verifyTotal > 0) {
       var vFails = vResults.filter(function(r) { return r.crossesBoundary; }).length;
       // Count layers
       var layerCounts = {};
@@ -143,8 +147,7 @@ window.MilgViewer = (function() {
           layerPills += '<button class="milg-viewer-filter-btn" data-filter-type="verify" data-filter-value="layer' + l + '">L' + l + ' <span class="milg-viewer-count">' + layerCounts[l] + '</span></button>';
         });
       }
-      var verifyTotal = vResults.length + regionVerifyCount;
-      var verifyLabel = verifyTotal > 0 ? verifyTotal : vResults.length;
+      var verifyLabel = verifyTotal;
         var regionTitle = regionVerifyCount > 0 ? 'Main + region pixel verification results. Right-click a box to cycle mask → zones → off' : 'Right-click a box here to cycle mask → zones → off';
       verifyPill = '<span class="milg-viewer-sep"></span>' +
         '<button class="milg-viewer-filter-btn milg-viewer-sev-verify milg-viewer-verify-hl" data-filter-type="verify" data-filter-value="all" title="' + regionTitle + '">Pixel Verified <span class="milg-viewer-count" data-verify-total="1">' + verifyLabel + '</span>' + (regionVerifyCount > 0 ? ' <span class="milg-viewer-count" data-region-verify-total="1">R ' + regionVerifyCount + '</span>' : '') + '</button>' +
