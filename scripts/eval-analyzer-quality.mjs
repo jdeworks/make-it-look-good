@@ -121,9 +121,18 @@ function dedupeCellFindings(views) {
 
 // ---- run ----
 const server = await startServer();
-const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-page.setDefaultTimeout(180000);
+let browser = await chromium.launch();
+// One page shared across cells used to mean one renderer crash failed EVERY later cell
+// ("Target page, context or browser has been closed" cascade — narratu dark onward, Jul 2).
+// Give each cell a fresh page and relaunch the browser if it died.
+async function freshPage() {
+  let alive = false;
+  try { alive = browser.isConnected(); } catch (e) { alive = false; }
+  if (!alive) { try { await browser.close(); } catch (e) {} browser = await chromium.launch(); }
+  const p = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  p.setDefaultTimeout(180000);
+  return p;
+}
 
 const cells = [];
 for (const target of TARGETS) for (const vp of PICK_VP) for (const mode of PICK_MODES) cells.push({ target, vp, mode });
@@ -134,7 +143,9 @@ for (const cell of cells) {
   if (analysed >= MAX_ANALYSES) { truncated = true; console.log(`  [budget] maxAnalyses ${MAX_ANALYSES} reached — skipping ${cell.target} ${cell.vp}/${cell.mode}`); continue; }
   const label = `${cell.target} · ${cell.vp} · ${cell.mode}`;
   process.stdout.write(`▶ ${label} … `);
+  let page = null;
   try {
+    page = await freshPage();
     const r = await runCell(page, cell.target, VIEWPORTS[cell.vp] || VIEWPORTS.desktop, cell.mode);
     analysed += r.views.length;
     const rawErrs = r.views.reduce((a, v) => a + v.findings.filter((f) => f.sev === 'error').length, 0);
@@ -145,6 +156,8 @@ for (const cell of cells) {
   } catch (e) {
     console.log('FAILED: ' + (e.message || e).slice(0, 80));
     results.push({ ...cell, error: String(e.message || e) });
+  } finally {
+    if (page) { try { await page.close(); } catch (e) {} }
   }
 }
 
