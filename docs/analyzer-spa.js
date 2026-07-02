@@ -215,6 +215,8 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
     // clicking so locale/theme/app-launch controls do not create noisy states or trigger app code.
     var attrs = '';
     try { attrs = [el.id || '', el.getAttribute('class') || '', el.getAttribute('aria-label') || '', el.getAttribute('title') || '', el.getAttribute('data-lang') || '', el.getAttribute('lang') || ''].join(' ').toLowerCase(); } catch (e) {}
+    if (/\b(cookie|consent|privacy|dismiss|accept|agree|got it|apply|cancel|close)\b/.test(t + ' ' + attrs)) return 'utility-control';
+    if (/\b(carousel|slider|slide|slideshow)\b/.test(attrs) || /\b(go to slide|previous slide|next slide|prev slide)\b/.test(t)) return 'carousel-control';
     if (themeHint(el)) return 'theme-toggle';
     if (/\b(language|locale|select language|change language|preferred language)\b/.test(t + ' ' + attrs)) return 'locale-control';
     if (/^(en|de|fr|es|it|pt|nl|pl|sv|no|da|fi|cs|ja|ko|zh|ar|tr|uk|ro)$/i.test((el.getAttribute('data-lang') || '').trim())) return 'locale-control';

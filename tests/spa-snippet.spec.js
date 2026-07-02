@@ -86,7 +86,7 @@ test('SPA exploration reports target page script errors without failing the craw
 // baked into the emitted snippet text (and re-baked when toggled). Guards the gaps found in
 // the v3.11.140 audit: stateCapture was never passed; crawl+screenshots emitted a snippet
 // whose crawl globals the screenshots shell silently ignored.
-test('snippet builder bakes stateCapture and forces the plain shell for crawl', async ({ page }) => {
+test('snippet builder bakes stateCapture and composes crawl with screenshots and SPA', async ({ page }) => {
   test.setTimeout(60000);
   await page.goto(`${BASE}/analyzer.html`);
   await page.click('[data-tab="tabSnippet"]');
@@ -107,8 +107,7 @@ test('snippet builder bakes stateCapture and forces the plain shell for crawl', 
   });
   await page.waitForFunction(() => (((document.getElementById('snippetCode') || {}).textContent) || '').indexOf('window.__milgSpaStateCapture=false') >= 0, { timeout: 20000 });
 
-  // Crawl + screenshots ON (SPA off) → plain data-only shell with crawl globals, and the
-  // data-only note is visible. The screenshots shell has no crawl logic.
+  // Crawl + screenshots ON (SPA off) → screenshot shell with crawl globals.
   await page.evaluate(() => {
     function set(id, on) { const c = document.getElementById(id); if (c && !!c.checked !== on) { c.checked = on; c.dispatchEvent(new Event('change')); } }
     set('spaExploreCheck', false);
@@ -117,10 +116,28 @@ test('snippet builder bakes stateCapture and forces the plain shell for crawl', 
   });
   await page.waitForFunction(() => (((document.getElementById('snippetCode') || {}).textContent) || '').indexOf('window.__milgCrawlSite=true') >= 0, { timeout: 20000 });
   const crawlSnippet = await snippetText(page);
-  expect(crawlSnippet.indexOf('starting screenshot capture')).toBe(-1); // plain shell, not screenshots shell
+  expect(crawlSnippet.indexOf('starting screenshot capture')).toBeGreaterThanOrEqual(0);
+  expect(crawlSnippet.indexOf('_crawlScreenshotCallback')).toBeGreaterThanOrEqual(0);
   const noteVisible = await page.evaluate(() => {
     const n = document.getElementById('snippetCrawlDataOnlyNote');
     return !!n && n.style.display !== 'none';
   });
   expect(noteVisible).toBe(true);
+
+  // Crawl + screenshots + SPA ON → both prefixes are present, so crawl remains the outer
+  // workflow and each crawled iframe can run SPA exploration.
+  await page.evaluate(() => {
+    function set(id, on) { const c = document.getElementById(id); if (c && !!c.checked !== on) { c.checked = on; c.dispatchEvent(new Event('change')); } }
+    set('spaExploreCheck', true);
+    set('screenshotCheck', true);
+    set('snippetCrawlCheck', true);
+  });
+  await page.waitForFunction(() => {
+    const t = (((document.getElementById('snippetCode') || {}).textContent) || '');
+    return t.indexOf('window.__milgCrawlSite=true') >= 0 && t.indexOf('window.__milgSpaExplore=true') >= 0;
+  }, { timeout: 20000 });
+  const composedSnippet = await snippetText(page);
+  expect(composedSnippet.indexOf('window.__milgCrawlSite=true')).toBeGreaterThanOrEqual(0);
+  expect(composedSnippet.indexOf('window.__milgSpaExplore=true')).toBeGreaterThanOrEqual(0);
+  expect(composedSnippet.indexOf('window.__milgSpaExplore && !window.__milgCrawlSite')).toBeGreaterThanOrEqual(0);
 });

@@ -110,7 +110,7 @@
       // SPA view discovery (in-place): explore the current app's hidden views by clicking
       // nav/tabs, emit a multi-view crawl payload. Opt-in via the "Explore SPA views" toggle.
       // Replaces the single-page capture path; the explorer does its own per-view capture.
-      if (window.__milgSpaExplore && window.MilgSpaExplore && window.MilgSpaMap) {
+      if (window.__milgSpaExplore && !window.__milgCrawlSite && window.MilgSpaExplore && window.MilgSpaMap) {
         _milgRunSpaExplore(true); // screenshot snippet: wait for the lib → per-view captures
         return;
       }
@@ -697,6 +697,21 @@
             JSON.stringify(window.MilgRegion.getRegionFn().toString()) + ';';
         } catch (e) { __milgCrawlRegionFnSrc = ''; }
       }
+      var __milgSpaSrc = '';
+      if (window.__milgSpaExplore && window.MilgSpaExplore && window.MilgSpaMap && window.MilgSpaMap.build) {
+        try {
+          __milgSpaSrc =
+            'window.MilgSpaExplore = ' + window.MilgSpaExplore.toString() + ';\n' +
+            'window.MilgSpaMap = { build: ' + window.MilgSpaMap.build.toString() + ' };\n' +
+            'window.__milgSpaExplore = true;\n' +
+            'window.__milgSpaMaxViews = ' + JSON.stringify(window.__milgSpaMaxViews || 30) + ';\n' +
+            'window.__milgSpaTimeBudgetMs = ' + JSON.stringify(window.__milgSpaTimeBudgetMs || 90000) + ';\n' +
+            'window.__milgSpaPerPageThreshold = ' + JSON.stringify(window.__milgSpaPerPageThreshold || 3) + ';\n' +
+            'window.__milgSpaMaxStatePasses = ' + JSON.stringify(window.__milgSpaMaxStatePasses != null ? window.__milgSpaMaxStatePasses : 8) + ';\n' +
+            'window.__milgSpaCaptureScale = ' + JSON.stringify(window.__milgSpaCaptureScale || 1) + ';\n' +
+            'window.__milgSpaStateCapture = ' + JSON.stringify(!!window.__milgSpaStateCapture) + ';\n';
+        } catch (e) { __milgSpaSrc = ''; }
+      }
       var _cm = Math.min(Math.max(window.__milgCrawlMaxPages || 5, 1), 25);
       var _cb = window.__milgCrawlBlacklist || [];
       var _co = location.origin;
@@ -713,8 +728,12 @@
         if (!h || h.startsWith('#') || h.startsWith('mailto:') || h.startsWith('tel:') || h.startsWith('javascript:')) return;
         try { var u = new URL(h, location.href); if (u.origin !== _co) return; if (/\.(pdf|zip|png|jpg|svg|css|js|json|xml|woff2?)$/i.test(u.pathname)) return; u.hash = ''; var k = u.origin + u.pathname.replace(/\/$/, ''); if (_seen[k]) return; var bl = _cb.some(function(p) { p = p.trim(); if (!p) return false; if (p.endsWith('*')) return u.pathname.startsWith(p.slice(0, -1)); return u.pathname === p; }); if (bl) return; _seen[k] = true; _links.push(u.origin + u.pathname); } catch(e) {}
       });
-      _links = _links.slice(0, _cm - 1);
-      var _cResults = [{ url: location.href, data: data }];
+      if (window.__milgSpaExplore && window.MilgSpaExplore && window.MilgSpaMap) {
+        _links = [location.href.replace(/#.*$/, '')].concat(_links).slice(0, _cm);
+      } else {
+        _links = _links.slice(0, _cm - 1);
+      }
+      var _cResults = (window.__milgSpaExplore && window.MilgSpaExplore && window.MilgSpaMap) ? [] : [{ url: location.href, data: data }];
       console.log('%c\uD83D\uDD77 Site Crawl: discovered ' + _links.length + ' page(s)', 'color: #8b5cf6; font-weight: bold;');
 
       // Copy full crawl results to clipboard (localStorage doesn't work cross-origin)
@@ -795,11 +814,54 @@
           // parent poller on window.__milgCrawlPageDone \u2014 the poller waits for that flag
           // (not __milgData truthiness) so it can't grab data before the pipeline finishes.
           window.__milgCrawlPageDone = false;
+          window.__milgCrawlPageResults = null;
           window.__milgProgress = 'Loading screenshot library\u2026';
-          function _finalize() { window.__milgProgress = null; window.__milgData = data; window.__milgCrawlPageDone = true; }
+          function _pageUrl() { return window.__milgCrawlPageUrl || location.href; }
+          function _baseResult() { return { url: _pageUrl(), data: data }; }
+          function _finalize(results) {
+            window.__milgProgress = null;
+            window.__milgData = data;
+            window.__milgCrawlPageResults = results && results.length ? results : [_baseResult()];
+            window.__milgCrawlPageDone = true;
+          }
+          function _finalizeWithSpa() {
+            if (!window.__milgSpaExplore || !window.MilgSpaExplore || !window.MilgSpaMap || !window.MilgSpaMap.build) {
+              _finalize([_baseResult()]);
+              return;
+            }
+            try { console.log('[milg-crawl-spa] exploring ' + _pageUrl()); } catch (e) {}
+            window.__milgProgress = 'Exploring SPA views\u2026';
+            window.MilgSpaExplore({
+              exploreClicks: true,
+              maxViews: (window.__milgSpaMaxViews || 30),
+              perPageStateThreshold: (window.__milgSpaPerPageThreshold || 3),
+              maxStatePasses: (window.__milgSpaMaxStatePasses != null ? window.__milgSpaMaxStatePasses : 8),
+              capture: !!(window.modernScreenshot && window.modernScreenshot.domToCanvas),
+              captureScale: (window.__milgSpaCaptureScale || 1),
+              stateCapture: !!window.__milgSpaStateCapture,
+              timeBudgetMs: (window.__milgSpaTimeBudgetMs || 90000),
+              pageEnterGraceMs: 1500
+            }).then(function(r) {
+              var built = window.MilgSpaMap.build(r, {
+                base: _pageUrl().replace(/#.*$/, ''),
+                rootTitle: document.title || 'Page',
+                inputMethod: 'console-crawl',
+                skipInitial: true,
+                sourceUrl: _pageUrl()
+              });
+              window.__milgSpaProvenance = built.provenance;
+              try { console.log('[milg-crawl-spa] ' + ((built.results || []).length) + ' SPA view(s) from ' + _pageUrl()); } catch (e) {}
+              _finalize([_baseResult()].concat(built.results || []));
+            }).catch(function(e) {
+              data.meta = data.meta || {};
+              data.meta._spaError = (e && e.message) || String(e || 'SPA explore failed');
+              try { console.log('[milg-crawl-spa] failed for ' + _pageUrl() + ': ' + data.meta._spaError); } catch (x) {}
+              _finalize([_baseResult()]);
+            });
+          }
 
           if (!window.MilgCapture || !window.MilgCapture.getCaptureFn) {
-            data.screenshots = []; _finalize(); return;
+            data.screenshots = []; _finalizeWithSpa(); return;
           }
 
           // Progress reporter \u2014 the crawl overlay polls window.__milgProgress.
@@ -844,7 +906,7 @@
                 }
               }
             } catch (e) {}
-            _finalize();
+            _finalizeWithSpa();
           }
 
           // Region fn: prefer the REAL region fn pre-serialized in the parent realm
@@ -879,6 +941,7 @@
           'window.MilgExtract = ' + window.MilgExtract.toString() + ';\n' +
           __milgCaptureSrc + '\n' +
           __milgCrawlRegionFnSrc + '\n' +
+          __milgSpaSrc + '\n' +
           'window.__milgOnExtractComplete = ' + _crawlScreenshotCallback.toString() + ';\n' +
           'window.MilgExtract();\n';
         (function() {
@@ -986,7 +1049,7 @@
                     var iWin = iframe.contentWindow;
                     var iDoc = iframe.contentDocument || iWin.document;
                     var script = iDoc.createElement('script');
-                    script.textContent = 'window.__milgCrawlSite=false;\n' + snippetSrc;
+                    script.textContent = 'window.__milgCrawlSite=false;\nwindow.__milgCrawlPageUrl=' + JSON.stringify(url) + ';\n' + snippetSrc;
                     iDoc.body.appendChild(script);
                     var polls = 0;
                     var pi = setInterval(function() {
@@ -999,8 +1062,23 @@
                         // Gate on the explicit completion flag: the crawl callback keeps
                         // __milgData populated for the capture core, so flag (not truthiness)
                         // marks "screenshot + mask pipeline finished".
-                        var d = iWin.__milgCrawlPageDone ? iWin.__milgData : null;
-                        if (d) { clearInterval(pi); done = true; d.meta.url = url; _cResults.push({ url: url, data: d }); cleanup(); var hasShots = d.screenshots && d.screenshots.length > 0; console.log('%c  \u2713 ' + path + (hasShots ? ' (with screenshots)' : ''), 'color: #16a34a;'); setTimeout(function() { _next(idx + 1); }, 500); }
+                        var pageResults = iWin.__milgCrawlPageDone ? (iWin.__milgCrawlPageResults || null) : null;
+                        if (pageResults && pageResults.length) {
+                          clearInterval(pi); done = true;
+                          for (var _pri = 0; _pri < pageResults.length; _pri++) {
+                            var pr = pageResults[_pri];
+                            if (!pr || !pr.data) continue;
+                            pr.data.meta = pr.data.meta || {};
+                            if (_pri === 0) pr.data.meta.url = url;
+                            _cResults.push({ url: (_pri === 0 ? url : (pr.url || pr.data.meta.url || url)), data: pr.data });
+                          }
+                          cleanup();
+                          var firstData = pageResults[0] && pageResults[0].data;
+                          var hasShots = firstData && firstData.screenshots && firstData.screenshots.length > 0;
+                          var extraViews = pageResults.length > 1 ? ' + ' + (pageResults.length - 1) + ' SPA view(s)' : '';
+                          console.log('%c  \u2713 ' + path + (hasShots ? ' (with screenshots)' : '') + extraViews, 'color: #16a34a;');
+                          setTimeout(function() { _next(idx + 1); }, 500);
+                        }
                         else if (polls > 160) { clearInterval(pi); done = true; cleanup(); console.log('%c  \u2717 Timeout: ' + path, 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }
                       } catch(e) { clearInterval(pi); done = true; cleanup(); console.log('%c  \u2717 Error: ' + path + ' (' + e.message + ')', 'color: #dc2626;'); setTimeout(function() { _next(idx + 1); }, 500); }
                     }, 500);

@@ -100,7 +100,7 @@
   // --- SPA view discovery (in-place): explore the CURRENT app's hidden views by clicking
   // its nav/tabs, then emit a multi-view crawl payload the analyzer ingests. Opt-in via the
   // "Explore SPA views" toggle (window.__milgSpaExplore). Replaces single-page output. ---
-  if (window.__milgSpaExplore && window.MilgSpaExplore && window.MilgSpaMap) {
+  if (window.__milgSpaExplore && !window.__milgCrawlSite && window.MilgSpaExplore && window.MilgSpaMap) {
     _milgRunSpaExplore(false); // plain snippet: no screenshot lib → data-only views
     return;
   }

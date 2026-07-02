@@ -1095,15 +1095,10 @@ console.log('[milg] analyzer.js v3.11.144 loaded');
       snippetCrawlMaxPages = document.getElementById('snippetCrawlMaxPages');
       embedScreenshotLibCheck = document.getElementById('embedScreenshotLibCheck');
       var crawlOn = snippetCrawlCheck && snippetCrawlCheck.checked;
-      var spaOnEarly = document.getElementById('spaExploreCheck') && document.getElementById('spaExploreCheck').checked;
       var withScreenshots = sharedScreenshotCheck && sharedScreenshotCheck.checked;
-      // Site-crawl is a data-only route: the console can fetch other pages' HTML but cannot
-      // render or screenshot them, and the screenshots shell has no crawl logic — building it
-      // with the screenshots shell used to emit a snippet that silently IGNORED the crawl
-      // globals. Force the plain shell for crawl (SPA explore still wins over crawl).
-      var effectiveShots = withScreenshots && !(crawlOn && !spaOnEarly);
+      var effectiveShots = withScreenshots;
       var crawlNote = document.getElementById('snippetCrawlDataOnlyNote');
-      if (crawlNote) crawlNote.style.display = (crawlOn && !spaOnEarly && withScreenshots) ? '' : 'none';
+      if (crawlNote) crawlNote.style.display = (crawlOn && withScreenshots) ? '' : 'none';
       var wantInlineVerify = effectiveShots && document.getElementById('pixelVerifyCheck') && document.getElementById('pixelVerifyCheck').checked;
       var embedLib = effectiveShots && embedScreenshotLibCheck && embedScreenshotLibCheck.checked;
       loadSnippet(snippetCode, effectiveShots, function() {
@@ -1119,8 +1114,6 @@ console.log('[milg] analyzer.js v3.11.144 loaded');
               ';if(_milgAmd){try{define.amd=_milgAmd}catch(e){}}})();\n';
           }
           if (wantInlineVerify) prefix += 'window.__milgPixelVerify=true;\n';
-          // SPA-explore takes precedence over link-crawl: it explores the CURRENT page's
-          // app (clicks nav/tabs in place) and emits a multi-view crawl payload.
           var spaOn = document.getElementById('spaExploreCheck') && document.getElementById('spaExploreCheck').checked;
           if (spaOn) {
             // Bake the selected budget preset into live globals so the console-snippet route honors
@@ -1137,7 +1130,8 @@ console.log('[milg] analyzer.js v3.11.144 loaded');
               ' window.__milgSpaMaxStatePasses=' + _sb.maxStatePasses + ';' +
               ' window.__milgSpaCaptureScale=' + _csv + ';' +
               ' window.__milgSpaStateCapture=' + !!(_stc && _stc.checked) + ';\n';
-          } else if (crawlOn) {
+          }
+          if (crawlOn) {
             var maxP = (snippetCrawlMaxPages && parseInt(snippetCrawlMaxPages.value)) || 5;
             prefix += 'window.__milgCrawlSite=true; window.__milgCrawlMaxPages=' + maxP + ';\n';
           }
