@@ -1254,10 +1254,29 @@ window.MilgExtract = (function() {
         var bgAlphaMatch = s.backgroundColor.match(/rgba\([\d.,\s]+,\s*([\d.]+)\)/);
         var bgAlpha = bgAlphaMatch ? parseFloat(bgAlphaMatch[1]) : 1;
         if (bgAlpha >= 0.85) return;
+        // Full-viewport fixed containers are modal overlays/drawers (fixed inset-0 backdrop
+        // pattern), not sticky bars — page content can't scroll UNDER them, so the
+        // scroll-contrast risk doesn't apply. (Dead-data's mobile drawer was a FP here.)
+        var elRect; try { elRect = el.getBoundingClientRect(); } catch (e) { elRect = null; }
+        if (elRect && elRect.width >= window.innerWidth * 0.95 && elRect.height >= window.innerHeight * 0.95) return;
+        function onSolidBackdrop(child) {
+          // A child sitting on its own opaque ancestor INSIDE the fixed wrapper (e.g. a
+          // solid panel within a translucent bar) keeps a consistent backdrop when scrolling.
+          var n = child;
+          while (n && n !== el) {
+            var nb = getComputedStyle(n).backgroundColor;
+            var m = nb.match(/rgba\([\d.,\s]+,\s*([\d.]+)\)/);
+            var a = m ? parseFloat(m[1]) : (nb && nb !== 'transparent' ? 1 : 0);
+            if (a >= 0.85) return true;
+            n = n.parentElement;
+          }
+          return false;
+        }
         var lightCount = 0, darkCount = 0, firstLight = null, firstDark = null;
         var coloredChildren = el.querySelectorAll('a,button,span,svg,h1,h2,h3,p');
         coloredChildren.forEach(function(child) {
           if (!isVisible(child)) return; // skip display:none / hidden children
+          if (onSolidBackdrop(child)) return;
           var cs = getComputedStyle(child);
           var color = parseColor(cs.color);
           if (!color) return;
