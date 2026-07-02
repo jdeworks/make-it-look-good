@@ -492,6 +492,31 @@ window.MilgExtract = (function() {
         var _cpEntry = { fg: rgbStr(fgBlended), bg: rgbStr(bg), ratio: Math.round(ratio * 100) / 100, needed: threshold, passes: ratio >= threshold, fontSize: Math.round(fontSize), fontWeight: fontWeight, isLarge: isLarge, bgHasImage: _bgHasImage, text: (el.textContent || '').trim().substring(0, 200), selector: cssSelector(el), filter: filterValue, backdropFilter: hasBackdropFilter, minBgAlpha: Math.round(minBgAlpha * 100) / 100, effectiveOpacity: Math.round(_effOpacity * 100) / 100, isGradientText: isGradientText, hasBlendMode: _hasBlendMode, fontFamily: style.fontFamily, fontStyle: style.fontStyle, letterSpacing: style.letterSpacing, wordSpacing: style.wordSpacing, textTransform: style.textTransform, lineHeight: style.lineHeight, bbox: null };
         var _hac = _isHiddenAtCapture(el);
         if (_hac) _cpEntry._hiddenAtCapture = true;
+        // Occlusion at capture time: an open drawer/modal in front of this element means the
+        // screenshot's pixels at its bbox belong to the OVERLAY, not the element — pixel-verify
+        // read a 16:1 heading as 2.7:1 through a bg-black/50 backdrop (narratu). Flag when the
+        // topmost element at the bbox centre is a different stacking branch that actually
+        // PAINTS (bg/image/media). elementFromPoint skips pointer-events:none, so decorative
+        // scrims stay measurable — those are genuine contrast reducers, not occluders.
+        try {
+          var _ocx = elRect.left + elRect.width / 2, _ocy = elRect.top + elRect.height / 2;
+          if (elRect.width > 0 && _ocx >= 0 && _ocx <= window.innerWidth && _ocy >= 0 && _ocy <= window.innerHeight) {
+            var _hit = document.elementFromPoint(_ocx, _ocy);
+            if (_hit && _hit !== el && !el.contains(_hit) && !_hit.contains(el)) {
+              var _on = _hit, _hops = 0, _paints = false;
+              while (_on && _on.nodeType === 1 && !_on.contains(el) && _hops++ < 6) {
+                var _ot = _on.tagName;
+                if (_ot === 'IMG' || _ot === 'CANVAS' || _ot === 'VIDEO' || _ot === 'svg' || _ot === 'SVG') { _paints = true; break; }
+                var _os = getComputedStyle(_on);
+                var _oc = parseColor(_os.backgroundColor);
+                if ((_oc && _oc.a > 0.05) || ((_os.backgroundImage || 'none') !== 'none') ||
+                    ((_os.backdropFilter || _os.webkitBackdropFilter || 'none') !== 'none')) { _paints = true; break; }
+                _on = _on.parentElement;
+              }
+              if (_paints) _cpEntry.occluded = true;
+            }
+          }
+        } catch (e) {}
         trackBbox(el, _cpEntry, 'bbox');
         contrastPairs.push(_cpEntry);
         _contrastStats.captured++;

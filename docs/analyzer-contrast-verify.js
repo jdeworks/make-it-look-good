@@ -1396,14 +1396,14 @@ window.MilgContrastVerify = (function() {
     // Separate clipped/region pairs (hidden in overflow containers) — skip pixel verification
     var clippedResults = [];
     var pairs = allPairsWithBbox.filter(function(p) {
-      if (p._isClipped || p._regionContainerId || p._hiddenAtCapture) {
+      if (p._isClipped || p._regionContainerId || p._hiddenAtCapture || p.occluded) {
         clippedResults.push({
           selector: p.selector,
           text: p.text,
           bbox: p.bbox,
           cssRatio: p.ratio,
           skipped: true,
-          reason: 'hidden-region',
+          reason: p.occluded ? 'occluded' : 'hidden-region',
           cssPasses: p.ratio >= (p.needed || 4.5),
           neededRatio: p.needed || 4.5
         });
