@@ -1,8 +1,8 @@
-// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.148
+// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.149
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.148 loaded');
+console.log('[milg] analyzer.js v3.11.149 loaded');
 
 (function() {
   "use strict";
@@ -1087,7 +1087,7 @@ console.log('[milg] analyzer.js v3.11.148 loaded');
     var _embeddedLibCache = null;
     function _getEmbeddedLib(cb) {
       if (_embeddedLibCache) { cb(_embeddedLibCache); return; }
-      fetch(EMBED_LIB_URL + '?v=3.11.148')
+      fetch(EMBED_LIB_URL + '?v=3.11.149')
         .then(function(r) { return r.ok ? r.text() : ''; })
         .then(function(t) {
           if (t && t.indexOf('modernScreenshot') !== -1) { _embeddedLibCache = t; cb(t); }
@@ -1755,18 +1755,39 @@ console.log('[milg] analyzer.js v3.11.148 loaded');
     var _sevSel = document.getElementById('exportSeverityFilter');
     if (_sevSel) _sevSel.addEventListener('change', function() { window.milgUpdateExportCounts(); });
 
+    // Robust file download used by every export button. Three things matter, and the
+    // old inline pattern got all three wrong for the LLM pack:
+    //  1) the anchor is appended to the DOM so the click reliably registers;
+    //  2) the click is stopped (capture + bubble) and dispatched non-bubbling so it
+    //     can't leak to the page/preview (see commit "Stop download clicks leaking");
+    //  3) the object URL is revoked on a delay — a synchronous revoke races the
+    //     browser and silently kills larger downloads (the LLM pack .zip "arrived"
+    //     but never saved). Give the browser time to read the blob first.
+    function _triggerDownload(blob, filename) {
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.rel = 'noopener';
+      function _stop(e) { try { e.stopPropagation(); } catch (_e) {} }
+      try { a.addEventListener('click', _stop, true); a.addEventListener('click', _stop, false); } catch (e) {}
+      document.body.appendChild(a);
+      try {
+        a.dispatchEvent(new MouseEvent('click', { bubbles: false, cancelable: true, view: window }));
+      } catch (e) { a.click(); }
+      setTimeout(function() {
+        try { document.body.removeChild(a); } catch (_e) {}
+        URL.revokeObjectURL(url);
+      }, 200);
+    }
+
     // Markdown export (download) — single-URL only, crawl-ui handles crawl
     document.getElementById('markdownBtn').addEventListener('click', function() {
       if (MilgCrawlUI.getCrawlSession && MilgCrawlUI.getCrawlSession()) return;
       if (!reportData) return;
       var md = MilgReport.renderMarkdown(reportData);
       var blob = new Blob([md], { type: 'text/markdown' });
-      var url = URL.createObjectURL(blob);
-      var a = document.createElement('a');
-      a.href = url;
-      a.download = 'design-report.md';
-      a.click();
-      URL.revokeObjectURL(url);
+      _triggerDownload(blob, 'design-report.md');
       showToast('Markdown report downloaded');
     });
 
@@ -1894,10 +1915,7 @@ console.log('[milg] analyzer.js v3.11.148 loaded');
           if (_llmPackFill) _llmPackFill.style.width = Math.round(meta.percent) + '%';
           if (lbl) lbl.textContent = 'Building… ' + Math.round(meta.percent) + '%';
         }).then(function(blob) {
-          var url = URL.createObjectURL(blob);
-          var a = document.createElement('a');
-          a.href = url; a.download = pack.folder + '.zip'; a.click();
-          URL.revokeObjectURL(url);
+          _triggerDownload(blob, pack.folder + '.zip');
           showToast('LLM pack downloaded (' + pack.files.length + ' docs, ' + severity + ')');
         });
       });
@@ -1964,13 +1982,8 @@ console.log('[milg] analyzer.js v3.11.148 loaded');
           var exportData = _buildExportData();
           var json = JSON.stringify(exportData);
           _compressToBlob(json, function(blob, rawSize, compressed) {
-            var url = URL.createObjectURL(blob);
-            var a = document.createElement('a');
-            a.href = url;
             var siteName = (exportData.meta && exportData.meta.url) || 'analysis';
-            a.download = 'milg-report-' + siteName.replace(/[^a-z0-9]/gi, '-').substring(0, 40) + (compressed ? '.milg' : '.json');
-            a.click();
-            URL.revokeObjectURL(url);
+            _triggerDownload(blob, 'milg-report-' + siteName.replace(/[^a-z0-9]/gi, '-').substring(0, 40) + (compressed ? '.milg' : '.json'));
             var sizeKB = Math.round(blob.size / 1024);
             var ratio = compressed ? ' (' + Math.round(rawSize / 1024) + ' KB → ' + sizeKB + ' KB)' : '';
             showToast('Exported ' + sizeKB + ' KB' + ratio);
