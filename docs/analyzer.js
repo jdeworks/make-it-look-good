@@ -1,8 +1,8 @@
-// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.139
+// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.140
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.139 loaded');
+console.log('[milg] analyzer.js v3.11.140 loaded');
 
 (function() {
   "use strict";
@@ -1095,10 +1095,18 @@ console.log('[milg] analyzer.js v3.11.139 loaded');
       snippetCrawlMaxPages = document.getElementById('snippetCrawlMaxPages');
       embedScreenshotLibCheck = document.getElementById('embedScreenshotLibCheck');
       var crawlOn = snippetCrawlCheck && snippetCrawlCheck.checked;
+      var spaOnEarly = document.getElementById('spaExploreCheck') && document.getElementById('spaExploreCheck').checked;
       var withScreenshots = sharedScreenshotCheck && sharedScreenshotCheck.checked;
-      var wantInlineVerify = document.getElementById('pixelVerifyCheck') && document.getElementById('pixelVerifyCheck').checked;
-      var embedLib = withScreenshots && embedScreenshotLibCheck && embedScreenshotLibCheck.checked;
-      loadSnippet(snippetCode, withScreenshots, function() {
+      // Site-crawl is a data-only route: the console can fetch other pages' HTML but cannot
+      // render or screenshot them, and the screenshots shell has no crawl logic — building it
+      // with the screenshots shell used to emit a snippet that silently IGNORED the crawl
+      // globals. Force the plain shell for crawl (SPA explore still wins over crawl).
+      var effectiveShots = withScreenshots && !(crawlOn && !spaOnEarly);
+      var crawlNote = document.getElementById('snippetCrawlDataOnlyNote');
+      if (crawlNote) crawlNote.style.display = (crawlOn && !spaOnEarly && withScreenshots) ? '' : 'none';
+      var wantInlineVerify = effectiveShots && document.getElementById('pixelVerifyCheck') && document.getElementById('pixelVerifyCheck').checked;
+      var embedLib = effectiveShots && embedScreenshotLibCheck && embedScreenshotLibCheck.checked;
+      loadSnippet(snippetCode, effectiveShots, function() {
         function finish(libText) {
           var prefix = '';
           if (libText) {
@@ -1121,12 +1129,14 @@ console.log('[milg] analyzer.js v3.11.139 loaded');
             var _sb = window.__milgSpaBudget ? window.__milgSpaBudget() : { maxViews: 30, timeSec: 90, perPageThreshold: 3, maxStatePasses: 8 };
             var _cs = document.getElementById('spaCaptureScale');
             var _csv = (_cs && parseInt(_cs.value, 10) === 2) ? 2 : 1;
+            var _stc = document.getElementById('stateCaptureCheck');
             prefix += 'window.__milgSpaExplore=true;' +
               ' window.__milgSpaMaxViews=' + _sb.maxViews + ';' +
               ' window.__milgSpaTimeBudgetMs=' + (_sb.timeSec * 1000) + ';' +
               ' window.__milgSpaPerPageThreshold=' + _sb.perPageThreshold + ';' +
               ' window.__milgSpaMaxStatePasses=' + _sb.maxStatePasses + ';' +
-              ' window.__milgSpaCaptureScale=' + _csv + ';\n';
+              ' window.__milgSpaCaptureScale=' + _csv + ';' +
+              ' window.__milgSpaStateCapture=' + !!(_stc && _stc.checked) + ';\n';
           } else if (crawlOn) {
             var maxP = (snippetCrawlMaxPages && parseInt(snippetCrawlMaxPages.value)) || 5;
             prefix += 'window.__milgCrawlSite=true; window.__milgCrawlMaxPages=' + maxP + ';\n';
@@ -1207,11 +1217,17 @@ console.log('[milg] analyzer.js v3.11.139 loaded');
     var _stateCaptureCheckEl = document.getElementById('stateCaptureCheck');
     if (_spaExploreCheckEl) _spaExploreCheckEl.addEventListener('change', window.__milgSyncSpaOptions);
     if (_stateCaptureCheckEl) _stateCaptureCheckEl.addEventListener('change', window.__milgSyncSpaOptions);
+    // stateCapture is baked into the snippet prefix (__milgSpaStateCapture) — re-bake on toggle.
+    if (_stateCaptureCheckEl) _stateCaptureCheckEl.addEventListener('change', reloadSnippet);
     var _spaBudgetEl = document.getElementById('spaBudget');
     if (_spaBudgetEl) {
       _spaBudgetEl.addEventListener('change', window.__milgSyncSpaOptions);
       _spaBudgetEl.addEventListener('change', reloadSnippet);
     }
+    // Capture-scale dropdown is baked too (__milgSpaCaptureScale) — without this the displayed
+    // snippet kept the stale scale after the user switched 1×/2×.
+    var _spaCaptureScaleEl = document.getElementById('spaCaptureScale');
+    if (_spaCaptureScaleEl) _spaCaptureScaleEl.addEventListener('change', reloadSnippet);
     if (window.__milgSyncSpaOptions) window.__milgSyncSpaOptions();
 
     // Copy snippet

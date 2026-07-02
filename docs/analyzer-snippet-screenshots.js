@@ -73,6 +73,9 @@
         maxStatePasses: (window.__milgSpaMaxStatePasses != null ? window.__milgSpaMaxStatePasses : 8),
         capture: _libReady(),
         captureScale: (window.__milgSpaCaptureScale || 1),
+        // Holistic All-expanded/Collapsed state passes — baked from the analyzer's
+        // "Capture disclosure states" toggle (URL-route parity; was silently never on).
+        stateCapture: !!window.__milgSpaStateCapture,
         timeBudgetMs: (window.__milgSpaTimeBudgetMs || 90000), pageEnterGraceMs: 1500
       }).then(function(r) {
         var built = window.MilgSpaMap.build(r, {

@@ -59,3 +59,46 @@ test('console snippet explores SPA views and emits a crawl payload', async ({ pa
     expect(r.data.meta.title.length).toBeGreaterThan(0);
   }
 });
+
+// Settings parity: every analyzer option that has a snippet counterpart must actually be
+// baked into the emitted snippet text (and re-baked when toggled). Guards the gaps found in
+// the v3.11.140 audit: stateCapture was never passed; crawl+screenshots emitted a snippet
+// whose crawl globals the screenshots shell silently ignored.
+test('snippet builder bakes stateCapture and forces the plain shell for crawl', async ({ page }) => {
+  test.setTimeout(60000);
+  await page.goto(`${BASE}/analyzer.html`);
+  await page.click('[data-tab="tabSnippet"]');
+  function snippetText(p) { return p.evaluate(() => (document.getElementById('snippetCode') || {}).textContent || ''); }
+
+  // SPA + state capture ON → prefix carries __milgSpaStateCapture=true.
+  await page.evaluate(() => {
+    function set(id, on) { const c = document.getElementById(id); if (c && !!c.checked !== on) { c.checked = on; c.dispatchEvent(new Event('change')); } }
+    set('screenshotCheck', false);
+    set('spaExploreCheck', true);
+    set('stateCaptureCheck', true);
+  });
+  await page.waitForFunction(() => (((document.getElementById('snippetCode') || {}).textContent) || '').indexOf('window.__milgSpaStateCapture=true') >= 0, { timeout: 20000 });
+
+  // Toggle state capture OFF → re-baked to false (stale-snippet guard).
+  await page.evaluate(() => {
+    const c = document.getElementById('stateCaptureCheck'); c.checked = false; c.dispatchEvent(new Event('change'));
+  });
+  await page.waitForFunction(() => (((document.getElementById('snippetCode') || {}).textContent) || '').indexOf('window.__milgSpaStateCapture=false') >= 0, { timeout: 20000 });
+
+  // Crawl + screenshots ON (SPA off) → plain data-only shell with crawl globals, and the
+  // data-only note is visible. The screenshots shell has no crawl logic.
+  await page.evaluate(() => {
+    function set(id, on) { const c = document.getElementById(id); if (c && !!c.checked !== on) { c.checked = on; c.dispatchEvent(new Event('change')); } }
+    set('spaExploreCheck', false);
+    set('screenshotCheck', true);
+    set('snippetCrawlCheck', true);
+  });
+  await page.waitForFunction(() => (((document.getElementById('snippetCode') || {}).textContent) || '').indexOf('window.__milgCrawlSite=true') >= 0, { timeout: 20000 });
+  const crawlSnippet = await snippetText(page);
+  expect(crawlSnippet.indexOf('starting screenshot capture')).toBe(-1); // plain shell, not screenshots shell
+  const noteVisible = await page.evaluate(() => {
+    const n = document.getElementById('snippetCrawlDataOnlyNote');
+    return !!n && n.style.display !== 'none';
+  });
+  expect(noteVisible).toBe(true);
+});
