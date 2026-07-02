@@ -515,8 +515,12 @@
     var a = document.createElement('a');
     a.href = url; a.download = filename;
     a.style.display = 'none';
+    function _stopDownloadClick(e) { try { e.stopPropagation(); } catch (_e) {} }
+    try { a.addEventListener('click', _stopDownloadClick, true); a.addEventListener('click', _stopDownloadClick, false); } catch (e) {}
     document.body.appendChild(a);
-    a.click();
+    try {
+      a.dispatchEvent(new MouseEvent('click', { bubbles: false, cancelable: true, view: window }));
+    } catch (e) { a.click(); }
     setTimeout(function() { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
   }
 
