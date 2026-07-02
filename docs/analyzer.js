@@ -1,8 +1,8 @@
-// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.151
+// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.152
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.151 loaded');
+console.log('[milg] analyzer.js v3.11.152 loaded');
 
 (function() {
   "use strict";
@@ -1087,7 +1087,7 @@ console.log('[milg] analyzer.js v3.11.151 loaded');
     var _embeddedLibCache = null;
     function _getEmbeddedLib(cb) {
       if (_embeddedLibCache) { cb(_embeddedLibCache); return; }
-      fetch(EMBED_LIB_URL + '?v=3.11.151')
+      fetch(EMBED_LIB_URL + '?v=3.11.152')
         .then(function(r) { return r.ok ? r.text() : ''; })
         .then(function(t) {
           if (t && t.indexOf('modernScreenshot') !== -1) { _embeddedLibCache = t; cb(t); }
@@ -1878,20 +1878,41 @@ console.log('[milg] analyzer.js v3.11.151 loaded');
       return (p.title ? p.title.substring(0, 40) + ' — ' : '') + path;
     }
     function _llmHostOf(u) { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e) { return 'site'; } }
-    // Assemble the right pack for the current state: a multi-page crawl, or a single page.
+    // Assemble the right pack for the current state: a page×viewport matrix crawl (each page
+    // itself carries deepScan.viewportData from a multi-viewport deep-scan), a plain multi-page
+    // crawl, or a single page.
     function _buildLlmPackForCurrent(severity) {
       var session = MilgCrawlUI.getCrawlSession && MilgCrawlUI.getCrawlSession();
       if (session) {
         var done = (session.pages || []).filter(function(p) { return p.status === 'done' && p.reportData; });
         if (!done.length) return null;
-        var units = done.map(function(p, pi) { return { id: 'p' + pi, label: _llmPageLabel(p), report: p.reportData }; });
+        var isMatrix = done.some(function(p) { return p.rawData && p.rawData.deepScan && p.rawData.deepScan.viewportData && p.rawData.deepScan.viewportData.length > 0; });
+        var units, mode, dims, maxViewports = 1;
+        if (isMatrix) {
+          units = [];
+          done.forEach(function(p, pi) {
+            var vpList = (p.rawData.deepScan && p.rawData.deepScan.viewportData && p.rawData.deepScan.viewportData.length) ?
+              p.rawData.deepScan.viewportData : [{ label: 'Default', data: p.rawData }];
+            maxViewports = Math.max(maxViewports, vpList.length);
+            vpList.forEach(function(vp, vi) {
+              var vpReport = (vp.data === p.rawData) ? p.reportData : MilgScoring.runScoring(vp.data);
+              units.push({ id: 'p' + pi + 'v' + vi, label: _llmPageLabel(p) + ' @ ' + (vp.label || (vp.width ? vp.width + 'px' : 'viewport ' + (vi + 1))), report: vpReport });
+            });
+          });
+          mode = 'matrix';
+          dims = { pages: done.length, viewports: maxViewports };
+        } else {
+          units = done.map(function(p, pi) { return { id: 'p' + pi, label: _llmPageLabel(p), report: p.reportData }; });
+          mode = 'crawl';
+          dims = { pages: done.length };
+        }
         var _crawlSummary = session.summary || (MilgCrawl && MilgCrawl.buildSummary ? MilgCrawl.buildSummary(session) : null);
         return MilgReport.buildLlmPackMulti({
-          mode: 'crawl', units: units, primaryReport: done[0].reportData,
+          mode: mode, units: units, primaryReport: done[0].reportData,
           host: _llmHostOf(session.startUrl), startUrl: session.startUrl,
           aggregateScore: _crawlSummary ? _crawlSummary.averageScore : null,
           crawlSummary: _crawlSummary,
-          dims: { pages: done.length }, severityFilter: severity
+          dims: dims, severityFilter: severity
         });
       }
       return reportData ? MilgReport.buildLlmPack(reportData, { severityFilter: severity }) : null;

@@ -671,7 +671,7 @@ test.describe('Screenshot Pipeline', () => {
     const strongVerify = await page.evaluate(() => {
       const raw = window.__milgLastReport && window.__milgLastReport.raw;
       const how = ((raw && raw.regionScreenshots) || []).find(r => r.label === 'How it works');
-      const match = how && (how.regionVerifyResults || []).find(vr => /off by default/.test(vr.text || ''));
+      const match = how && (how.regionVerifyResults || []).find(vr => /on by default/.test(vr.text || ''));
       return match ? {
         text: match.text,
         isVariableBg: !!match.isVariableBg,

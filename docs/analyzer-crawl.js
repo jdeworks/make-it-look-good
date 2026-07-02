@@ -979,10 +979,16 @@ window.MilgCrawl = (function() {
     return lines.join('\n');
   }
 
-  function renderCrawlJSON(session, severityFilter) {
+  // includeViewportData (default true): a page that was itself deep-scanned across multiple
+  // viewports carries the full per-viewport raw data on data.deepScan.viewportData — that's
+  // what lets a re-imported crawl rebuild the page×viewport matrix LLM pack. Pass false for a
+  // lighter export that keeps the viewport labels (data.deepScan.viewports) but drops the
+  // heavy per-viewport payload (it multiplies export size by the viewport count).
+  function renderCrawlJSON(session, severityFilter, includeViewportData) {
+    if (includeViewportData === undefined) includeViewportData = true;
     // Strip transient state — keep ALL analysis data (screenshots, masks, verify) for full reimport.
     var _skipKeys = { _cachedReportData: 1 };
-    var _replacer = function(k, v) { return _skipKeys[k] ? undefined : v; };
+    var _replacer = function(k, v) { return (k === 'viewportData' && !includeViewportData) ? undefined : (_skipKeys[k] ? undefined : v); };
     var out = {
       _milgCrawl: true,
       _milgVersion: window.MILG_EXPORT_VERSION || '1.6',
