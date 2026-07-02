@@ -113,6 +113,17 @@ window.MilgIframe = (function() {
     // Strip <link rel="manifest"> tags — credentialed manifest fetches cause CORS noise in iframes.
     html = html.replace(/<link\b[^>]*\brel\s*=\s*["']manifest["'][^>]*>/gi, '');
 
+    // JS disabled (opts.neutralizeScripts, set for real-URL analyses when "Enable JavaScript"
+    // is off): the analysis iframe MUST keep allow-scripts so our injected extractor runs, so
+    // we can't gate the page's own JS via the sandbox attribute. Instead we defuse every page
+    // <script> by forcing an inert type. The HTML parser uses the FIRST `type` it sees, so
+    // prepending this also neutralizes type="module" and CDN bundles. This runs on the raw
+    // page HTML *before* any analyzer helper script is concatenated below, so our own scripts
+    // still execute. Without this, "JavaScript off" was a no-op — the page's JS ran regardless.
+    if (opts.neutralizeScripts) {
+      html = html.replace(/<script(\s|>)/gi, '<script type="text/plain" data-milg-disabled$1');
+    }
+
     var scripts = '';
 
     try {
@@ -498,6 +509,10 @@ window.MilgIframe = (function() {
       fontProxy: !!_proxyUrl && !jsEnabled,
       sandbox: jsEnabled,
       fetchPatch: jsEnabled && !!sourceUrl,
+      // Only defuse the page's own scripts for real-URL analyses (URL + crawl). Paste-HTML
+      // and the editor preview pass no sourceUrl and are left alone, so CDN-Tailwind previews
+      // still render as authored.
+      neutralizeScripts: !jsEnabled && !!sourceUrl,
       colorScheme: colorScheme
     });
 

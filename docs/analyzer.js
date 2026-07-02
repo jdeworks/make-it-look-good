@@ -1,8 +1,8 @@
-// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.149
+// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.150
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.149 loaded');
+console.log('[milg] analyzer.js v3.11.150 loaded');
 
 (function() {
   "use strict";
@@ -1087,7 +1087,7 @@ console.log('[milg] analyzer.js v3.11.149 loaded');
     var _embeddedLibCache = null;
     function _getEmbeddedLib(cb) {
       if (_embeddedLibCache) { cb(_embeddedLibCache); return; }
-      fetch(EMBED_LIB_URL + '?v=3.11.149')
+      fetch(EMBED_LIB_URL + '?v=3.11.150')
         .then(function(r) { return r.ok ? r.text() : ''; })
         .then(function(t) {
           if (t && t.indexOf('modernScreenshot') !== -1) { _embeddedLibCache = t; cb(t); }
@@ -1365,9 +1365,11 @@ console.log('[milg] analyzer.js v3.11.149 loaded');
         var exclude = window.__milgCombinedExclude || (document.getElementById('excludeSelector').value || '').trim();
 
         // Check settings
+        // JS runs on by default; the "I understand" ack is an informational disclosure,
+        // not a gate (the sandbox already blocks storage/cookies), so wantJs keys off the
+        // JS checkbox alone. Unticking it renders the page statically (scripts neutralized).
         var jsCheck = document.getElementById('jsEnabledCheck');
-        var jsAck = document.getElementById('jsRiskAck');
-        var wantJs = jsCheck && jsCheck.checked && jsAck && jsAck.checked;
+        var wantJs = !!(jsCheck && jsCheck.checked);
         var wantShots = document.getElementById('screenshotCheck') && document.getElementById('screenshotCheck').checked;
         var analysisOpts = { jsEnabled: wantJs, screenshots: wantShots, exclude: exclude };
 
@@ -1475,15 +1477,11 @@ console.log('[milg] analyzer.js v3.11.149 loaded');
     var jsEnabledOptions = document.getElementById('jsEnabledOptions');
     var jsRiskAck = document.getElementById('jsRiskAck');
     function syncJsGate() {
+      // JS runs on by default and the sandbox already blocks storage/cookies, so the
+      // "I understand" checkbox is an informational disclosure — it never hard-blocks
+      // analysis. Keep the Analyze button enabled regardless of the ack state.
       analyzeUrlBtn = document.getElementById('analyzeUrlBtn');
-      jsEnabledCheck = document.getElementById('jsEnabledCheck');
-      jsRiskAck = document.getElementById('jsRiskAck');
-      if (!jsEnabledCheck) return;
-      var needsAck = jsEnabledCheck.checked && (!jsRiskAck || !jsRiskAck.checked);
-      if (analyzeUrlBtn) {
-        analyzeUrlBtn.disabled = needsAck;
-        analyzeUrlBtn.title = needsAck ? 'Check "I understand the risk" to enable' : '';
-      }
+      if (analyzeUrlBtn) { analyzeUrlBtn.disabled = false; analyzeUrlBtn.title = ''; }
     }
     if (jsEnabledCheck && jsEnabledOptions) {
       jsEnabledCheck.addEventListener('change', function() {

@@ -6,7 +6,7 @@
   <title>make-it-look-good — Design Analyzer</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='2' y='2' width='12' height='12' rx='2' fill='%232563eb'/><rect x='18' y='2' width='12' height='12' rx='2' fill='%2393c5fd'/><rect x='2' y='18' width='12' height='12' rx='2' fill='%2393c5fd'/><rect x='18' y='18' width='12' height='12' rx='2' fill='%232563eb'/></svg>">
   <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="analyzer.css?v=3.11.149">
+  <link rel="stylesheet" href="analyzer.css?v=3.11.150">
 </head>
 <body class="analyzer-body">
 
@@ -42,7 +42,7 @@
       <button type="button" aria-label="Dismiss" title="Dismiss for now" onclick="window.__milgBannerDismiss&&window.__milgBannerDismiss()" style="background:none;border:none;color:var(--text-secondary);font-size:20px;line-height:1;padding:6px 10px;min-height:36px;min-width:36px;cursor:pointer">&times;</button>
     </div>
     <div class="input-hero">
-      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.11.149</span></h1>
+      <h1><a href="analyzer.html" style="color:inherit;text-decoration:none">Design Analyzer</a> <span style="font-size:12px;font-weight:400;color:var(--text-secondary);vertical-align:middle">v3.11.150</span></h1>
       <p>Rule-based scoring against WCAG, Material Design, and typography best practices. Checks computed styles — no AI, just evidence and math.</p>
     </div>
 
@@ -127,7 +127,7 @@
           <dt style="font-weight:600;color:var(--text);margin-top:10px">Explore SPA views</dt><dd style="margin:2px 0 0">For single-page apps: click nav/tabs to discover &amp; analyze hidden views — one tab can pass while another fails. Safe controls only.</dd>
           <dt style="font-weight:600;color:var(--text);margin-top:10px">Collapsed/expanded states</dt><dd style="margin:2px 0 0">For accordion/disclosure-heavy layouts: also analyze the page with every collapsible panel open at once (worst-case density &amp; overflow) and all closed (clean baseline) — issues that only appear when several panels are open are easy to miss otherwise. Runs automatically only when the page has 6+ collapsible panels.</dd>
           <dt style="font-weight:600;color:var(--text);margin-top:10px">Exploration budget</dt><dd style="margin:2px 0 0">When SPA explore or state capture is on, a single <strong style="color:var(--text)">Low / Medium / High / Unlimited</strong> dropdown sets how deep exploration goes (view count, time budget, expand passes). Higher = deeper but slower. SPA exploration runs entirely on your device, so <strong style="color:var(--text)">Unlimited</strong> removes all caps (with a warning) — handy for large apps, but it can tax the browser tab.</dd>
-          <dt style="font-weight:600;color:var(--text);margin-top:10px">JavaScript (URL mode)</dt><dd style="margin:2px 0 0">Render the page with JS on — needed for React/Vue/Angular apps. Off by default for safety/speed.</dd>
+          <dt style="font-weight:600;color:var(--text);margin-top:10px">JavaScript (URL mode)</dt><dd style="margin:2px 0 0">Render the page with its JS running — needed for React/Vue/Angular apps. <strong style="color:var(--text)">On by default</strong>; storage, cookies and other sensitive APIs are sandboxed (blocked + logged) while it runs. Untick to render statically without executing any page scripts.</dd>
         </dl>
         <details style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
           <summary style="cursor:pointer;user-select:none;font-weight:600;font-size:13px;color:var(--text)">How the score is calculated</summary>
@@ -169,8 +169,8 @@
         <summary style="cursor:pointer;user-select:none;font-weight:600;color:var(--text);">How it works</summary>
         <div style="margin-top:6px;">
           The page is fetched via a CORS proxy and rendered in a sandboxed iframe with its CSS.
-          JavaScript is <strong style="color:var(--text)">off by default</strong> &mdash; for JS-heavy sites (React, Vue, Angular), enable it below.
-          Storage, cookies, and other sensitive APIs are automatically isolated.
+          JavaScript runs <strong style="color:var(--text)">on by default</strong> (most sites need it to render) &mdash; untick it below to render statically without executing any page scripts.
+          Storage, cookies, and other sensitive APIs are always isolated while JS runs.
           Pages behind login, localhost, or sites that block proxies/framing need the <strong style="color:var(--text)">Console Snippet</strong> tab instead.
         </div>
       </details>
@@ -201,18 +201,18 @@
       </div>
       <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
         <label style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:6px;cursor:pointer">
-          <input type="checkbox" id="jsEnabledCheck" style="width:16px;height:16px;cursor:pointer">
+          <input type="checkbox" id="jsEnabledCheck" checked style="width:16px;height:16px;cursor:pointer">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-          Enable JavaScript (for React, Vue, etc.)
+          Run the page's JavaScript (sandboxed)
         </label>
       </div>
-      <div id="jsEnabledOptions" style="display:none;margin-top:8px;padding:12px 14px;border-radius:var(--radius)">
+      <div id="jsEnabledOptions" style="margin-top:8px;padding:12px 14px;border-radius:var(--radius)">
         <div style="font-size:12px;line-height:1.6;margin-bottom:8px">
-          The page's JavaScript will execute in a sandboxed frame. Storage, cookies, and other sensitive APIs are blocked and logged.
-          Scripts still run &mdash; only enable this for sites you recognize.
+          The page's JavaScript runs in a sandboxed frame &mdash; storage, cookies, and other sensitive APIs are blocked and logged.
+          It's on by default because most sites need it to render. Untick &ldquo;Run the page's JavaScript&rdquo; above to render statically (no page scripts) for sites you don't recognize.
         </div>
         <label style="font-size:12px;display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600">
-          <input type="checkbox" id="jsRiskAck" style="width:15px;height:15px;cursor:pointer">
+          <input type="checkbox" id="jsRiskAck" checked style="width:15px;height:15px;cursor:pointer">
           I understand the risk
         </label>
         <details style="margin-top:8px;font-size:11px">
@@ -561,7 +561,7 @@
           <tr><td style="padding:4px 8px;white-space:nowrap;font-weight:600;color:var(--text-secondary)">Capture disclosure states</td><td style="padding:4px 8px">For disclosure-heavy pages: extra All-expanded / Collapsed passes (runs when 6+ collapsible panels are detected)</td></tr>
           <tr><td style="padding:4px 8px;white-space:nowrap;font-weight:600;color:var(--text-secondary)">Viewport / Color scheme</td><td style="padding:4px 8px">Re-run the analysis at another viewport width or forced light/dark (URL mode only)</td></tr>
           <tr><td style="padding:4px 8px;white-space:nowrap;font-weight:600;color:var(--text-secondary)">Crawl</td><td style="padding:4px 8px">Follow links and analyze multiple pages from the same site</td></tr>
-          <tr><td style="padding:4px 8px;white-space:nowrap;font-weight:600;color:var(--text-secondary)">Enable JavaScript</td><td style="padding:4px 8px">Run page JS in sandbox (for SPAs). The Console Snippet is safer.</td></tr>
+          <tr><td style="padding:4px 8px;white-space:nowrap;font-weight:600;color:var(--text-secondary)">Run page JavaScript</td><td style="padding:4px 8px">On by default — runs page JS in a sandbox (storage/cookies blocked). Untick to render statically. The Console Snippet is safer still.</td></tr>
         </table>
 
         <h3 style="font-size:14px;margin:0 0 8px;color:var(--accent)">Pixel Verification</h3>
@@ -592,34 +592,34 @@
   <div class="toast" id="toast" aria-live="polite" aria-atomic="true" role="status"></div>
 
   <!-- Scoring: registry + modular scoring functions -->
-  <script src="scoring/registry.js?v=3.11.149"></script>
-  <script src="scoring/contrast.js?v=3.11.149"></script>
-  <script src="scoring/typography.js?v=3.11.149"></script>
-  <script src="scoring/spacing.js?v=3.11.149"></script>
-  <script src="scoring/touch.js?v=3.11.149"></script>
-  <script src="scoring/accessibility.js?v=3.11.149"></script>
-  <script src="scoring/responsive.js?v=3.11.149"></script>
-  <script src="scoring/consistency.js?v=3.11.149"></script>
-  <script src="scoring/cognitive.js?v=3.11.149"></script>
-  <script src="scoring/layout.js?v=3.11.149"></script>
-  <script src="scoring/performance.js?v=3.11.149"></script>
-  <script src="scoring/readability.js?v=3.11.149"></script>
-  <script src="scoring/filters.js?v=3.11.149"></script>
-  <script src="scoring/balance.js?v=3.11.149"></script>
-  <script src="scoring/polish.js?v=3.11.149"></script>
+  <script src="scoring/registry.js?v=3.11.150"></script>
+  <script src="scoring/contrast.js?v=3.11.150"></script>
+  <script src="scoring/typography.js?v=3.11.150"></script>
+  <script src="scoring/spacing.js?v=3.11.150"></script>
+  <script src="scoring/touch.js?v=3.11.150"></script>
+  <script src="scoring/accessibility.js?v=3.11.150"></script>
+  <script src="scoring/responsive.js?v=3.11.150"></script>
+  <script src="scoring/consistency.js?v=3.11.150"></script>
+  <script src="scoring/cognitive.js?v=3.11.150"></script>
+  <script src="scoring/layout.js?v=3.11.150"></script>
+  <script src="scoring/performance.js?v=3.11.150"></script>
+  <script src="scoring/readability.js?v=3.11.150"></script>
+  <script src="scoring/filters.js?v=3.11.150"></script>
+  <script src="scoring/balance.js?v=3.11.150"></script>
+  <script src="scoring/polish.js?v=3.11.150"></script>
   <!-- Queue + Report rendering + UI -->
-  <script src="analyzer-queue.js?v=3.11.149"></script>
-  <script src="analyzer-report.js?v=3.11.149"></script>
-  <script src="analyzer-crawl.js?v=3.11.149"></script>
-  <script src="analyzer-extract.js?v=3.11.149"></script>
-  <script src="analyzer-spa.js?v=3.11.149"></script>
-  <script src="analyzer-region.js?v=3.11.149"></script>
-  <script src="analyzer-capture.js?v=3.11.149"></script>
-  <script src="analyzer-iframe.js?v=3.11.149"></script>
-  <script src="analyzer-proxy.js?v=3.11.149"></script>
-  <script src="analyzer-crawl-ui.js?v=3.11.149"></script>
-  <script src="analyzer-contrast-verify.js?v=3.11.149"></script>
-  <script src="analyzer-viewer.js?v=3.11.149"></script>
-  <script src="analyzer.js?v=3.11.149"></script>
+  <script src="analyzer-queue.js?v=3.11.150"></script>
+  <script src="analyzer-report.js?v=3.11.150"></script>
+  <script src="analyzer-crawl.js?v=3.11.150"></script>
+  <script src="analyzer-extract.js?v=3.11.150"></script>
+  <script src="analyzer-spa.js?v=3.11.150"></script>
+  <script src="analyzer-region.js?v=3.11.150"></script>
+  <script src="analyzer-capture.js?v=3.11.150"></script>
+  <script src="analyzer-iframe.js?v=3.11.150"></script>
+  <script src="analyzer-proxy.js?v=3.11.150"></script>
+  <script src="analyzer-crawl-ui.js?v=3.11.150"></script>
+  <script src="analyzer-contrast-verify.js?v=3.11.150"></script>
+  <script src="analyzer-viewer.js?v=3.11.150"></script>
+  <script src="analyzer.js?v=3.11.150"></script>
 </body>
 </html>

@@ -412,9 +412,9 @@ window.MilgCrawlUI = (function() {
     maxPages = Math.min(Math.max(maxPages, 1), CRAWL_HARD_MAX);
 
     var blacklist = (crawlBlacklist.value || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+    // JS on by default; ack is informational, not a gate — key off the checkbox alone.
     var jsCheck = document.getElementById('jsEnabledCheck');
-    var jsAck = document.getElementById('jsRiskAck');
-    var wantJs = jsCheck && jsCheck.checked && jsAck && jsAck.checked;
+    var wantJs = !!(jsCheck && jsCheck.checked);
     var profile = document.getElementById('profileSelect');
 
     _crawlSession = MilgCrawl.createSession(url, {
