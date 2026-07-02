@@ -23,7 +23,7 @@ Not every section is required, but **Concrete Rules** and **CSS/Implementation P
 - **Flat folders** (max 1 level deep) — no nested subdirectories within topic folders (exception: `docs/presets/` contains per-preset directories with framework variants)
 - **Concrete numbers over vague principles** — "4.5:1 contrast ratio" not "ensure sufficient contrast"
 - **Markdown only** — no JSON/YAML data files unless tooling specifically requires it
-- **research/ is gitignored** — only `research/sources.md` (bibliography) is committed
+- **research/ is gitignored** — `research/sources.md` (bibliography) is committed; a few pre-existing research docs are also tracked, but don't add new ones
 - **Update `research/sources.md`** when adding new sources to any file
 - **Update `README.md`** index when adding new knowledge files
 - **Cross-reference related files** using relative links: `[topic](../folder/file.md)`
@@ -39,9 +39,27 @@ Not every section is required, but **Concrete Rules** and **CSS/Implementation P
 - `responsive/` — Mobile-first, breakpoints, fluid typography, responsive patterns
 - `systems/` — Design tokens, Material Design 3, Apple HIG, building a system
 - `expressive/` — Visual identity, hero patterns, scroll storytelling, purposeful motion
-- `heuristics/` — Nielsen's 10 heuristics, UX frameworks
+- `heuristics/` — Nielsen's 10 heuristics, UX frameworks, LLM design gotchas
 - `components/` — Concrete component patterns (buttons, forms, cards, etc.)
 - `docs/presets/` — Copy-paste-ready HTML+Tailwind presets with personality variants (see `docs/presets/_index.md`)
   - Each preset dir has `clean.html`, `minimalist.html`, `playful.html` (and optionally `react.jsx`, `vue.vue`, `svelte.svelte`)
 - `workflows/` — Cross-cutting decision guides and checklists
 - `research/` — Raw research data (gitignored except sources.md)
+
+## Regenerating Published Scores & Thumbnails
+After adding or changing presets, refresh the published gallery data:
+
+```bash
+# Publish run — updates docs/presets/scores.json + docs/presets/thumbnails/ (light + dark WebP pairs)
+node scripts/generate-preset-score-matrix.mjs --mode publish --publish --thumbnail-format webp --workers 6
+
+# Fast regression check across 64 combos (does NOT touch scores.json)
+npm run matrix:smoke
+
+# Self-analysis gate for the analyzer's own pages (index.html + analyzer.html)
+node scripts/test-self-analysis.mjs
+# After INTENTIONAL score changes, refresh the enforced baseline:
+UPDATE_BASELINE=1 node scripts/test-self-analysis.mjs
+```
+
+`--publish` is what writes into `docs/presets/`; without it, results stay in a `research/preset-score-matrix/` run dir. `--only <element>` limits a run to one preset; `--include-before` also scores the intentional "before" anti-examples.

@@ -399,17 +399,19 @@ function jobId(job) {
 }
 
 function thumbnailPath(job) {
-  return join(OUT_DIR, 'thumbnails', job.element, `${job.personality}.${CAPTURE_FORMAT}`);
+  // Dark cells get their own `-dark` file — the published gallery ships light+dark pairs
+  // (docs/presets/thumbnails/<element>/<personality>[-dark].webp).
+  return join(OUT_DIR, 'thumbnails', job.element, `${job.personality}${job.dark ? '-dark' : ''}.${CAPTURE_FORMAT}`);
 }
 
 function shouldCaptureThumbnail(job, manifest) {
   if (THUMBNAILS === 'none') return false;
   if (THUMBNAILS === 'all') return true;
+  // Light AND dark at desktop/primary/none — both ship to the gallery. (Dark used to be
+  // an undocumented ad-hoc step; the -dark.webp files in docs were unreproducible.)
   return job.viewport.name === 'desktop' &&
     job.color === 'primary' &&
-    !job.dark &&
     job.effect === 'none' &&
-    job.color === 'primary' &&
     manifestPrimary(manifest, job.element, job.personality);
 }
 
@@ -593,12 +595,27 @@ async function captureThumbnail(page, manifest, job) {
   await setViewport(page, { width: 1280, height: 900 });
   await page.setContent(srcdoc, { waitUntil: 'networkidle0', timeout: 15000 });
   await page.waitForTimeout(1200);
-  await page.screenshot({
-    path: out,
-    type: CAPTURE_FORMAT === 'png' ? 'png' : 'webp',
-    quality: CAPTURE_FORMAT === 'png' ? undefined : 78,
-    fullPage: false,
-  });
+  if (CAPTURE_FORMAT === 'png') {
+    await page.screenshot({ path: out, type: 'png', fullPage: false });
+    return out;
+  }
+  // webp: Playwright's screenshot() only does png/jpeg (Puppeteer-only feature) — capture
+  // png and convert INSIDE the open page via canvas.toDataURL, so webp thumbnails work on
+  // either engine with zero extra dependencies.
+  const pngBuf = await page.screenshot({ type: 'png', fullPage: false });
+  const dataUrl = await page.evaluate((pngB64) => new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth; c.height = img.naturalHeight;
+      c.getContext('2d').drawImage(img, 0, 0);
+      resolve(c.toDataURL('image/webp', 0.78));
+    };
+    img.onerror = () => reject(new Error('png decode failed'));
+    img.src = 'data:image/png;base64,' + pngB64;
+  }), Buffer.from(pngBuf).toString('base64'));
+  if (!dataUrl || !dataUrl.startsWith('data:image/webp')) throw new Error('webp conversion failed');
+  writeFileSync(out, Buffer.from(dataUrl.split(',')[1], 'base64'));
   return out;
 }
 

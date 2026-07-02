@@ -3,10 +3,10 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
-const pw = await import('/home/jens/repos/make-it-look-good/node_modules/playwright/index.js');
+const ROOT = new URL('..', import.meta.url).pathname.replace(/\/$/, '');
+const pw = await import(ROOT + '/node_modules/playwright/index.js');
 const chromium = pw.chromium || (pw.default && pw.default.chromium);
 
-const ROOT = '/home/jens/repos/make-it-look-good';
 const PORT = 8933;
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml' };
 const server = createServer(async (req, res) => {

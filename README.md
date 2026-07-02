@@ -112,19 +112,20 @@ LLM agents should treat preview links as human-preview-only. For code generation
 
 Score any website against evidence-based design rules with the [Design Analyzer](https://jdeworks.github.io/make-it-look-good/analyzer.html). **~60 checks across 14 scoring modules** — no AI, just math against WCAG 2.2, Material Design, NNGroup research, and typography best practices. Every finding links to its source.
 
-Three input tabs:
+Four input tabs:
 
 | Tab | Best for | How |
 |--------|----------|-----|
 | **Enter URL** | Quick checks, whole sites (crawl + cross-page consistency) | Paste a URL — fetched via CORS proxy (or the local server for `localhost`), scored automatically |
 | **Console Snippet** | Most accurate; behind login, localhost, proxy-blocked sites | Copy snippet → run in DevTools console → paste or upload the JSON |
+| **Paste HTML** | Partial fallback when both URL and console snippet are blocked | Paste markup copied from DevTools Elements |
 | **Load Saved** | Re-opening a past analysis | Import a `.milg` / JSON export |
 
 Scoring modules: Color & Contrast (WCAG + APCA), Typography, Spacing & Layout, Touch & Interaction, Accessibility, Responsive Design, Visual Consistency, Cognitive Load, Layout Quality, Design Polish, Performance, Readability, Motion & Animation, Visual Balance.
 
-Features: 8 audience profiles (General, WCAG AAA, Elderly, Low Vision, Motor Impairment, Color Blind, Children, Cognitive), page context detection, gradient/background-image/CSS-filter contrast resolution, decorative element filtering, context-aware touch targets (nav/footer/inline exemptions per WCAG 2.5.8), CVD palette simulation (Machado et al. 2009), post-analysis exclusion suggestions, extraction caching, viewport size selection, forced light/dark color-scheme analysis (re-run per viewport/mode for multi-mode coverage), SPA view discovery, page screenshots, analysis history, N/A category detection, progress bar, JSON export/import, markdown export. When crawling multiple pages, a **cross-page Site Consistency report** flags design-token drift across the site — divergent fonts, type scale, spacing, palette (near-duplicate colors), corner radius, dark-mode coverage, and CSS framework — scored independently of each page's own grade. Self-hostable CORS proxy (Cloudflare Worker, free tier 100K req/day) — see [`proxy/README.md`](proxy/README.md).
+Features: 8 audience profiles (General, WCAG AAA, Elderly, Low Vision, Motor Impairment, Color Vision Deficiency, Children, Cognitive), page context detection, gradient/background-image/CSS-filter contrast resolution, decorative element filtering, context-aware touch targets (nav/footer/inline exemptions per WCAG 2.5.8), CVD palette simulation (Machado et al. 2009), post-analysis exclusion suggestions, extraction caching, viewport size selection, forced light/dark color-scheme analysis (re-run per viewport/mode for multi-mode coverage), SPA view discovery, page screenshots, analysis history, N/A category detection, progress bar, JSON export/import, markdown export. When crawling multiple pages, a **cross-page Site Consistency report** flags design-token drift across the site — divergent fonts, type scale, spacing, palette (near-duplicate colors), corner radius, dark-mode coverage, and CSS framework — scored independently of each page's own grade. Self-hostable CORS proxy (Cloudflare Worker, free tier 100K req/day) — see [`proxy/README.md`](proxy/README.md).
 
-Validated against 125 preset templates via headless browser testing with Puppeteer Chrome or Playwright Chromium fallback — average score 99, min 90, max 100, with all 125 presets completing successfully (0 errors).
+Validated against 125 preset templates via headless browser testing with Puppeteer Chrome or Playwright Chromium fallback — the 120 production presets average 99 (min 95, max 100) with all 125 completing successfully; the 5 intentional "before" anti-example templates score lower by design (they exist to showcase before→after redesigns).
 
 Fresh-clone validation:
 

@@ -3,9 +3,9 @@
 // + SPA. Dumps which verify path ran (edge/grid), the bbox, and how many bg compare points land
 // OUTSIDE the bbox. Usage: node scripts/_probe-h1-samples.mjs
 import { spawn } from 'node:child_process';
-const pw = await import('/home/jens/repos/make-it-look-good/node_modules/playwright/index.js');
+const ROOT = new URL('..', import.meta.url).pathname.replace(/\/$/, '');
+const pw = await import(ROOT + '/node_modules/playwright/index.js');
 const chromium = pw.chromium || (pw.default && pw.default.chromium);
-const ROOT = '/home/jens/repos/make-it-look-good';
 const PORT = 8991;
 const URL = 'https://jdeworks.github.io/dead-data-cleaner-poc/';
 const MATCH = 'Keep your codebase';

@@ -17,7 +17,8 @@ test('snippet code surfaces the single-viewport hint', async ({ page }) => {
   }, { timeout: 30000 });
   const code = await page.evaluate(() => document.getElementById('snippetCode').textContent);
   expect(code).toMatch(HINT);
-  expect(code).toContain("var _MILG_VERSION = 'v3.11.66'");
+  // Any current semver — the snippet version tracks the analyzer version and bumps often.
+  expect(code).toMatch(/var _MILG_VERSION = 'v\d+\.\d+\.\d+'/);
   expect(code).toContain('capture failed at stage');
   expect(code).toContain('screenshotError');
   expect(code).toContain('snippet-capture-start-error');

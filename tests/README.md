@@ -86,8 +86,20 @@ See `ANALYSIS.md` for systematic compliance checking of all outputs against know
 ## Preview Tool Integration
 
 All HTML outputs are loadable as presets in the [preview tool](../docs/index.html):
-- Templates dropdown → Vibes → Pricing, Portfolio, Restaurant, Status Page
-- Templates dropdown → Edge Cases → Deploy Monitor, Button System, OSS Landing
+- Templates dropdown → Full Pages → Pricing, Portfolio, Restaurant, Status Page
+- Templates dropdown → Edge Cases → Deploy, Buttons, OSS Landing
+
+## Automated Analyzer Tests
+
+Beyond the consultation-flow cases above, `tests/` contains the automated spec files that guard the analyzer engine (Playwright + Node):
+
+```bash
+node server.js &   # local server on 8384 (the specs expect it)
+npx playwright test
+node tests/contrast-and-palette.test.mjs   # WCAG math + preset palette rules
+```
+
+Key suites: `html-analysis.spec.js` (core extraction/scoring), `verify-spa-followups.spec.js` (SPA scroll-section capture + budgets), `verify-spa-grid-samples.spec.js` (pixel-verify grid sampler), `spa-snippet.spec.js` (console-snippet SPA + settings parity), `analyzer-a11y.spec.js`, `motion-scoring.spec.js`, plus crawl-flow, export-roundtrip, region-debug, viewer-overlay-alignment, and right-click-live coverage. The self-analysis gate (`node scripts/test-self-analysis.mjs`) scores the analyzer's own pages against a committed baseline.
 
 ## What These Validate
 

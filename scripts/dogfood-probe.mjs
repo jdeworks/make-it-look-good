@@ -9,10 +9,10 @@
 //                                        [--no-spa] [--json]
 // Prints a human-readable contrast report to stdout; add --json for the raw object instead.
 import { spawn } from 'node:child_process';
-const pw = await import('/home/jens/repos/make-it-look-good/node_modules/playwright/index.js');
+const ROOT = new URL('..', import.meta.url).pathname.replace(/\/$/, '');
+const pw = await import(ROOT + '/node_modules/playwright/index.js');
 const chromium = pw.chromium || (pw.default && pw.default.chromium);
 
-const ROOT = '/home/jens/repos/make-it-look-good';
 function arg(name, def) { const i = process.argv.indexOf('--' + name); return i >= 0 && process.argv[i + 1] && !process.argv[i + 1].startsWith('--') ? process.argv[i + 1] : def; }
 const flag = (n) => process.argv.includes('--' + n);
 const url = process.argv[2];

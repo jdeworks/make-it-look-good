@@ -4,14 +4,14 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
-const pw = await import('/home/jens/repos/make-it-look-good/node_modules/playwright/index.js');
+const ROOT = new URL('..', import.meta.url).pathname.replace(/\/$/, '');
+const pw = await import(ROOT + '/node_modules/playwright/index.js');
 const chromium = pw.chromium || (pw.default && pw.default.chromium);
 
 const url = process.argv[2];
 if (!url) { console.error('need url'); process.exit(2); }
 const portArg = process.argv.indexOf('--port');
 const PORT = portArg >= 0 ? parseInt(process.argv[portArg + 1], 10) : 8940;
-const ROOT = '/home/jens/repos/make-it-look-good';
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml' };
 const log = (...a) => console.error(...a);
 
