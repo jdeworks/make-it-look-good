@@ -120,7 +120,19 @@ function dedupeCellFindings(views) {
 }
 
 // ---- run ----
-const server = await startServer();
+let server = await startServer();
+// Like the browser below, the local server can die mid-sweep (fink dark onward, Jul 2:
+// ERR_CONNECTION_REFUSED cascade) — ping it before each cell and restart when dead.
+async function ensureServer() {
+  try {
+    const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 3000);
+    const r = await fetch(`http://localhost:${PORT}/analyzer.html`, { signal: ctl.signal });
+    clearTimeout(t);
+    if (r.ok) return;
+  } catch (e) {}
+  try { server.kill(); } catch (e) {}
+  server = await startServer();
+}
 let browser = await chromium.launch();
 // One page shared across cells used to mean one renderer crash failed EVERY later cell
 // ("Target page, context or browser has been closed" cascade — narratu dark onward, Jul 2).
@@ -145,6 +157,7 @@ for (const cell of cells) {
   process.stdout.write(`▶ ${label} … `);
   let page = null;
   try {
+    await ensureServer();
     page = await freshPage();
     const r = await runCell(page, cell.target, VIEWPORTS[cell.vp] || VIEWPORTS.desktop, cell.mode);
     analysed += r.views.length;
