@@ -51,6 +51,7 @@ Dark mode is the single most common source of LLM contrast failures. Light-mode 
 | Missing `dark:hover:` / `dark:focus:` pairs on interactive states | Hover added for light mode only | Every `hover:bg-*` needs a `dark:hover:bg-*` counterpart; same for focus-visible | [color/contrast-and-accessibility.md](../color/contrast-and-accessibility.md) |
 | Bright accent as body text (orange-400, yellow-400 on white) | Accent chosen for aesthetics | Test every accent as text color early; mid-range hues often fail 4.5:1 on white | [color/contrast-and-accessibility.md](../color/contrast-and-accessibility.md) |
 | Placeholder text with < 3:1 contrast (slate-300 on white) | Intentionally subdued look | Placeholder ≥ 3:1 against its background — WCAG 1.4.3 applies | [color/contrast-and-accessibility.md](../color/contrast-and-accessibility.md) |
+| `opacity-50/70` on a whole row/card to de-emphasize it (played, locked, disabled-looking items) | One class dims everything uniformly | Dim only non-text visuals (icons, waveforms, thumbnails); text gets explicit muted-but-AA tokens per state — even near-black text under `opacity-70` composites to ~4.2:1 and fails | [color/contrast-and-accessibility.md](../color/contrast-and-accessibility.md) |
 
 ### 3. Spacing Rhythm
 

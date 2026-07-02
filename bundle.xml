@@ -840,6 +840,7 @@ a:hover {
 5. **Ignoring focus indicators** — removing `outline` for aesthetics without providing a visible alternative fails WCAG 2.4.7.
 6. **Semi-transparent overlays** — `rgba(0,0,0,0.5)` overlay contrast depends on what's behind it. Test worst-case backgrounds.
 7. **Gradient backgrounds** — text on gradients must pass contrast at every point, not just the average.
+8. **Container opacity as de-emphasis** — `opacity-50/70` on a whole row or card (played items, locked rows, "inactive" states) composites every text node toward the background: text that passes AA at full strength lands at 2.2–3.4:1, and even near-black at `opacity-70` only reaches ~4.2:1 — no text color survives it. De-emphasize per element instead: keep opacity dimming for non-text visuals (icons, waveforms, thumbnails) and switch text to explicit muted tokens that still pass 4.5:1 (e.g. current = `--text`, past = `--text-muted`, upcoming = `--text-secondary`). To verify any translucent case, composite first (`result = fg×α + bg×(1−α)` per channel), then compute the ratio on the resulting color.
 
 ## Decision Tree
 
@@ -11947,6 +11948,7 @@ Starting a new project?
 | Large text threshold | **18pt** (24px) or **14pt bold** (18.5px) | WCAG 2.2 |
 | UI component contrast | **3:1** minimum against adjacent colors | WCAG 2.2 |
 | Focus indicator contrast | **3:1** minimum | WCAG 2.2 |
+| Text under container opacity | **4.5:1 after compositing** — near-black under `opacity-70` ≈ 4.2:1 fails; dim visuals, not text | WCAG 2.2 |
 | APCA body text (supplementary) | **Lc 60+** | APCA-W3 (future WCAG 3.0) |
 | APCA large/bold text | **Lc 45+** | APCA-W3 |
 
@@ -12728,6 +12730,7 @@ Dark mode is the single most common source of LLM contrast failures. Light-mode 
 | Missing `dark:hover:` / `dark:focus:` pairs on interactive states | Hover added for light mode only | Every `hover:bg-*` needs a `dark:hover:bg-*` counterpart; same for focus-visible | [color/contrast-and-accessibility.md](../color/contrast-and-accessibility.md) |
 | Bright accent as body text (orange-400, yellow-400 on white) | Accent chosen for aesthetics | Test every accent as text color early; mid-range hues often fail 4.5:1 on white | [color/contrast-and-accessibility.md](../color/contrast-and-accessibility.md) |
 | Placeholder text with < 3:1 contrast (slate-300 on white) | Intentionally subdued look | Placeholder ≥ 3:1 against its background — WCAG 1.4.3 applies | [color/contrast-and-accessibility.md](../color/contrast-and-accessibility.md) |
+| `opacity-50/70` on a whole row/card to de-emphasize it (played, locked, disabled-looking items) | One class dims everything uniformly | Dim only non-text visuals (icons, waveforms, thumbnails); text gets explicit muted-but-AA tokens per state — even near-black text under `opacity-70` composites to ~4.2:1 and fails | [color/contrast-and-accessibility.md](../color/contrast-and-accessibility.md) |
 
 ### 3. Spacing Rhythm
 

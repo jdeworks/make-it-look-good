@@ -142,6 +142,7 @@ a:hover {
 5. **Ignoring focus indicators** — removing `outline` for aesthetics without providing a visible alternative fails WCAG 2.4.7.
 6. **Semi-transparent overlays** — `rgba(0,0,0,0.5)` overlay contrast depends on what's behind it. Test worst-case backgrounds.
 7. **Gradient backgrounds** — text on gradients must pass contrast at every point, not just the average.
+8. **Container opacity as de-emphasis** — `opacity-50/70` on a whole row or card (played items, locked rows, "inactive" states) composites every text node toward the background: text that passes AA at full strength lands at 2.2–3.4:1, and even near-black at `opacity-70` only reaches ~4.2:1 — no text color survives it. De-emphasize per element instead: keep opacity dimming for non-text visuals (icons, waveforms, thumbnails) and switch text to explicit muted tokens that still pass 4.5:1 (e.g. current = `--text`, past = `--text-muted`, upcoming = `--text-secondary`). To verify any translucent case, composite first (`result = fg×α + bg×(1−α)` per channel), then compute the ratio on the resulting color.
 
 ## Decision Tree
 
