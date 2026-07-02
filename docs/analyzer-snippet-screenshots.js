@@ -1,5 +1,5 @@
 // make-it-look-good — Design Extraction Snippet (with screenshots)
-// Version: v3.11.143
+// Version: v3.11.144
 // Run this in the browser console on any page.
 // Loads extraction engine from CDN (single source of truth), then captures screenshots.
 // Output is larger (~200-800KB extra) but includes visual reference.
@@ -7,7 +7,7 @@
 
 (function() {
   'use strict';
-  var _MILG_VERSION = 'v3.11.143';
+  var _MILG_VERSION = 'v3.11.144';
   console.log('%c[milg] Snippet version: ' + _MILG_VERSION, 'color: #64748b;');
 
   // --- Pixel verify option ---

@@ -1,8 +1,8 @@
-// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.143
+// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.144
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.143 loaded');
+console.log('[milg] analyzer.js v3.11.144 loaded');
 
 (function() {
   "use strict";
@@ -1079,7 +1079,7 @@ console.log('[milg] analyzer.js v3.11.143 loaded');
     var _embeddedLibCache = null;
     function _getEmbeddedLib(cb) {
       if (_embeddedLibCache) { cb(_embeddedLibCache); return; }
-      fetch(EMBED_LIB_URL + '?v=3.11.143')
+      fetch(EMBED_LIB_URL + '?v=3.11.144')
         .then(function(r) { return r.ok ? r.text() : ''; })
         .then(function(t) {
           if (t && t.indexOf('modernScreenshot') !== -1) { _embeddedLibCache = t; cb(t); }

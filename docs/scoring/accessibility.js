@@ -20,8 +20,10 @@ function scoreAccessibility(data) {
   var hasNav = (semantic.nav || 0) > 0;
   var hasHeader = (semantic.header || 0) > 0;
   var semanticCount = [hasMain, hasNav, hasHeader].filter(Boolean).length;
-  if (semanticCount >= 2 || elCount < 50) {
-    passed++; // Small components don't need full page landmarks
+  if (semanticCount >= 2 || elCount < 50 || (data.meta && data.meta.scopedExtract)) {
+    // Small components don't need full page landmarks; scoped extracts (SPA modal/region
+    // sub-views) analyze a subtree whose landmarks live on the parent page by design.
+    passed++;
   } else {
     var _semFound = [hasHeader ? 'header' : null, hasNav ? 'nav' : null, hasMain ? 'main' : null, semantic.footer ? 'footer' : null].filter(Boolean).join(', ');
     findings.push({

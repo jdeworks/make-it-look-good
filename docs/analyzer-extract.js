@@ -233,6 +233,8 @@ window.MilgExtract = (function() {
     // every query resolves to document/document.body exactly as before (byte-identical).
     var _scopeRoot = null;
     try { var _sr = window.__milgScopeRoot; if (_sr && _sr.nodeType === 1 && document.body && document.body.contains(_sr)) _scopeRoot = _sr; } catch (e) {}
+    // Scoped (modal/region sub-view) extracts legitimately lack page landmarks — scoring relaxes.
+    data.meta.scopedExtract = !!_scopeRoot;
     function _qa(sel) { try { return (_scopeRoot || document).querySelectorAll(sel); } catch (e) { return (document).querySelectorAll(sel); } }
 
     var allElements = (_scopeRoot || document.body).querySelectorAll('*');
@@ -1221,6 +1223,18 @@ window.MilgExtract = (function() {
     data.layout.tableCellIssues = [];
     if (vpW < 768) {
       _qa('table').forEach(function(table) {
+        // A table inside an ENGAGED horizontal-scroll wrapper (overflow-x auto/scroll and the
+        // content actually overflows) is the standard mobile table strategy — its cells keep
+        // their desktop width and scroll, so wrapped/cramped-cell counts don't apply. Only
+        // tables squeezed to the viewport (no scroll escape) are readability problems.
+        var _tw = table.parentElement, _hops = 0, _scrollWrapped = false;
+        while (_tw && _tw !== document.body && _hops++ < 4) {
+          var _twS = getComputedStyle(_tw);
+          var _ox = _twS.overflowX;
+          if ((_ox === 'auto' || _ox === 'scroll') && _tw.scrollWidth > _tw.clientWidth + 8) { _scrollWrapped = true; break; }
+          _tw = _tw.parentElement;
+        }
+        if (_scrollWrapped) return;
         var cells = table.querySelectorAll('td, th');
         var cramped = 0, wrappedCells = 0;
         cells.forEach(function(cell) {
@@ -1576,6 +1590,16 @@ window.MilgExtract = (function() {
     var _iframeHiddenPanelMeta = [];
     function _hpAddPanel(el, kind, triggerEl) {
       if (_iframeHiddenPanels.indexOf(el) !== -1) return;
+      // Responsive hiding is NOT a disclosure: Tailwind's `hidden` paired with a breakpoint
+      // display variant (e.g. `hidden sm:flex` — a desktop-only sidebar at a mobile viewport)
+      // means the element belongs to ANOTHER viewport. Force-revealing it in the expanded-state
+      // pass fabricates horizontal overflow no real user can see (dead-data's w-60 sidebar
+      // squeezed main to ~150px at 390px and flagged phantom container overflow).
+      try {
+        var _hpCls = typeof el.className === 'string' ? el.className : '';
+        if (/(^|\s)hidden(\s|$)/.test(_hpCls) &&
+            /(^|\s)(sm|md|lg|xl|2xl):(flex|block|grid|inline|inline-flex|inline-block|table|contents)(\s|$)/.test(_hpCls)) return;
+      } catch (e) {}
       _iframeHiddenPanels.push(el);
       // Build a human label: summary text for details, trigger text for aria, else id/class
       var label = '';
