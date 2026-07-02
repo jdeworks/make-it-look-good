@@ -1,8 +1,8 @@
-// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.144
+// make-it-look-good — Design Analyzer (Main UI Controller) v3.11.145
 // Depends on: analyzer-report.js (MilgReport), analyzer-crawl.js (MilgCrawl),
 //             analyzer-extract.js (MilgExtract), analyzer-iframe.js (MilgIframe),
 //             analyzer-proxy.js (MilgProxy), analyzer-crawl-ui.js (MilgCrawlUI)
-console.log('[milg] analyzer.js v3.11.144 loaded');
+console.log('[milg] analyzer.js v3.11.145 loaded');
 
 (function() {
   "use strict";
@@ -1029,6 +1029,14 @@ console.log('[milg] analyzer.js v3.11.144 loaded');
         document.getElementById(btn.dataset.tab).classList.add('active');
         // Hide analysis options on Import tab — imported data has its own settings
         if (_analysisOptions) _analysisOptions.style.display = (btn.dataset.tab === 'tabImport') ? 'none' : 'flex';
+        // Same for the SPA exploration-budget panel (lives outside #analysisOptions, so
+        // hiding that alone doesn't hide this): force-hide on Import, else resync to checkboxes.
+        if (btn.dataset.tab === 'tabImport') {
+          var _spaPanel = document.getElementById('spaOptions');
+          if (_spaPanel) _spaPanel.style.display = 'none';
+        } else if (window.__milgSyncSpaOptions) {
+          window.__milgSyncSpaOptions();
+        }
       });
     });
 
@@ -1079,7 +1087,7 @@ console.log('[milg] analyzer.js v3.11.144 loaded');
     var _embeddedLibCache = null;
     function _getEmbeddedLib(cb) {
       if (_embeddedLibCache) { cb(_embeddedLibCache); return; }
-      fetch(EMBED_LIB_URL + '?v=3.11.144')
+      fetch(EMBED_LIB_URL + '?v=3.11.145')
         .then(function(r) { return r.ok ? r.text() : ''; })
         .then(function(t) {
           if (t && t.indexOf('modernScreenshot') !== -1) { _embeddedLibCache = t; cb(t); }
@@ -1547,6 +1555,12 @@ console.log('[milg] analyzer.js v3.11.144 loaded');
           if (target) target.classList.add('active');
           var ao = document.getElementById('analysisOptions');
           if (ao) ao.style.display = (btn.dataset.tab === 'tabImport') ? 'none' : 'flex';
+          if (btn.dataset.tab === 'tabImport') {
+            var spaPanel = document.getElementById('spaOptions');
+            if (spaPanel) spaPanel.style.display = 'none';
+          } else if (window.__milgSyncSpaOptions) {
+            window.__milgSyncSpaOptions();
+          }
         });
       });
 
