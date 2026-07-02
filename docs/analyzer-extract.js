@@ -956,7 +956,19 @@ window.MilgExtract = (function() {
         var _as; try { _as = getComputedStyle(allElements[_ai]); } catch (e) { continue; }
         var _hasTrans = _as.transitionDuration && _as.transitionDuration !== '0s';
         var _hasAnim = _as.animationName && _as.animationName !== 'none';
-        if (parseFloat(_as.opacity) === 0 && (_hasTrans || _hasAnim)) _anim.hiddenElements++;
+        if (parseFloat(_as.opacity) === 0 && (_hasTrans || _hasAnim)) {
+          // Only count elements that look SCROLL-REVEAL parked: no rendered box (collapsed/virtual
+          // container), outside the visible fold, or translate-parked off-axis. An opacity-0 element
+          // sitting fully in-viewport with no transform is hover-reveal UI (Tailwind group-hover
+          // rows, tooltips) — its opacity:0 is the normal unhovered state, not "waiting for an
+          // animation trigger", and counting those flooded real apps with a bogus motion warning.
+          var _ar; try { _ar = allElements[_ai].getBoundingClientRect(); } catch (e) { _ar = null; }
+          var _hasRect = !!(_ar && _ar.width > 0 && _ar.height > 0);
+          var _inFold = !!(_ar && _ar.bottom > 0 && _ar.top < window.innerHeight && _ar.right > 0 && _ar.left < window.innerWidth);
+          var _tf = _as.transform || '';
+          var _translatePark = _tf && _tf !== 'none' && (_tf.indexOf('matrix') !== -1 || /translate/i.test(_tf)) && !/^matrix\(1, 0, 0, 1, 0, 0\)$/.test(_tf);
+          if (!_hasRect || !_inFold || _translatePark) _anim.hiddenElements++;
+        }
         if (_hasAnim) {
           _anim.autoplayCount++; // a non-none animationName at load ≈ auto-playing (no user trigger)
           if (_as.animationDuration && _as.animationDuration !== '0s' && _animDur.size < 20) _animDur.add(_as.animationDuration);

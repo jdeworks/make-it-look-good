@@ -1,4 +1,4 @@
-// make-it-look-good — SPA View Explorer v3.11.137
+// make-it-look-good — SPA View Explorer v3.11.138
 // Runs INSIDE the analysis iframe (injected alongside MilgExtract). Discovers the
 // hidden "views" of a single-page app — reached by hash/History routes (Tier 1) or
 // by clicking nav controls (Tier 2, opt-in) — and re-runs MilgExtract on each so the
@@ -433,9 +433,37 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
   function captureScrollRegions(mainKind, viewData) {
     var ms = window.modernScreenshot;
     if (!opts.capture || !ms || !ms.domToCanvas || mainKind === 'region') return Promise.resolve([]);
-    var panes = (window.__milgScrollRegions || []).filter(function(p) { return p && p.el && p.el.isConnected; }).slice(0, 3);
+    var allPanes = (window.__milgScrollRegions || []).filter(function(p) { return p && p.el && p.el.isConnected; });
+    // Cap at 3 panes/view, spending the slots on the panes hiding the MOST content
+    // (detection order is DOM order — arbitrary). The coverage hint in the viewer
+    // tells the user when panes were dropped.
+    var panes = allPanes.slice().sort(function(a, b) {
+      function hidden(p) { try { return Math.max(0, (p.el.scrollHeight || 0) - (p.el.clientHeight || 0)) * Math.max(1, p.el.clientWidth || 1); } catch (e) { return 0; } }
+      return hidden(b) - hidden(a);
+    }).slice(0, 3);
+    // Surface capture coverage in the view data so the UI can say when panes were dropped
+    // (cap) or scored from clipped page findings instead of a native region extract (budget).
+    if (viewData) viewData._scrollCapture = { detected: allPanes.length, captured: 0, nativeScored: 0 };
     if (!panes.length) return Promise.resolve([]);
     var scale = opts.captureScale || 1;
+    // A native pane-scoped extract gives the region its own runScoring (typography/touch/
+    // spacing local to the pane) like single-page regions get from the mini-page re-extract —
+    // but it costs a scoped MilgExtract pass per pane, which is what previously timed the
+    // exploration out when run unconditionally. Only spend it while there is comfortable
+    // budget headroom; otherwise fall back to clipping the view's pairs/findings (_regionFromMain).
+    var extractHeadroomMs = Math.max(12000, 0.25 * (opts.timeBudgetMs || 15000));
+    // The scoped extract clobbers the globals extractFromDocument writes (hidden panels feed
+    // the holistic-state passes, __milgData/__milgBboxRefs feed post-capture re-reads) with
+    // pane-scoped values — snapshot and restore them around each native extract.
+    var GLOBAL_KEYS = ['__milgScrollRegions', '__milgHiddenPanels', '__milgBboxRefs', '__milgData', '__milgGetFlowPosition', '__milgReReadBboxes'];
+    function extractPaneScoped(el) {
+      var saved = {};
+      GLOBAL_KEYS.forEach(function(k) { saved[k] = window[k]; });
+      var d = null;
+      try { d = extractScoped(el); } catch (e) {}
+      GLOBAL_KEYS.forEach(function(k) { window[k] = saved[k]; });
+      return d;
+    }
     // The view's own extract already produced contrast pairs for the pane's content at natural
     // (scrollTop 0) layout — the same layout the full-height capture shows — so we reuse them,
     // geometrically clipped to the pane, instead of a costly per-pane re-extract (which also
@@ -475,6 +503,10 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
           el.style.cssText = savedCss + '; width: ' + w + 'px !important; height: auto !important; max-height: none !important; min-height: 0 !important; overflow: visible !important; position: static !important; flex: none !important; inset: auto !important; top: auto !important; bottom: auto !important; transform: none !important;';
           void el.offsetHeight;
         } catch (e) {}
+        // Native pane extract runs while the pane is REVEALED so bboxes reflect the same
+        // full-content layout the capture shows (page coords → mapped by the region cropOffset).
+        var nativeData = (nowMs() < deadline - extractHeadroomMs) ? extractPaneScoped(el) : null;
+        if (nativeData && !(nativeData.colors && (nativeData.colors.contrastPairs || []).length) && rgnPairs.length) nativeData = null;
         return ms.domToCanvas(el, { scale: scale, timeout: 15000, filter: filter }).then(function(canvas) {
           try { el.style.cssText = savedCss; void el.offsetHeight; } catch (e) {}
           if (!canvas || !canvas.width || !canvas.height) return;
@@ -488,15 +520,20 @@ window.MilgSpaExplore = function MilgSpaExplore(opts) {
             },
             containerRect: { left: Math.round(rectPre.left), top: Math.round(rectPre.top), width: Math.round(rectPre.width), height: Math.round(rectPre.height) },
             kind: 'scroll', noAnchor: false, label: p.label || 'Scrollable region', pairIndices: [], _domOrder: out.length,
-            // extractedData (pairs clipped to the pane) present → verifyRegions() pixel-verifies the
-            // region on the maskless grid path, incl. below-the-fold text the flat view shot clips.
-            extractedData: rgnPairs.length ? { colors: { contrastPairs: rgnPairs } } : null,
-            // This region's screenshot is captured in PAGE coordinates (unlike single-page regions,
-            // which clone into a mini-page). So its finding overlays ("normal validation boxes") come
-            // from the page's already-scored findings clipped to the pane (analyzer.js region loop),
-            // NOT from runScoring on the pairs-only extractedData above.
-            _regionFromMain: true
+            // extractedData present → verifyRegions() pixel-verifies the region on the maskless
+            // grid path, incl. below-the-fold text the flat view shot clips. Prefer the NATIVE
+            // pane-scoped extract (full data → analyzer.js runScoring gives the region its own
+            // report, like single-page regions); fall back to the view's pairs clipped to the pane.
+            extractedData: nativeData || (rgnPairs.length ? { colors: { contrastPairs: rgnPairs } } : null),
+            // Fallback only: screenshot is in PAGE coordinates, so finding overlays ("normal
+            // validation boxes") are synthesized from the page's already-scored findings clipped
+            // to the pane (analyzer.js region loop) instead of runScoring on pairs-only data.
+            _regionFromMain: !nativeData
           });
+          if (viewData && viewData._scrollCapture) {
+            viewData._scrollCapture.captured++;
+            if (nativeData) viewData._scrollCapture.nativeScored++;
+          }
         }, function() { try { el.style.cssText = savedCss; } catch (e) {} });
       });
     }, Promise.resolve()).then(function() { return out; });

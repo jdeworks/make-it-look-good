@@ -14,6 +14,9 @@
          white text on a filled control (≥4.5:1 in both themes) */
       --primary-strong: #1d4ed8;
       --primary-active: #2563eb;
+      /* hover for FILLED controls: darker than --primary-active so white text stays ≥4.5:1
+         (--primary-hover lightens in dark mode — fine for outlines, wrong under white text) */
+      --primary-active-hover: #1d4ed8;
       --radius: 8px;
       --shadow: 0 1px 3px rgba(0,0,0,0.08);
       --font: 'Inter', system-ui, -apple-system, sans-serif;
@@ -32,6 +35,7 @@
       --primary-hover: #60a5fa;
       --primary-strong: #60a5fa;
       --primary-active: #2563eb;
+      --primary-active-hover: #1d4ed8;
       --shadow: 0 1px 3px rgba(0,0,0,0.3);
     }
 
@@ -132,15 +136,18 @@
     }
 
     .btn:hover { background: var(--bg-alt); border-color: #cbd5e1; }
-    .btn.active { background: var(--primary); color: white; border-color: var(--primary); }
-    .btn.active:hover { background: var(--primary-hover); }
+    /* Filled controls with white text use --primary-active (≥4.5:1 in both themes);
+       plain --primary (#3b82f6) is only 3.68:1 against white — a real AA failure the
+       analyzer kept flagging on the chooser's "Load" buttons. */
+    .btn.active { background: var(--primary-active); color: white; border-color: var(--primary-active); }
+    .btn.active:hover { background: var(--primary-active-hover); }
 
     .btn-primary {
-      background: var(--primary);
+      background: var(--primary-active);
       color: white;
-      border-color: var(--primary);
+      border-color: var(--primary-active);
     }
-    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-primary:hover { background: var(--primary-active-hover); }
 
     .btn-icon {
       padding: 6px;
@@ -1210,7 +1217,8 @@
       transition: all 0.15s ease;
     }
     .mobile-tab.active {
-      color: var(--primary);
+      /* small colored text on --bg needs --primary-strong (--primary is 3.68:1) */
+      color: var(--primary-strong);
       border-bottom-color: var(--primary);
     }
 

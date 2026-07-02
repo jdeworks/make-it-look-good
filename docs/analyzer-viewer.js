@@ -401,6 +401,16 @@ window.MilgViewer = (function() {
       regionSection.className = 'milg-viewer-regions';
       regionSection.style.cssText = 'padding:16px 0 8px;width:100%;max-width:95vw;';
 
+      // Coverage hint: SPA scroll capture caps panes per view and can drop the native
+      // per-pane scoring under budget pressure — say so instead of failing silently.
+      var _sc = reportData.raw && reportData.raw._scrollCapture;
+      if (_sc && _sc.detected > _sc.captured) {
+        var scNote = document.createElement('div');
+        scNote.style.cssText = 'margin:0 0 12px;padding:6px 12px;border:1px solid rgba(251,191,36,0.35);border-radius:6px;background:rgba(251,191,36,0.12);font-size:11px;color:#fbbf24;';
+        scNote.textContent = '⚠ ' + _sc.captured + ' of ' + _sc.detected + ' scrollable panes captured (per-view cap) — the largest panes were prioritized';
+        regionSection.appendChild(scNote);
+      }
+
       regions.forEach(function(rgn, rIdx) {
         if (!rgn.screenshot || !rgn.screenshotMeta) return;
 
@@ -469,6 +479,15 @@ window.MilgViewer = (function() {
           }
         });
         rgnHeader.appendChild(rgnTitle);
+        // SPA fallback scoring: under budget pressure the pane gets the page's findings
+        // clipped to its rect instead of its own scoped extract + report — label it.
+        if (rgn._regionFromMain) {
+          var rgnScopeBadge = document.createElement('span');
+          rgnScopeBadge.style.cssText = 'font-size:10px;color:rgba(251,191,36,0.9);border:1px solid rgba(251,191,36,0.4);border-radius:3px;padding:1px 5px;margin-left:8px;';
+          rgnScopeBadge.title = 'Findings for this section were derived from the page-level analysis (SPA time budget) — not a section-scoped re-analysis.';
+          rgnScopeBadge.textContent = 'page-scope findings';
+          rgnHeader.appendChild(rgnScopeBadge);
+        }
         if (rgnStatus.textContent) rgnHeader.appendChild(rgnStatus);
         rgnHeader.appendChild(backLink);
         rgnSection.appendChild(rgnHeader);

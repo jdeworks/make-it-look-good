@@ -1139,6 +1139,23 @@ window.MilgContrastVerify = (function() {
     var isVariableBg = bgVariance > 3.0 && bgColorSpread > 35 && bgColorSpread >= Math.max(18, fgColorSpread * 0.6);
     var isFgAaVariance = bgVariance > 3.0 && !isVariableBg && fgColorSpread > 10;
 
+    // Ambiguous-classification guard (colour-threshold / no-mask path only). The screenshot-
+    // derived glyph mask classifies each pixel by whichever of expectedFg/cssBg it is closer to.
+    // That basis is unreliable when (a) fg and bg CSS colours are nearly the same — the closer-to
+    // comparison is decided by capture noise — or (b) the background is an image/gradient the
+    // single cssBg colour misrepresents AND the sampled "glyph" set is visibly contaminated
+    // (wide fg colour spread). In those cases a boundary-crossing pixel verdict is a coin flip,
+    // not evidence — abstain (keep the CSS verdict) instead of reporting a confident wrong ratio.
+    // Render-mask (single-page) pairs never hit this: their spatial mask located the glyphs.
+    var ambiguousClass = false;
+    if (_noMask && crossesBoundary && !unreliableSample) {
+      var _fbDr = expectedFg.r - (cssBg ? cssBg.r : 0), _fbDg = expectedFg.g - (cssBg ? cssBg.g : 0), _fbDb = expectedFg.b - (cssBg ? cssBg.b : 0);
+      var fgBgDistSq = cssBg ? (_fbDr * _fbDr + _fbDg * _fbDg + _fbDb * _fbDb) : Infinity;
+      ambiguousClass = (cssBg && fgBgDistSq < 3600) ||
+        ((pair.bgHasImage || isVariableBg) && fgColorSpread > 60);
+      if (ambiguousClass) { pixelPasses = cssPasses; crossesBoundary = false; }
+    }
+
     // Debug mask for the viewer's right-click none→mask→zones cycle. Grid/SPA pairs have no
     // render-based glyph mask, so build one PER-PIXEL from the SAME screenshot imgData the sampler
     // read — NOT the coarse step-2 sample grid. Classifying every pixel (same text rule as pass 1)
@@ -1183,8 +1200,8 @@ window.MilgContrastVerify = (function() {
       cssPasses: cssPasses,
       pixelPasses: pixelPasses,
       crossesBoundary: crossesBoundary,
-      skipped: unreliableSample || undefined,
-      skipReason: unreliableSample ? 'unreliable-sample' : undefined,
+      skipped: (unreliableSample || ambiguousClass) || undefined,
+      skipReason: unreliableSample ? 'unreliable-sample' : (ambiguousClass ? 'ambiguous-classification' : undefined),
       // fontSize/isLarge/bgHasImage carried through so the small-text demotion (which the edge
       // path already gets at buildResult) also works for grid-path (SPA) results.
       fontSize: pair.fontSize || 0, isLarge: !!pair.isLarge, bgHasImage: !!pair.bgHasImage,
