@@ -617,7 +617,14 @@ function reattachPreset(d) {
     document.getElementById('styleButtons').style.display = 'none';
   } else {
     try { renderPersonalityButtons(d.element, d.personality); } catch (e) { console.error('[milg] personality render failed:', e); }
-    try { renderThemeSwatches(d.element, d.personality); } catch (e) { console.error('[milg] swatch render failed:', e); }
+    // renderThemeSwatches resets currentColorName to the preset's stock primary, so the
+    // stashed accent has to be put back — otherwise an edit-then-revert leaves the editor
+    // holding tinted HTML while the toolbar shows the stock color.
+    try {
+      renderThemeSwatches(d.element, d.personality);
+      currentColorName = d.colorName;
+      syncColorSwatchUI(d.colorName);
+    } catch (e) { console.error('[milg] swatch render failed:', e); }
     try { renderStyleButtons(d.element); } catch (e) { console.error('[milg] style render failed:', e); }
   }
   try { syncMobileToolbar(); } catch (e) { console.error('[milg] mobile toolbar sync failed:', e); }
@@ -1485,16 +1492,11 @@ function closeColorMenu() {
   if (_colorMenuCleanup) { _colorMenuCleanup(); _colorMenuCleanup = null; }
 }
 
-function selectTheme(colorName) {
-  if (!currentElement) return;
-  currentColorName = colorName;
-  userAccentColor = colorName;
-  const fromPrimary = getElementPrimary(currentElement, currentPersonality);
-  const fromNeutral = presetNeutralMap[currentElement] || 'slate';
-  const theme = colorToTheme(colorName);
-  const themed = applyColorTheme(originalPresetHtml, fromPrimary, theme.primary, fromNeutral, theme.neutral, theme);
-  editor.value = themed;
-  updatePreview();
+// Point the toolbar at `colorName` — the color well, the dropdown selection and the
+// mobile swatch grid. Split out of selectTheme because renderThemeSwatches always
+// paints the preset's stock primary, so any caller that re-renders the swatches with a
+// non-stock accent in effect has to repaint them afterwards.
+function syncColorSwatchUI(colorName) {
   document.querySelectorAll('.theme-swatch').forEach(btn => {
     btn.classList.toggle('active', btn.title === colorName);
   });
@@ -1509,6 +1511,19 @@ function selectTheme(colorName) {
     o.classList.toggle('selected', on);
     o.setAttribute('aria-selected', on ? 'true' : 'false');
   });
+}
+
+function selectTheme(colorName) {
+  if (!currentElement) return;
+  currentColorName = colorName;
+  userAccentColor = colorName;
+  const fromPrimary = getElementPrimary(currentElement, currentPersonality);
+  const fromNeutral = presetNeutralMap[currentElement] || 'slate';
+  const theme = colorToTheme(colorName);
+  const themed = applyColorTheme(originalPresetHtml, fromPrimary, theme.primary, fromNeutral, theme.neutral, theme);
+  editor.value = themed;
+  updatePreview();
+  syncColorSwatchUI(colorName);
   syncMobileToolbar();
 }
 
@@ -2299,6 +2314,62 @@ function showToast(msg) {
 }
 
 // --- Load from URL hash ---
+
+// Guards for the preset deep link. `_presetHashSeq` is bumped on every entry and
+// re-checked after each await, so a second link arriving mid-fetch can't interleave with
+// the first. `_appliedPresetHash` skips redundant re-renders when the same link is applied
+// twice (an untouched preset only — a link is still worth re-applying over user edits).
+let _presetHashSeq = 0;
+let _appliedPresetHash = null;
+
+// Apply a `preset:element/personality[/color][/style]` deep link. The color slot is
+// positional: a link that sets only a style pads it with the preset's default color.
+async function applyPresetHash(path) {
+  const parts = String(path || '').split('/');
+  const element = parts[0];
+  if (!element) return;
+  const personality = parts[1] || 'clean';
+  const color = (parts[2] && tailwindColors[parts[2]]) ? parts[2] : null;
+  const style = parts[3] || null;
+  if (path === _appliedPresetHash && !userEdited) return;
+
+  const seq = ++_presetHashSeq;
+  // Set the accent BEFORE loading: loadPreset re-tints a freshly loaded preset when
+  // userAccentColor differs from its stock primary, so the link renders tinted on the
+  // first paint. Applying it afterwards meant a second render, and a flash of the stock
+  // color in between. `before` carries no theming at all, so it keeps the stock palette.
+  userAccentColor = (personality === 'before') ? null : color;
+  await loadManifest();
+  if (seq !== _presetHashSeq) return;
+  await loadPreset(element, personality);
+  if (seq !== _presetHashSeq) return;
+
+  // Verify instead of assuming: loadPreset returns early when the fetch fails, and
+  // selectTheme is a silent no-op without currentElement. Retry once, then say so.
+  if (color && personality !== 'before' && currentColorName !== color) {
+    try { selectTheme(color); } catch (e) { console.error('[milg] accent apply failed:', e); }
+    if (currentColorName !== color) {
+      console.warn('[milg] deep-link accent not applied', { element, personality, color, currentColorName });
+    }
+  }
+
+  if (style) {
+    const idx = visualStyles.findIndex(s => s.name.toLowerCase() === style);
+    if (idx >= 0) selectStyle(idx);
+  }
+  _appliedPresetHash = path;
+}
+
+// A shared preset link pasted into an already-open tab changes only the fragment, so the
+// browser never reloads and startApp never runs again. Re-apply preset links live. The
+// recommend:/code: forms stay load-only — code: opens the trust dialog, which must not
+// fire on navigation.
+window.addEventListener('hashchange', () => {
+  const hash = window.location.hash.slice(1);
+  if (!hash.startsWith('preset:')) return;
+  applyPresetHash(hash.slice(7)).catch(e => console.error('[milg] hash load failed:', e));
+});
+
 async function loadFromHash() {
   const hash = window.location.hash.slice(1);
   if (!hash) return;
@@ -2314,25 +2385,8 @@ async function loadFromHash() {
   }
 
   // Preset link — trusted, load directly
-  // Format: preset:element/personality[/color][/style]
   if (hash.startsWith('preset:')) {
-    const path = hash.slice(7);
-    const parts = path.split('/');
-    const element = parts[0];
-    const personality = parts[1] || 'clean';
-    const color = parts[2] || null;
-    const style = parts[3] || null;
-    await loadManifest();
-    await loadPreset(element, personality);
-    // Apply color theme if specified
-    if (color && tailwindColors[color]) {
-      selectTheme(color);
-    }
-    // Apply style if specified
-    if (style) {
-      const idx = visualStyles.findIndex(s => s.name.toLowerCase() === style);
-      if (idx >= 0) selectStyle(idx);
-    }
+    await applyPresetHash(hash.slice(7));
     return;
   }
 
@@ -2981,7 +3035,10 @@ function startApp() {
   applyDarkMode();
   initMonaco();
   initMobile();
-  loadFromHash().then(function() {
+  // .catch keeps a failed hash load from silently swallowing the two follow-up timers.
+  loadFromHash().catch(function(e) {
+    console.error('[milg] hash load failed:', e);
+  }).then(function() {
     // Check after a short delay to ensure Monaco has settled
     setTimeout(function() { autoLoadTemplate(); }, 300);
     setTimeout(function() {
